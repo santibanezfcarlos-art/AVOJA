@@ -1,95 +1,128 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bingo AVOJA</title>
 
 <style>
 body {
-    background:#1e1e1e;
-    font-family: Arial, sans-serif;
-    color:white;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:100vh;
+  margin:0;
+  background:#111;
+  font-family:Arial;
 }
-
-.bingo {
-    background:#f2d6a2;
-    padding:20px;
-    border-radius:10px;
-}
-
 h1 {
-    text-align:center;
-    color:#5a3b1f;
+  text-align:center;
+  color:white;
+  margin:10px;
 }
-
 table {
-    border-collapse: collapse;
-    font-size:22px;
-    text-align:center;
+  margin:auto;
+  border-collapse:collapse;
 }
-
 th, td {
-    border:1px solid #b58b57;
-    width:70px;
-    height:55px;
-    cursor:pointer;
+  width:60px;
+  height:50px;
+  border:1px solid #444;
+  text-align:center;
+  font-size:20px;
+  background:#f3e0b5;
 }
-
 th {
-    background:#e07b49;
-    color:white;
+  background:#e0673c;
+  color:white;
 }
-
-td {
-    background:#f6e3b4;
-    color:#5a3b1f;
+td.m {
+  background:#c0392b;
+  color:white;
+  font-weight:bold;
 }
-
-td.marcado {
-    background:#b03a2e;
-    color:white;
-    font-weight:bold;
+#panel {
+  text-align:center;
+  color:white;
+  margin-top:10px;
+}
+button {
+  padding:10px 15px;
+  margin:5px;
+  border:none;
+  border-radius:5px;
+  background:#e0673c;
+  color:white;
+  font-size:16px;
+}
+#historial {
+  max-width:320px;
+  margin:10px auto;
+  background:#222;
+  padding:10px;
+  border-radius:8px;
 }
 </style>
 </head>
 
 <body>
 
-<div class="bingo">
-<h1>BINGO</h1>
+<h1>BINGO AVOJA</h1>
 
-<table id="tabla"></table>
+<table id="b"></table>
 
+<div id="panel">
+  <button onclick="reiniciar()">Reiniciar</button>
+  <button onclick="pantallaCompleta()">Pantalla completa</button>
 </div>
 
+<div id="historial">
+<b>Números cantados:</b>
+<div id="lista"></div>
+</div>
+
+<audio id="sonido">
+  <source src="https://assets.mixkit.co/sfx/preview/mixkit-achievement-bell-600.mp3">
+</audio>
+
 <script>
-let numeros = [];
-for(let i=1;i<=75;i++) numeros.push(i);
+let t=document.getElementById("b");
+let L=["B","I","N","G","O"];
+let historial=[];
 
-let tabla = document.getElementById("tabla");
-let letras = ["B","I","N","G","O"];
+let h="<tr>";
+for(let l of L) h+=`<th>${l}</th>`;
+h+="</tr>";
+t.innerHTML+=h;
 
-let header = "<tr>";
-for(let l of letras) header += `<th>${l}</th>`;
-header += "</tr>";
-tabla.innerHTML += header;
-
-for(let fila=0; fila<15; fila++){
-    let row = "<tr>";
-    for(let col=0; col<5; col++){
-        let n = fila + col*15 + 1;
-        row += `<td onclick="marcar(this)">${n}</td>`;
-    }
-    row += "</tr>";
-    tabla.innerHTML += row;
+for(let i=0;i<15;i++){
+  let r="<tr>";
+  for(let c=0;c<5;c++){
+    let n=i+c*15+1;
+    r+=`<td onclick="marcar(this,${n})">${n}</td>`;
+  }
+  r+="</tr>";
+  t.innerHTML+=r;
 }
 
-function marcar(celda){
-    celda.classList.toggle("marcado");
+function marcar(celda,n){
+  if(!celda.classList.contains("m")){
+    celda.classList.add("m");
+    historial.push(n);
+    document.getElementById("sonido").play();
+    actualizarHistorial();
+  }
+}
+
+function actualizarHistorial(){
+  document.getElementById("lista").innerText = historial.join(", ");
+}
+
+function reiniciar(){
+  document.querySelectorAll("td").forEach(c=>c.classList.remove("m"));
+  historial=[];
+  actualizarHistorial();
+}
+
+function pantallaCompleta(){
+  if(document.documentElement.requestFullscreen){
+    document.documentElement.requestFullscreen();
+  }
 }
 </script>
 
