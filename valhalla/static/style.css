@@ -6,3 +6,5 @@
 .stat .account-value{font-size:1.2rem;padding:6px 0}.spaced-card{margin-top:22px}.small-text{font-size:.8rem}.caption-text{font-size:.78rem}.document-name{font-size:.85rem}.upload-note{font-size:.78rem;margin-bottom:18px}.review-label{margin-top:20px}
 
 .profile-switcher{padding:16px 20px;background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:24px}.profile-switcher strong{font-size:.83rem}.profile-switcher p{font-size:.75rem;color:var(--muted)}
+
+.room-photo{display:grid;gap:6px;border:1px solid var(--line);background:#f5f5ef;color:var(--ink);padding:5px;border-radius:9px;width:68px;flex-shrink:0}.room-photo img{display:block;width:100%;aspect-ratio:1;object-fit:contain}.room-photo span{font-size:.62rem}.room-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,260px));gap:16px;margin-bottom:22px}.room-photo-large{width:100%;padding:10px}.room-photo-large span{font-size:.8rem}.room-photo-full{display:block;width:100%;max-height:70vh;object-fit:contain;margin-top:15px}

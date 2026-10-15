@@ -8,10 +8,13 @@
 .stat .account-value{font-size:1.2rem;padding:6px 0}.spaced-card{margin-top:22px}.small-text{font-size:.8rem}.caption-text{font-size:.78rem}.document-name{font-size:.85rem}.upload-note{font-size:.78rem;margin-bottom:18px}.review-label{margin-top:20px}
 
 .profile-switcher{padding:16px 20px;background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:24px}.profile-switcher strong{font-size:.83rem}.profile-switcher p{font-size:.75rem;color:var(--muted)}
+
+.room-photo{display:grid;gap:6px;border:1px solid var(--line);background:#f5f5ef;color:var(--ink);padding:5px;border-radius:9px;width:68px;flex-shrink:0}.room-photo img{display:block;width:100%;aspect-ratio:1;object-fit:contain}.room-photo span{font-size:.62rem}.room-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,260px));gap:16px;margin-bottom:22px}.room-photo-large{width:100%;padding:10px}.room-photo-large span{font-size:.8rem}.room-photo-full{display:block;width:100%;max-height:70vh;object-fit:contain;margin-top:15px}
 </style></head>
 <body><div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="root"></div><dialog id="modal" aria-labelledby="modal-title"></dialog>
-<script>const root = document.querySelector('#root');
+<script>globalThis.VALHALLA_ROOMS=[];
+const root = document.querySelector('#root');
 const modal = document.querySelector('#modal');
 let state = null, adminData = null, view = 'overview', adminTab = 'payments', selectedDate = '', modifying = null;
 let activeProfile = 'admin';
@@ -74,7 +77,7 @@ async function api(path,body){
   if(path==='logout'){previewUser=null;return {ok:true};}
   const user=db.users.find(u=>u.id===previewUser);
   if(!user||!user.active)throw Error('Inicia sesión para continuar.');
-  if(path==='me')return previewClone({user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
+  if(path==='me')return previewClone({rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
   if(path.startsWith('availability?')){
     const day=new URLSearchParams(path.split('?')[1]).get('date');
     return {date:day,slots:Array.from({length:12},(_,i)=>{
@@ -179,6 +182,10 @@ function shell() {
   document.querySelectorAll('[data-logout]').forEach(b=>b.onclick=async()=>{try{await api('logout',{});state=null;selectedDate='';view='overview';auth();}catch(e){toast(e.message);}});
 }
 function head(title,subtitle,action='') {return `<div class="page-head"><div><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`;}
+function roomPhoto(box, large=false) {
+  const photo=state.rooms?.find(room=>room.box===box);
+  return photo ? `<button class="room-photo ${large?'room-photo-large':''}" data-photo="${box}" aria-label="Ver foto completa del Box ${box}"><img src="${escapeHTML(photo.image_url)}" alt="Fotografía de la oficina Box ${box}" loading="lazy" decoding="async"><span>Box ${box} · Ver foto</span></button>` : '';
+}
 function bookingItem(b, actions=true) {
   return `<div class="booking-item"><div class="booking-info"><span class="box-avatar">0${b.box}</span><div><strong>${rooms[b.box-1]}</strong><p>${dateText(b.start)} · ${hourText(b.start)} · 1 hora</p>${pill(b.status)} ${b.modifications?'<span class="pill neutral">Cambio utilizado</span>':''}</div></div>${actions&&canModify(b)?`<button class="btn ghost small" data-modify="${b.id}">Modificar</button>`:''}</div>`;
 }
@@ -190,14 +197,14 @@ function overview() {
   return head(`Hola, ${first} <span aria-hidden="true">✦</span>`, 'Un buen día empieza con un espacio para ti.', '<button class="btn" data-go="availability">Reservar un box →</button>')+stats()+
   `${!state.user.verified?'<div class="notice">Tu cuenta necesita documentación aprobada para reservar. <button class="text-btn" data-go="documents">Enviar documentación →</button></div>':''}
   <section class="hero"><div><div class="eyebrow">ESPACIO PARA LO QUE IMPORTA</div><h2>Tú cuidas de tus pacientes.<br>Nosotros, de tu espacio.</h2><p>Elige el box y el horario que mejor se adapten a ti. Tus horas funcionan en los tres espacios.</p><button class="btn" data-go="availability">Ver disponibilidad <span aria-hidden="true">→</span></button></div><div class="hero-art" aria-hidden="true"><div class="arch">01</div><div class="arch">02</div><div class="arch">03</div></div></section>
-  <div class="grid columns"><section class="card"><div class="card-head"><h2>Tus próximas atenciones</h2><button class="text-btn" data-go="bookings">Ver todas →</button></div>${upcoming().slice(0,3).map(b=>bookingItem(b)).join('')||empty('Tu agenda está abierta. Reserva tu primera hora.')}</section><section class="card"><h2>Tres boxes. Tu elección.</h2><p class="section-intro">Un entorno privado para tu práctica profesional.</p>${rooms.map((r,i)=>`<div class="room"><span class="room-badge">0${i+1}</span><div><p>${r}</p><small>Uso profesional · Reserva de 1 hora</small></div></div>`).join('')}<small>Horarios: 08:00 a 20:00 · Chile</small></section></div>`;
+  <div class="grid columns"><section class="card"><div class="card-head"><h2>Tus próximas atenciones</h2><button class="text-btn" data-go="bookings">Ver todas →</button></div>${upcoming().slice(0,3).map(b=>bookingItem(b)).join('')||empty('Tu agenda está abierta. Reserva tu primera hora.')}</section><section class="card"><h2>Tres boxes. Tu elección.</h2><p class="section-intro">Un entorno privado para tu práctica profesional.</p>${rooms.map((r,i)=>`<div class="room">${roomPhoto(i+1)||`<span class="room-badge">0${i+1}</span>`}<div><p>${r}</p><small>Uso profesional · Reserva de 1 hora</small></div></div>`).join('')}<small>Horarios: 08:00 a 20:00 · Chile</small></section></div>`;
 }
 async function availability() {
   const data=await api('availability?date='+selectedDate);
   return head(modifying?'Modifica tu reserva':'Encuentra tu próximo espacio',modifying?'Un único cambio, sin consumir horas adicionales.':'Elige una hora y cualquiera de los tres boxes.')+
   `${modifying?`<div class="notice info">Reserva #${modifying.id}: ${rooms[modifying.box-1]} · ${dateText(modifying.start)} · ${hourText(modifying.start)}. <button class="text-btn" id="abort-change">Salir sin modificar</button></div>`:''}
   ${!state.user.verified&&state.user.role!=='admin'?'<div class="notice">Puedes consultar la agenda. Para reservar, primero verifica tu documentación.</div>':''}
-  <section class="card"><div class="calendar-toolbar"><label>Fecha de atención<input id="schedule-date" type="date" value="${selectedDate}" min="${state.today}" max="${new Date(new Date(state.today+'T12:00:00Z').getTime()+90*86400000).toISOString().slice(0,10)}"></label><div><div class="legend"><span><i class="dot"></i>Disponible</span><span><i class="dot busy"></i>No disponible</span></div><p class="data-note">Hora de Chile · Sesiones de 60 minutos</p></div></div><div class="table-wrap"><table class="availability"><thead><tr><th scope="col">Hora</th>${rooms.map(r=>`<th scope="col"><span class="room-heading">${r}</span><span class="room-subtitle">Espacio profesional</span></th>`).join('')}</tr></thead><tbody>${data.slots.map(slot=>`<tr><td>${slot.label}</td>${slot.boxes.map(box=>`<td><button class="slot" data-slot="${slot.start}" data-box="${box.box}" ${box.available?'':'disabled'} aria-label="${rooms[box.box-1]}, ${slot.label}, ${box.available?'disponible':'no disponible'}">${box.available?'Disponible':'—'}</button></td>`).join('')}</tr>`).join('')}</tbody></table></div></section><p class="data-note">Las reservas se confirman con saldo y verificación vigentes. Un profesional no puede ocupar dos boxes a la misma hora.</p>`;
+  ${(state.rooms||[]).length?`<section class="room-gallery" aria-label="Fotos de los boxes">${state.rooms.map(room=>roomPhoto(room.box,true)).join('')}</section>`:''}<section class="card"><div class="calendar-toolbar"><label>Fecha de atención<input id="schedule-date" type="date" value="${selectedDate}" min="${state.today}" max="${new Date(new Date(state.today+'T12:00:00Z').getTime()+90*86400000).toISOString().slice(0,10)}"></label><div><div class="legend"><span><i class="dot"></i>Disponible</span><span><i class="dot busy"></i>No disponible</span></div><p class="data-note">Hora de Chile · Sesiones de 60 minutos</p></div></div><div class="table-wrap"><table class="availability"><thead><tr><th scope="col">Hora</th>${rooms.map(r=>`<th scope="col"><span class="room-heading">${r}</span><span class="room-subtitle">Espacio profesional</span></th>`).join('')}</tr></thead><tbody>${data.slots.map(slot=>`<tr><td>${slot.label}</td>${slot.boxes.map(box=>`<td><button class="slot" data-slot="${slot.start}" data-box="${box.box}" ${box.available?'':'disabled'} aria-label="${rooms[box.box-1]}, ${slot.label}, ${box.available?'disponible':'no disponible'}">${box.available?'Disponible':'—'}</button></td>`).join('')}</tr>`).join('')}</tbody></table></div></section><p class="data-note">Las reservas se confirman con saldo y verificación vigentes. Un profesional no puede ocupar dos boxes a la misma hora.</p>`;
 }
 function bookings() {
   return head('Tu agenda, en orden','Una sola modificación por reserva, con al menos 2 horas de anticipación.','<button class="btn" data-go="availability">Nueva reserva →</button>')+
@@ -245,6 +252,11 @@ function showModal(title, content, confirmLabel, action) {
   };
 }
 function bind() {
+  document.querySelectorAll('[data-photo]').forEach(button=>button.onclick=()=>{
+    const box=Number(button.dataset.photo),photo=state.rooms.find(room=>room.box===box);
+    modal.innerHTML=`<h2 id="modal-title">Box ${box}</h2><img class="room-photo-full" src="${escapeHTML(photo.image_url)}" alt="Fotografía completa del Box ${box}"><div class="modal-actions"><button class="btn" id="photo-close">Cerrar foto</button></div>`;
+    modal.showModal();document.querySelector('#photo-close').onclick=()=>modal.close();
+  });
   const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{event.preventDefault();const button=profileForm.querySelector('button');button.disabled=true;try{await api('profile',Object.fromEntries(new FormData(profileForm)));await reload();toast('Perfil profesional actualizado.');}catch(e){document.querySelector('#profile-error').textContent=e.message;}finally{button.disabled=false;}};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{view=b.dataset.go;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-modify]').forEach(b=>b.onclick=()=>{modifying=state.bookings.find(x=>x.id===Number(b.dataset.modify));selectedDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(modifying.start));view='availability';render().catch(e=>toast(e.message));});

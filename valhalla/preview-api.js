@@ -46,7 +46,7 @@ async function api(path,body){
   if(path==='logout'){previewUser=null;return {ok:true};}
   const user=db.users.find(u=>u.id===previewUser);
   if(!user||!user.active)throw Error('Inicia sesión para continuar.');
-  if(path==='me')return previewClone({user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
+  if(path==='me')return previewClone({rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
   if(path.startsWith('availability?')){
     const day=new URLSearchParams(path.split('?')[1]).get('date');
     return {date:day,slots:Array.from({length:12},(_,i)=>{

@@ -33,6 +33,23 @@ def supports_professional(user):
     return user and (user['role'] == 'professional' or (user['role'] == 'admin' and user['email'] == ADMIN_EMAIL))
 
 
+def room_photo(box):
+    for extension, mime in (('jpg', 'image/jpeg'), ('jpeg', 'image/jpeg'), ('png', 'image/png'), ('webp', 'image/webp')):
+        image = ROOT / 'static' / 'images' / f'box-{box}.{extension}'
+        if image.is_file():
+            return image, mime
+    return None
+
+
+def room_photos():
+    result = []
+    for box in (1, 2, 3):
+        photo = room_photo(box)
+        if photo:
+            result.append({'box': box, 'image_url': f'/images/box-{box}?v={photo[0].stat().st_mtime_ns}'})
+    return result
+
+
 def now():
     return datetime.now(timezone.utc)
 
@@ -183,7 +200,7 @@ class Store:
     def state(self, user):
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active')}
-            return {'user': profile, 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
+            return {'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'bookings': [dict(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [dict(r) for r in c.execute('SELECT id,filename,status,note,created_at FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
@@ -419,13 +436,17 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not route.path.startswith('/api/'):
                 files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+                if route.path in ('/images/box-1', '/images/box-2', '/images/box-3'):
+                    photo = room_photo(int(route.path[-1]))
+                    if photo:
+                        files[route.path] = (str(photo[0]), photo[1])
                 if route.path not in files:
                     raise Problem('Página no encontrada.', 404)
                 filename, mime = files[route.path]
                 raw = (ROOT / 'static' / filename).read_bytes()
                 self.send_response(200)
                 self.headers_common()
-                self.send_header('Content-Type', mime + '; charset=utf-8')
+                self.send_header('Content-Type', mime if mime.startswith('image/') else mime + '; charset=utf-8')
                 self.send_header('Content-Length', str(len(raw)))
                 self.end_headers()
                 self.wfile.write(raw)
