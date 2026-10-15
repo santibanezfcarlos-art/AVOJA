@@ -88,6 +88,11 @@ class AccessTests(unittest.TestCase):
         with self.assertRaises(Problem):self.store.reserve(owner['id'],{'box':1,'start':start})
         pid=self.store.buy(owner['id'],{'catalog_id':'5','user_id':999})
         self.store.admin_action(owner['id'],{'action':'payment','id':pid,'decision':'paid'})
+        import base64
+        self.store.upload(owner['id'],{'kind':'identity','filename':'carnet.pdf','content':base64.b64encode(b'%PDF-1.4\nTEST').decode()})
+        with self.store.connection() as c:
+            did=c.execute("SELECT MAX(id) FROM documents WHERE user_id=?",(owner['id'],)).fetchone()[0]
+        self.store.admin_action(owner['id'],{'action':'document','id':did,'decision':'approved','identity_confirmed':True})
         bid=self.store.reserve(owner['id'],{'box':1,'start':start})
         with self.store.connection() as c:
             booking=c.execute('SELECT * FROM bookings WHERE id=?',(bid,)).fetchone()
@@ -102,7 +107,7 @@ class AccessTests(unittest.TestCase):
         self.store.configure_access(self.private)
         token=self.store.login({'email':ADMIN_EMAIL,'password':self.private})
         owner=self.store.session(token)
-        self.store.upload(owner['id'],{'filename':'ficticio.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()})
+        self.store.upload(owner['id'],{'kind':'identity','filename':'ficticio.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()})
         self.assertEqual(self.store.session(token)['verified'],0)
         self.assertEqual(self.store.session(token)['role'],'admin')
 

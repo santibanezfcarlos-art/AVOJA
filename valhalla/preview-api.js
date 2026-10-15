@@ -5,7 +5,7 @@ const previewDB = {
   documents:[], bookings:[], audit:[]
 };
 let previewUser = null;
-const previewCatalog=[{id:'5',hours:5,price:45000},{id:'10',hours:10,price:85000},{id:'20',hours:20,price:160000}];
+const previewCatalog=[['1',1,5990],['5',5,28990],['10',10,54990],['30',30,144990],['60',60,254990],['100',100,364990],['200',200,599990]].map(([id,hours,price])=>({id,hours,price,duration_minutes:55,sessions:hours}));
 const previewToday=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date());
 const previewId=rows=>Math.max(0,...rows.map(r=>r.id))+1;
 const previewClone=value=>JSON.parse(JSON.stringify(value));
@@ -55,7 +55,7 @@ async function api(path,body){
       return {label:String(8+i).padStart(2,'0')+':00',start,boxes:[1,2,3].map(box=>({box,available:new Date(start)>new Date()&&!db.bookings.some(b=>b.box===box&&b.start===start&&b.status==='confirmed')}))};
     })};
   }
-  if(path==='profile'){user.name=String(body.name).trim();user.specialty=String(body.specialty).trim();return {ok:true};}
+  if(path==='profile'){if(user.name!==String(body.name).trim()){const identity=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1);if(identity)identity.status='pending';user.verified=0;}user.name=String(body.name).trim();user.specialty=String(body.specialty).trim();return {ok:true};}
   if(path==='packages'){
     if(user.role!=='professional')throw Error('Solo profesionales pueden solicitar paquetes.');
     const p=previewCatalog.find(p=>p.id===body.catalog_id);if(!p)throw Error('Paquete inválido.');
@@ -80,7 +80,7 @@ async function api(path,body){
   if(path==='documents'){
     const binary=atob(body.content);
     if(user.role!=='professional'||!body.filename.toLowerCase().endsWith('.pdf')||!binary.startsWith('%PDF-')||binary.length>2000000)throw Error('Adjunta un PDF ficticio de hasta 2 MB.');
-    db.documents.push({id:previewId(db.documents),user_id:user.id,filename:body.filename,content:body.content,status:'pending',note:'',created_at:new Date().toISOString()});user.verified=0;previewRecord('document_uploaded',user.id);return {ok:true};
+    db.documents.push({id:previewId(db.documents),user_id:user.id,filename:body.filename,kind:body.kind||'accreditation',content:body.content,status:'pending',note:'',created_at:new Date().toISOString()});user.verified=0;previewRecord('document_uploaded',user.id);return {ok:true};
   }
   if(path==='admin'){
     if(user.role!=='admin')throw Error('Acceso exclusivo de administración.');
@@ -91,7 +91,7 @@ async function api(path,body){
       const d=db.documents.find(d=>d.id===body.id);if(!d)throw Error('Documento no encontrado.');
       if(db.documents.some(other=>other.user_id===d.user_id&&other.id>d.id))throw Error('Revisa el documento más reciente.');
       if(body.decision==='rejected'&&!body.note.trim())throw Error('Indica un motivo para rechazar.');
-      d.status=body.decision;d.note=body.note;db.users.find(u=>u.id===d.user_id).verified=Number(body.decision==='approved');
+      if(d.kind==='identity'&&body.decision==='approved'&&body.identity_confirmed!==true)throw Error('Confirma la revisión de ambos lados del carnet.');d.status=body.decision;d.note=body.note;if(d.kind==='identity')db.users.find(u=>u.id===d.user_id).verified=Number(body.decision==='approved');
     }else if(body.action==='user'){
       const u=db.users.find(u=>u.id===body.id&&u.role==='professional');if(!u)throw Error('Usuario inválido.');u.active=Number(body.active);
     }else if(body.action==='cancel'){

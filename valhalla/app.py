@@ -18,7 +18,8 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
-CATALOG = {'5': (5, 45000), '10': (10, 85000), '20': (20, 160000)}
+CATALOG = {'1': (1, 5990), '5': (5, 28990), '10': (10, 54990), '30': (30, 144990), '60': (60, 254990), '100': (100, 364990), '200': (200, 599990)}
+SESSION_MINUTES = 55
 MAX_BODY = 3_000_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
 LEGACY_DEMO_EMAILS = ("admin@valhalla.demo", "profesional@valhalla.demo")
@@ -97,6 +98,13 @@ def stamp(value):
     return value.astimezone(timezone.utc).isoformat(timespec='seconds')
 
 
+def booking_details(row):
+    result = dict(row)
+    result['end'] = stamp(datetime.fromisoformat(result['start']) + timedelta(minutes=SESSION_MINUTES))
+    result['duration_minutes'] = SESSION_MINUTES
+    return result
+
+
 def password_hash(password, salt=None):
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), 260000).hex()
@@ -148,6 +156,9 @@ class Store:
               id INTEGER PRIMARY KEY, actor_id INTEGER REFERENCES users(id),
               action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL);
             ''')
+            columns = {row['name'] for row in c.execute('PRAGMA table_info(documents)')}
+            if 'kind' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'accreditation'")
 
     @contextmanager
     def connection(self, write=False):
@@ -185,11 +196,19 @@ class Store:
                     # Never promote a public registration while retaining its old password/session.
                     if owner['role'] != 'admin' or not password_matches(admin_password, owner['password']):
                         c.execute('DELETE FROM sessions WHERE user_id=?', (owner['id'],))
-                        c.execute("UPDATE users SET password=?,role='admin',active=1,verified=1 WHERE id=?",
+                        c.execute("UPDATE users SET password=?,role='admin',active=1 WHERE id=?",
                                   (password_hash(admin_password), owner['id']))
                 else:
-                    c.execute("INSERT INTO users(name,email,password,role,verified) VALUES(?,?,?,'admin',1)",
+                    c.execute("INSERT INTO users(name,email,password,role,verified) VALUES(?,?,?,'admin',0)",
                               ('Administración Valhalla', ADMIN_EMAIL, password_hash(admin_password)))
+
+            # Old professional accreditation or a legacy flag is not an identity check.
+            c.execute("""UPDATE users SET verified=COALESCE((SELECT status='approved' FROM documents
+                         WHERE user_id=users.id AND kind='identity' ORDER BY id DESC LIMIT 1),0)""")
+
+    def identity_verified(self, c, uid):
+        row = c.execute("SELECT status FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+        return bool(row and row['status'] == 'approved')
 
     def session(self, token):
         with self.connection() as c:
@@ -239,11 +258,13 @@ class Store:
     def state(self, user):
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active')}
+            profile['verified'] = int(self.identity_verified(c, user['id']))
             return {'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
-                    'bookings': [dict(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
-                    'documents': [dict(r) for r in c.execute('SELECT id,filename,status,note,created_at FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
-                    'catalog': [{'id': key, 'hours': val[0], 'price': val[1]} for key, val in CATALOG.items()]}
+                    'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
+                    'documents': [dict(r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
+                    'session_minutes': SESSION_MINUTES, 'booking_interval_minutes': 60,
+                    'catalog': [{'id': key, 'hours': val[0], 'sessions': val[0], 'duration_minutes': SESSION_MINUTES, 'price': val[1]} for key, val in CATALOG.items()]}
 
     def update_profile(self, uid, body):
         name = str(body.get('name', '')).strip()
@@ -251,7 +272,13 @@ class Store:
         if not 2 <= len(name) <= 100 or not 2 <= len(specialty) <= 100:
             raise Problem('Indica tu nombre y especialidad (entre 2 y 100 caracteres).')
         with self.connection(True) as c:
+            previous = c.execute('SELECT name FROM users WHERE id=?', (uid,)).fetchone()
             c.execute('UPDATE users SET name=?,specialty=? WHERE id=?', (name, specialty, uid))
+            if previous and previous['name'] != name:
+                c.execute("""UPDATE documents SET status='pending',reviewer_id=NULL,
+                             note='El nombre del perfil cambió; revisa nuevamente la identidad.'
+                             WHERE id=(SELECT id FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1)""", (uid,))
+                c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
             self.log(c, uid, 'profile_updated', uid)
 
     def parse_slot(self, value):
@@ -268,7 +295,7 @@ class Store:
         except (ValueError, TypeError):
             raise Problem('Selecciona una hora futura entre 08:00 y 20:00, dentro de los próximos 90 días.')
 
-    def availability(self, date):
+    def availability(self, date, include_names=False):
         try:
             day = datetime.strptime(date, '%Y-%m-%d').date()
         except (ValueError, TypeError):
@@ -277,18 +304,27 @@ class Store:
         if day < today or day > today + timedelta(days=90):
             raise Problem('Consulta fechas de hoy a los próximos 90 días.')
         with self.connection() as c:
-            occupied = {(r['box'], r['start']) for r in c.execute("SELECT box,start FROM bookings WHERE status='confirmed'")}
+            occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
         for hour in range(8, 20):
             start = datetime(day.year, day.month, day.day, hour, tzinfo=CHILE)
-            result.append({'label': f'{hour:02d}:00', 'start': stamp(start),
-                           'boxes': [{'box': box, 'available': (box, stamp(start)) not in occupied and start > now()} for box in range(1, 4)]})
+            boxes = []
+            for box in range(1,4):
+                booking = occupied.get((box, stamp(start)))
+                cell = {'box': box, 'available': not booking and start > now()}
+                if include_names and booking:
+                    end = start + timedelta(minutes=SESSION_MINUTES)
+                    booking['end'] = stamp(end)
+                    booking['timing'] = 'in_session' if start <= now() < end else 'buffer' if end <= now() < start + timedelta(hours=1) else 'upcoming' if start > now() else 'finished'
+                    cell['booking'] = booking
+                boxes.append(cell)
+            result.append({'label': f'{hour:02d}:00', 'start': stamp(start), 'end': stamp(start + timedelta(minutes=SESSION_MINUTES)), 'boxes': boxes})
         return {'date': date, 'slots': result}
 
     def professional(self, c, uid):
         row = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-        if not row or not supports_professional(row) or not row['active'] or not row['verified']:
-            raise Problem('Para reservar necesitas una cuenta profesional activa y documentación aprobada.', 403)
+        if not row or not supports_professional(row) or not row['active'] or not self.identity_verified(c, uid):
+            raise Problem('Para reservar necesitas una cuenta activa y el carnet de identidad aprobado, además de saldo confirmado.', 403)
 
     def buy(self, uid, body):
         key = str(body.get('catalog_id', ''))
@@ -351,6 +387,9 @@ class Store:
             raise Problem('Ese horario ya está ocupado. Tu reserva original sigue vigente.', 409)
 
     def upload(self, uid, body):
+        kind = body.get('kind', 'accreditation')
+        if kind not in ('identity', 'accreditation'):
+            raise Problem('Tipo de documento inválido.')
         filename = Path(str(body.get('filename', ''))).name[:150]
         try:
             raw = base64.b64decode(body.get('content', ''), validate=True)
@@ -363,16 +402,17 @@ class Store:
             role = c.execute('SELECT role,email FROM users WHERE id=?', (uid,)).fetchone()
             if not supports_professional(role):
                 raise Problem('Solo profesionales pueden adjuntar documentos.', 403)
-            c.execute("INSERT INTO documents(user_id,filename,mime,content,created_at) VALUES(?,?,'application/pdf',?,?)", (uid, filename, raw, stamp(now())))
-            c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
+            c.execute("INSERT INTO documents(user_id,filename,mime,content,created_at,kind) VALUES(?,?,'application/pdf',?,?,?)", (uid, filename, raw, stamp(now()), kind))
+            if kind == 'identity':
+                c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
             self.log(c, uid, 'document_uploaded', uid)
 
     def admin_state(self):
         with self.connection() as c:
             return {'users': [dict(r) for r in c.execute('SELECT id,name,email,specialty,role,verified,active FROM users ORDER BY id')],
-                    'documents': [dict(r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
+                    'documents': [dict(r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,u.name FROM packages p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
-                    'bookings': [dict(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
+                    'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
                     'audit': [dict(r) for r in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 30')]}
 
     def admin_action(self, actor, body):
@@ -394,15 +434,17 @@ class Store:
                 row = c.execute('SELECT * FROM documents WHERE id=?', (target,)).fetchone()
                 if not row:
                     raise Problem('Documento no encontrado.', 404)
-                latest = c.execute('SELECT MAX(id) AS id FROM documents WHERE user_id=?', (row['user_id'],)).fetchone()['id']
+                latest = c.execute('SELECT MAX(id) AS id FROM documents WHERE user_id=? AND kind=?', (row['user_id'], row['kind'])).fetchone()['id']
                 if target != latest:
                     raise Problem('Revisa el documento más reciente de este profesional.', 409)
                 decision = body.get('decision')
                 note = str(body.get('note', '')).strip()[:500]
                 if decision not in ('approved', 'rejected') or (decision == 'rejected' and not note):
                     raise Problem('Indica una decisión y, si rechazas, un motivo.')
+                if row['kind'] == 'identity' and decision == 'approved' and body.get('identity_confirmed') is not True:
+                    raise Problem('Confirma que revisaste ambos lados del carnet y que corresponden al titular.')
                 c.execute('UPDATE documents SET status=?,note=?,reviewer_id=? WHERE id=?', (decision, note, actor, target))
-                c.execute('UPDATE users SET verified=? WHERE id=?', (int(decision == 'approved'), row['user_id']))
+                c.execute('UPDATE users SET verified=? WHERE id=?', (int(self.identity_verified(c, row['user_id'])), row['user_id']))
             elif action == 'user':
                 row = c.execute('SELECT * FROM users WHERE id=?', (target,)).fetchone()
                 if not row or row['role'] == 'admin':
@@ -500,6 +542,9 @@ class Handler(BaseHTTPRequestHandler):
             user = self.server.store.session(self.cookie())
             if route.path == '/api/me':
                 self.respond(self.server.store.state(user))
+            elif route.path == '/api/admin/availability':
+                self.admin(user)
+                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True))
             elif route.path == '/api/availability':
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0]))
             elif route.path == '/api/admin':

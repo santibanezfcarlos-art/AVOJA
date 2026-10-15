@@ -30,6 +30,8 @@ class Rules(unittest.TestCase):
             for uid, role, verified in [(1, 'professional', 1), (2, 'professional', 1), (3, 'professional', 0), (4, 'admin', 1)]:
                 c.execute('INSERT INTO users(id,name,email,password,role,verified) VALUES(?,?,?,?,?,?)',
                           (uid, f'Persona {uid}', ADMIN_EMAIL if role=='admin' else f'{uid}@test.cl', self.encoded, role, verified))
+                if verified:
+                    c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,?,'application/pdf',?,'approved',?,'identity')", (0 if uid==4 else -uid,uid,'fixture.pdf',b'%PDF-1.4\nTEST',stamp(self.clock)))
                 if role == 'professional':
                     c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at) VALUES(?,5,5,45000,'paid',?)", (uid, stamp(self.clock)))
 
@@ -218,15 +220,15 @@ class Rules(unittest.TestCase):
         self.assertNotIn('user_id',json.dumps(data))
 
     def test_document_review_and_reupload(self):
-        pdf={'filename':'demo.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()}
+        pdf={'kind':'identity','filename':'demo.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()}
         self.store.upload(3,pdf)
-        self.store.admin_action(4,{'action':'document','id':1,'decision':'approved'})
+        self.store.admin_action(4,{'action':'document','id':1,'decision':'approved','identity_confirmed':True})
         self.store.reserve(3,self.slot())
         self.store.upload(3,pdf)
         with self.assertRaises(Problem):
             self.store.reserve(3,self.slot(11))
         with self.assertRaises(Problem):
-            self.store.admin_action(4,{'action':'document','id':1,'decision':'approved'})
+            self.store.admin_action(4,{'action':'document','id':1,'decision':'approved','identity_confirmed':True})
         with self.assertRaises(Problem):
             self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected'})
         self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected','note':'Documento incompleto'})

@@ -17,7 +17,7 @@ Plataforma de prueba para tres boxes. Interfaz adaptable a celulares, API Python
 
 Al iniciar sesión con `santibanezf.carlos@gmail.com`, el selector **Perfil activo** permite alternar entre **Administración** y **Perfil profesional**, también desde el celular, sin salir de la cuenta. El permiso administrativo se conserva al usar el perfil profesional; otros usuarios no pueden habilitarlo cambiando su perfil.
 
-En **Perfil profesional → Mi perfil** puedes completar nombre y especialidad. Esa misma cuenta tiene paquetes y reservas personales vinculados a su identificador, sin transferencias ni horas gratuitas. Solicita un paquete, vuelve a Administración para confirmar el pago simulado y regresa al perfil profesional para reservar. Se aplican las mismas restricciones de saldo, conflictos y modificaciones. La cuenta propietaria conserva su verificación inicial; si adjuntas documentación nueva, el perfil profesional vuelve a revisión sin perder la administración.
+En **Perfil profesional → Mi perfil** puedes completar nombre y especialidad. Esa misma cuenta tiene paquetes y reservas personales vinculados a su identificador, sin transferencias ni horas gratuitas. Solicita un paquete, vuelve a Administración para confirmar el pago simulado y regresa al perfil profesional para reservar. Se aplican las mismas restricciones de saldo, conflictos y modificaciones. El propietario también debe enviar su carnet y tenerlo aprobado para reservar. El acceso administrativo se mantiene aunque su identidad profesional esté pendiente; subir un carnet nuevo exige revisión otra vez.
 
 No se crea otro usuario ni se cambia el correo o la contraseña al alternar. Al recargar la página la cuenta administradora abre Administración; puedes volver a elegir el perfil profesional. No necesitas otra variable en Render.
 
@@ -59,18 +59,18 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 
 ## Reglas y arquitectura
 
-- Tres boxes, sesiones de una hora, todos los días de 08:00 a 20:00, zona `America/Santiago`, hasta 90 días hacia adelante.
-- Paquetes personales de 5, 10 y 20 horas; precios provisionales de $45.000, $85.000 y $160.000 CLP, sin vencimiento en este prototipo. Se comparten entre boxes, no entre profesionales.
+- Tres boxes, sesiones de 55 minutos con inicios cada hora de 08:00 a 19:00 (última atención hasta 19:55), zona `America/Santiago`, hasta 90 días hacia adelante.
+- Sesión individual de $5.990 y planes personales mixtos de 5, 10, 30, 60, 100 y 200 horas, sin vencimiento en este prototipo. Cada hora contratada equivale a una sesión de 55 minutos. Se comparten entre boxes, no entre profesionales.
 - Solo el profesional activo y verificado reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
 - Una transacción crea la reserva y descuenta el saldo. Un índice único protege el box y horario; el profesional tampoco puede reservar dos boxes simultáneamente. Un trigger impide transferir el paquete.
 - Una modificación por reserva, al menos dos horas antes tanto del horario original como del nuevo. No consume otra hora; un intento fallido no gasta el cambio.
 - Administración revisa el último PDF privado (hasta 2 MB), aprueba o rechaza con observaciones, confirma pagos simulados, activa usuarios y cancela reservas futuras devolviendo la hora una sola vez.
-- Subir un documento nuevo pausa la creación y modificación de reservas hasta su aprobación; conserva las reservas existentes.
+- Subir un carnet de identidad nuevo pausa la creación y modificación de reservas hasta su aprobación; conserva las reservas existentes.
 - Contraseñas con PBKDF2 y sal, sesiones HttpOnly/SameSite de ocho horas, protección CSRF, permisos comprobados en servidor y registro de operaciones. Los PDFs se descargan como adjuntos solo por el titular o administrador.
 
 Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Los horarios se guardan en UTC. La API y la interfaz usan el mismo origen.
 
-Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación y verificación de correo, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del PDF no certifica su autenticidad oficial. Precios, feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Ningún cobro real está implementado.
+Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación y verificación de correo, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del PDF no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Ningún cobro real está implementado.
 
 ## Pruebas
 
@@ -102,3 +102,23 @@ Las fotos viven en `static/images` y se publican desde Git, sin depender de SQLi
 El panel verde presenta las fotos originales mediante un carrusel automático de cinco segundos, con flechas, selector de foto y botón Pausar/Reanudar. Sustituye a los arcos decorativos 01/02/03. El texto explica los tres boxes, la recepción y los paquetes de horas, y enlaza a la galería completa.
 
 El carrusel pausa al situar el puntero o el foco sobre sus controles y cuando la pestaña queda oculta. Si el navegador solicita movimiento reducido, comienza detenido y permite navegación manual. Al entrar a la aplicación se detiene y limpia su temporizador. Las fotos conservan su encuadre completo en computador y celular.
+
+## Carnet obligatorio y agenda administrativa
+
+Todos los perfiles profesionales, incluido el propietario, necesitan el último carnet de identidad aprobado **y** saldo con pago confirmado para crear o modificar reservas. El carnet se envía como un PDF de hasta 2 MB con anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar su carnet pendiente de revisión. La revisión es manual, no una validación contra un registro oficial.
+
+La migración añade `documents.kind` sin borrar archivos ni reservas. Los documentos anteriores se clasifican como acreditaciones, por lo que requieren enviar un carnet nuevo; los usuarios conservan sus cuentas, saldos y reservas. La identidad pendiente no bloquea el acceso administrativo del propietario. Hasta contar con almacenamiento persistente y protección de documentos adecuada para un piloto, usa carnets ficticios.
+
+Administración → Disponibilidad muestra nombre, correo, box y rango de 55 minutos por reserva. Identifica próximas atenciones, horarios en curso, los cinco minutos de margen y reservas finalizadas. Pulsa Actualizar agenda para refrescar. Esto informa la ocupación según agenda; no registra presencia física ni ingreso o salida. El endpoint `/api/admin/availability` exige permisos administrativos. El calendario profesional nunca expone identidades ajenas, aunque se envíen parámetros adicionales.
+
+| Plan mixto, todos los boxes | Precio CLP | Sesiones de 55 min |
+| --- | ---: | ---: |
+| 1 hora | $5.990 | 1 |
+| 5 horas | $28.990 | 5 |
+| 10 horas | $54.990 | 10 |
+| 30 horas | $144.990 | 30 |
+| 60 horas | $254.990 | 60 |
+| 100 horas | $364.990 | 100 |
+| 200 horas | $599.990 | 200 |
+
+Las reservas empiezan a las horas exactas; una atención de 10:00 termina a las 10:55 y el siguiente inicio es 11:00. Una reserva consume una sesión. Los planes previamente solicitados conservan su precio histórico y saldo; solo las nuevas solicitudes usan el catálogo actualizado. Los pagos continúan simulados.
