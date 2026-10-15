@@ -1,6 +1,8 @@
 const root = document.querySelector('#root');
 const modal = document.querySelector('#modal');
 let state = null, adminData = null, view = 'overview', adminTab = 'payments', selectedDate = '', modifying = null;
+let activeProfile = 'admin';
+const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
 let toastTimer;
 const money = n => new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0}).format(n);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -44,7 +46,7 @@ function auth(register = false, administrator = false) {
   document.querySelector('#administrator-access').onclick = () => auth(false, true);
   document.querySelector('#auth-form').onsubmit = async event => {
     event.preventDefault(); const form=event.currentTarget, button=form.querySelector('button[type=submit]');button.disabled=true;
-    try { const credentials=Object.fromEntries(new FormData(form)); credentials.portal=administrator?'admin':'professional'; await api(register?'register':'login', credentials); await reload(); }
+    try { const credentials=Object.fromEntries(new FormData(form)); credentials.portal=administrator?'admin':'professional'; await api(register?'register':'login', credentials); activeProfile=administrator?'admin':'professional'; view=administrator?'admin':'overview'; await reload(); }
     catch(e) { document.querySelector('#auth-error').textContent=e.message; }
     finally { button.disabled=false; }
   };
@@ -52,15 +54,16 @@ function auth(register = false, administrator = false) {
 async function reload() {
   state = await api('me');
   if (!selectedDate) selectedDate=state.today;
-  if(state.user.role==='admin') { adminData=await api('admin');view='admin'; }
+  if(adminMode()) { adminData=await api('admin');view='admin'; }
   else if(view==='admin') view='overview';
   await render();
 }
 function shell() {
   const u = state.user;
-  const links = u.role==='admin' ? [['admin','▦','Administración'],['availability','▤','Disponibilidad']] : [['overview','▦','Mi espacio'],['availability','▤','Disponibilidad'],['bookings','◷','Mis reservas'],['packages','◇','Paquetes'],['documents','▱','Documentación']];
-  root.innerHTML=`<div class="shell"><aside class="sidebar">${brand}<nav aria-label="Navegación principal">${links.map(([id,icon,label])=>`<button class="nav-item ${view===id?'active':''}" data-view="${id}" ${view===id?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note"><strong>Un saldo, tres espacios</strong><p>Tus horas te acompañan en cualquiera de nuestros boxes.</p></div><div class="profile"><span class="avatar">${escapeHTML(u.name.split(' ').map(s=>s[0]).slice(0,2).join(''))}</span><div><div class="profile-name">${escapeHTML(u.name)}</div><small>${u.role==='admin'?'Administración':escapeHTML(u.specialty)}</small></div></div><button class="btn ghost small full" data-logout>Cerrar sesión</button></div></aside>
-  <main class="main"><header class="topbar"><span class="topbar-date">Tu espacio profesional / ${links.find(l=>l[0]===view)?.[2]||'Reservas'}</span>${brand}<div class="topbar-right"><span class="demo-label">DEMO · SIN COBROS</span>${u.role==='admin'?'<span class="pill">Administración</span>':`<span class="pill ${u.verified?'approved':'pending'}">${u.verified?'✓ Cuenta verificada':'Por verificar'}</span>`}<button class="btn ghost small mobile-logout" data-logout aria-label="Cerrar sesión">Salir</button></div></header><div id="content"></div></main></div>`;
+  const links = adminMode() ? [['admin','▦','Administración'],['availability','▤','Disponibilidad']] : [['overview','▦','Mi espacio'],['availability','▤','Disponibilidad'],['bookings','◷','Mis reservas'],['packages','◇','Paquetes'],['documents','▱','Documentación'],['profile','○','Mi perfil']];
+  root.innerHTML=`<div class="shell"><aside class="sidebar">${brand}<nav aria-label="Navegación principal">${links.map(([id,icon,label])=>`<button class="nav-item ${view===id?'active':''}" data-view="${id}" ${view===id?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note"><strong>Un saldo, tres espacios</strong><p>Tus horas te acompañan en cualquiera de nuestros boxes.</p></div><div class="profile"><span class="avatar">${escapeHTML(u.name.split(' ').map(s=>s[0]).slice(0,2).join(''))}</span><div><div class="profile-name">${escapeHTML(u.name)}</div><small>${adminMode()?'Administración':escapeHTML(u.specialty)||'Perfil profesional'}</small></div></div><button class="btn ghost small full" data-logout>Cerrar sesión</button></div></aside>
+  <main class="main"><header class="topbar"><span class="topbar-date">Tu espacio profesional / ${links.find(l=>l[0]===view)?.[2]||'Reservas'}</span>${brand}<div class="topbar-right"><span class="demo-label">DEMO · SIN COBROS</span>${adminMode()?'<span class="pill">Administración</span>':`<span class="pill ${u.verified?'approved':'pending'}">${u.verified?'✓ Cuenta verificada':'Por verificar'}</span>`}<button class="btn ghost small mobile-logout" data-logout aria-label="Cerrar sesión">Salir</button></div></header>${u.role==='admin'?`<section class="profile-switcher row spread" aria-label="Cambiar perfil"><div><strong>Perfil activo</strong><p>${adminMode()?'Administración del centro':'Tu agenda y saldo personal'}</p></div><div class="row"><button class="btn ${adminMode()?'':'ghost'} small" data-mode="admin" aria-pressed="${adminMode()}">Administración</button><button class="btn ${adminMode()?'ghost':''} small" data-mode="professional" aria-pressed="${!adminMode()}">Perfil profesional</button></div></section>`:''}<div id="content"></div></main></div>`;
+  document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=async()=>{activeProfile=b.dataset.mode;view=adminMode()?'admin':'overview';modifying=null;try{await reload();}catch(e){toast(e.message);}});
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-logout]').forEach(b=>b.onclick=async()=>{try{await api('logout',{});state=null;selectedDate='';view='overview';auth();}catch(e){toast(e.message);}});
 }
@@ -95,6 +98,10 @@ function packages() {
   `<div class="grid package-grid">${state.catalog.map(p=>`<section class="package ${p.hours===10?'featured':''}">${p.hours===10?'<span class="recommend">Más equilibrio</span>':''}<div class="eyebrow">${p.hours===5?'COMIENZA A TU RITMO':p.hours===10?'DA ESPACIO A TU AGENDA':'CRECE CON VALHALLA'}</div><div class="hours">${p.hours} <span>horas</span></div><p class="muted small-text">Un paquete. Los tres boxes.</p><div class="price">${money(p.price)}</div><small>${money(p.price/p.hours)} por hora · precio de ejemplo</small><ul><li>Saldo compartido entre boxes</li><li>Reservas de una hora</li><li>Uso exclusivo de tu cuenta</li><li>Sin vencimiento en el prototipo</li></ul><button class="btn ${p.hours===10?'':'secondary'} full" data-buy="${p.id}">Solicitar paquete →</button></section>`).join('')}</div>
   <section class="card"><div class="card-head"><h2>Mis paquetes</h2><span class="pill neutral">${pendingBalance()} h disponibles</span></div>${state.packages.length?`<div class="table-wrap"><table><thead><tr><th>Paquete</th><th>Saldo</th><th>Total</th><th>Pago simulado</th></tr></thead><tbody>${state.packages.map(p=>`<tr><td>#${p.id} · ${p.hours} horas</td><td>${p.status==='paid'?p.remaining+' h':'No habilitado'}</td><td>${money(p.price)}</td><td>${pill(p.status)}</td></tr>`).join('')}</tbody></table></div>`:empty('Aún no has solicitado paquetes.')}</section><p class="data-note">Los paquetes están vinculados a su comprador y no tienen una opción de transferencia. El precio y la vigencia definitivos deben acordarse antes de producción.</p>`;
 }
+function profile() {
+  return head('Mi perfil profesional','Tu cuenta conserva el mismo correo, saldo y reservas al cambiar de perfil.')+
+    `<section class="card"><form id="profile-form" class="form-stack"><label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100" value="${escapeHTML(state.user.name)}"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" value="${escapeHTML(state.user.specialty)}" placeholder="Ej. Psicología"></label><label>Correo de la cuenta<input type="email" value="${escapeHTML(state.user.email)}" disabled></label><p id="profile-error" class="error" role="alert"></p><button class="btn" type="submit">Guardar perfil</button></form></section>`;
+}
 function documents() {
   return head('Tu respaldo profesional','Revisión manual y privada por el equipo de Valhalla.')+
   `<div class="notice ${state.user.verified?'info':''}">${state.user.verified?'✓ Tu cuenta está verificada. Puedes reservar con saldo disponible.':'Tu cuenta aún no está verificada. Adjunta un documento y espera la revisión de administración.'}</div><section class="card"><h2>Envía tu documentación</h2><p class="section-intro">Para la demostración, adjunta un PDF ficticio de título o acreditación profesional. No uses documentos personales reales.</p><form id="upload-form"><div class="upload-card"><strong>Acreditación profesional</strong><p>Formato PDF · Hasta 2 MB · Acceso exclusivo del titular y administración</p><label>Seleccionar documento<input id="document-file" type="file" accept="application/pdf,.pdf" required></label></div><p class="muted upload-note">Al adjuntar un nuevo documento, la cuenta vuelve a revisión y se pausa la creación y modificación de reservas. Las reservas existentes se conservan.</p><p id="upload-error" class="error" role="alert"></p><button class="btn" type="submit">Enviar a revisión →</button></form></section>
@@ -113,7 +120,7 @@ function administration() {
 
 async function render() {
   shell(); const content = document.querySelector('#content');
-  content.innerHTML = view==='availability'?await availability():view==='packages'?packages():view==='bookings'?bookings():view==='documents'?documents():view==='admin'?administration():overview();
+  content.innerHTML = view==='availability'?await availability():view==='packages'?packages():view==='bookings'?bookings():view==='documents'?documents():view==='profile'?profile():view==='admin'?administration():overview();
   bind();
 }
 function showModal(title, content, confirmLabel, action) {
@@ -127,12 +134,13 @@ function showModal(title, content, confirmLabel, action) {
   };
 }
 function bind() {
+  const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{event.preventDefault();const button=profileForm.querySelector('button');button.disabled=true;try{await api('profile',Object.fromEntries(new FormData(profileForm)));await reload();toast('Perfil profesional actualizado.');}catch(e){document.querySelector('#profile-error').textContent=e.message;}finally{button.disabled=false;}};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{view=b.dataset.go;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-modify]').forEach(b=>b.onclick=()=>{modifying=state.bookings.find(x=>x.id===Number(b.dataset.modify));selectedDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(modifying.start));view='availability';render().catch(e=>toast(e.message));});
   const abort=document.querySelector('#abort-change');if(abort)abort.onclick=()=>{modifying=null;view='bookings';render().catch(e=>toast(e.message));};
   const date=document.querySelector('#schedule-date');if(date)date.onchange=()=>{if(date.value){selectedDate=date.value;render().catch(e=>toast(e.message));}};
   document.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>{
-    if(state.user.role==='admin'){toast('La agenda administrativa es de consulta. Las reservas se crean desde la cuenta profesional.');return;}
+    if(adminMode()){toast('La agenda administrativa es de consulta. Las reservas se crean desde la cuenta profesional.');return;}
     if(!state.user.verified){toast('Primero envía tu documentación y espera su aprobación.');return;}
     if(!modifying && pendingBalance()===0){toast('Necesitas horas de un paquete con pago confirmado.');return;}
     const box=Number(b.dataset.box),start=b.dataset.slot, current=modifying;

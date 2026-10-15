@@ -2,7 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import ADMIN_EMAIL, LEGACY_DEMO_EMAILS, Problem, Store, password_hash
+from app import ADMIN_EMAIL, LEGACY_DEMO_EMAILS, CHILE, Problem, Store, password_hash
+from datetime import datetime, timedelta
 
 
 class AccessTests(unittest.TestCase):
@@ -76,3 +77,41 @@ class AccessTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.store.configure_access('short')
         with self.store.connection() as c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM users').fetchone()[0],0)
+
+    def test_owner_can_use_professional_packages_and_reservations(self):
+        self.store.configure_access(self.private)
+        token=self.store.login({'email':ADMIN_EMAIL,'password':self.private,'portal':'professional'})
+        owner=self.store.session(token)
+        self.store.update_profile(owner['id'], {'name':'Carlos Santibáñez','specialty':'Psicología','role':'professional','verified':0})
+        self.assertEqual(self.store.session(token)['role'],'admin')
+        start=(datetime.now(CHILE)+timedelta(days=1)).replace(hour=10,minute=0,second=0,microsecond=0).isoformat()
+        with self.assertRaises(Problem):self.store.reserve(owner['id'],{'box':1,'start':start})
+        pid=self.store.buy(owner['id'],{'catalog_id':'5','user_id':999})
+        self.store.admin_action(owner['id'],{'action':'payment','id':pid,'decision':'paid'})
+        bid=self.store.reserve(owner['id'],{'box':1,'start':start})
+        with self.store.connection() as c:
+            booking=c.execute('SELECT * FROM bookings WHERE id=?',(bid,)).fetchone()
+            package=c.execute('SELECT * FROM packages WHERE id=?',(pid,)).fetchone()
+        self.assertEqual(booking['user_id'],owner['id'])
+        self.assertEqual(package['remaining'],4)
+        self.assertEqual(package['user_id'],owner['id'])
+        self.assertEqual(self.store.session(token)['name'],'Carlos Santibáñez')
+
+    def test_owner_document_review_does_not_remove_admin_permission(self):
+        import base64
+        self.store.configure_access(self.private)
+        token=self.store.login({'email':ADMIN_EMAIL,'password':self.private})
+        owner=self.store.session(token)
+        self.store.upload(owner['id'],{'filename':'ficticio.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()})
+        self.assertEqual(self.store.session(token)['verified'],0)
+        self.assertEqual(self.store.session(token)['role'],'admin')
+
+    def test_profile_edit_cannot_change_email_or_permissions(self):
+        self.store.register({'email':'person@test.cl','name':'Profesional','password':self.private,'specialty':'Psicología'})
+        token=self.store.login({'email':'person@test.cl','password':self.private})
+        uid=self.store.session(token)['id']
+        self.store.update_profile(uid,{'name':'Nuevo nombre','specialty':'Kinesiología','email':ADMIN_EMAIL,'role':'admin','verified':1})
+        user=self.store.session(token)
+        self.assertEqual(user['email'],'person@test.cl')
+        self.assertEqual(user['role'],'professional')
+        self.assertEqual(user['verified'],0)

@@ -13,6 +13,14 @@ Plataforma de prueba para tres boxes. Interfaz adaptable a celulares, API Python
 - Las cuentas ficticias antiguas quedan inactivas y sus sesiones se revocan al iniciar la nueva versión. No se borran los historiales ni los datos de profesionales existentes.
 - Un cambio de la contraseña administradora en la configuración revoca sus sesiones anteriores. Reiniciar con la misma contraseña conserva la cuenta sin duplicarla.
 
+## Una cuenta con dos perfiles para el propietario
+
+Al iniciar sesión con `santibanezf.carlos@gmail.com`, el selector **Perfil activo** permite alternar entre **Administración** y **Perfil profesional**, también desde el celular, sin salir de la cuenta. El permiso administrativo se conserva al usar el perfil profesional; otros usuarios no pueden habilitarlo cambiando su perfil.
+
+En **Perfil profesional → Mi perfil** puedes completar nombre y especialidad. Esa misma cuenta tiene paquetes y reservas personales vinculados a su identificador, sin transferencias ni horas gratuitas. Solicita un paquete, vuelve a Administración para confirmar el pago simulado y regresa al perfil profesional para reservar. Se aplican las mismas restricciones de saldo, conflictos y modificaciones. La cuenta propietaria conserva su verificación inicial; si adjuntas documentación nueva, el perfil profesional vuelve a revisión sin perder la administración.
+
+No se crea otro usuario ni se cambia el correo o la contraseña al alternar. Al recargar la página la cuenta administradora abre Administración; puedes volver a elegir el perfil profesional. No necesitas otra variable en Render.
+
 ## Aplicar el cambio en Render
 
 El servicio desplegado debe usar la rama `valhalla-demo` del repositorio AVOJA.

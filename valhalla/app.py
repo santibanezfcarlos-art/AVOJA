@@ -29,6 +29,10 @@ class Problem(Exception):
         self.message, self.status = message, status
 
 
+def supports_professional(user):
+    return user and (user['role'] == 'professional' or (user['role'] == 'admin' and user['email'] == ADMIN_EMAIL))
+
+
 def now():
     return datetime.now(timezone.utc)
 
@@ -185,6 +189,15 @@ class Store:
                     'documents': [dict(r) for r in c.execute('SELECT id,filename,status,note,created_at FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'catalog': [{'id': key, 'hours': val[0], 'price': val[1]} for key, val in CATALOG.items()]}
 
+    def update_profile(self, uid, body):
+        name = str(body.get('name', '')).strip()
+        specialty = str(body.get('specialty', '')).strip()
+        if not 2 <= len(name) <= 100 or not 2 <= len(specialty) <= 100:
+            raise Problem('Indica tu nombre y especialidad (entre 2 y 100 caracteres).')
+        with self.connection(True) as c:
+            c.execute('UPDATE users SET name=?,specialty=? WHERE id=?', (name, specialty, uid))
+            self.log(c, uid, 'profile_updated', uid)
+
     def parse_slot(self, value):
         try:
             parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
@@ -218,7 +231,7 @@ class Store:
 
     def professional(self, c, uid):
         row = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-        if not row or row['role'] != 'professional' or not row['active'] or not row['verified']:
+        if not row or not supports_professional(row) or not row['active'] or not row['verified']:
             raise Problem('Para reservar necesitas una cuenta profesional activa y documentación aprobada.', 403)
 
     def buy(self, uid, body):
@@ -227,8 +240,8 @@ class Store:
             raise Problem('Paquete inválido.')
         hours, price = CATALOG[key]
         with self.connection(True) as c:
-            row = c.execute('SELECT role,active FROM users WHERE id=?', (uid,)).fetchone()
-            if not row or row['role'] != 'professional' or not row['active']:
+            row = c.execute('SELECT role,email,active FROM users WHERE id=?', (uid,)).fetchone()
+            if not row or not supports_professional(row) or not row['active']:
                 raise Problem('Solo los profesionales activos pueden solicitar paquetes.', 403)
             cur = c.execute('INSERT INTO packages(user_id,hours,remaining,price,created_at) VALUES(?,?,?,?,?)',
                             (uid, hours, hours, price, stamp(now())))
@@ -291,8 +304,8 @@ class Store:
         if not filename.lower().endswith('.pdf') or not raw.startswith(b'%PDF-') or not 5 < len(raw) <= 2_000_000:
             raise Problem('Adjunta un PDF de hasta 2 MB.')
         with self.connection(True) as c:
-            role = c.execute('SELECT role FROM users WHERE id=?', (uid,)).fetchone()
-            if not role or role['role'] != 'professional':
+            role = c.execute('SELECT role,email FROM users WHERE id=?', (uid,)).fetchone()
+            if not supports_professional(role):
                 raise Problem('Solo profesionales pueden adjuntar documentos.', 403)
             c.execute("INSERT INTO documents(user_id,filename,mime,content,created_at) VALUES(?,?,'application/pdf',?,?)", (uid, filename, raw, stamp(now())))
             c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
@@ -472,6 +485,8 @@ class Handler(BaseHTTPRequestHandler):
                 secure = '; Secure' if getattr(self.server, 'secure_cookie', False) else ''
                 self.respond({'ok': True}, cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + secure)
                 return
+            elif self.path == '/api/profile':
+                result = store.update_profile(user['id'], body)
             elif self.path == '/api/packages':
                 result = store.buy(user['id'], body)
             elif self.path == '/api/bookings':

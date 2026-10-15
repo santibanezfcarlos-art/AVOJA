@@ -54,6 +54,7 @@ async function api(path,body){
       return {label:String(8+i).padStart(2,'0')+':00',start,boxes:[1,2,3].map(box=>({box,available:new Date(start)>new Date()&&!db.bookings.some(b=>b.box===box&&b.start===start&&b.status==='confirmed')}))};
     })};
   }
+  if(path==='profile'){user.name=String(body.name).trim();user.specialty=String(body.specialty).trim();return {ok:true};}
   if(path==='packages'){
     if(user.role!=='professional')throw Error('Solo profesionales pueden solicitar paquetes.');
     const p=previewCatalog.find(p=>p.id===body.catalog_id);if(!p)throw Error('Paquete inválido.');
