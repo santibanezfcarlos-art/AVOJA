@@ -9,3 +9,6 @@ services:
     dockerContext: .
     healthCheckPath: /
     autoDeploy: false
+    envVars:
+      - key: VALHALLA_ADMIN_PASSWORD
+        sync: false

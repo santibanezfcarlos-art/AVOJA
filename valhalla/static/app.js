@@ -31,25 +31,20 @@ function pendingBalance() { return state.packages.filter(p=>p.status==='paid').r
 function upcoming() { return state.bookings.filter(b=>b.status==='confirmed' && new Date(b.start)>new Date()); }
 function canModify(b) { return b.status==='confirmed' && b.modifications===0 && new Date(b.start)-Date.now() >= 7200000; }
 
-function auth(register = false) {
+function auth(register = false, administrator = false) {
   root.innerHTML = `<div class="auth"><section class="auth-story">${brand}<div><div class="eyebrow">UN LUGAR PARA CRECER</div><h1>Tu vocación.<br>Tu tiempo.<br><em>Tu espacio.</em></h1><p>Tres boxes profesionales. Una comunidad. La libertad de atender a tu ritmo.</p><div class="story-art" aria-hidden="true"><div class="arch">01</div><div class="arch">02</div><div class="arch">03</div></div></div><footer>VALHALLA OFFICE · ESPACIOS QUE ACOMPAÑAN</footer></section>
-    <section class="auth-form"><div class="auth-inner"><span class="demo-label">PROTOTIPO · SIN COBROS REALES</span><h2>${register ? 'Crea tu cuenta' : 'Bienvenido a tu espacio'}</h2><p class="muted">${register ? 'Regístrate y envía tu documentación para comenzar.' : 'Organiza tus atenciones, con todo en un solo lugar.'}</p>
+    <section class="auth-form"><div class="auth-inner"><span class="demo-label">PROTOTIPO · SIN COBROS REALES</span><h2>${administrator ? 'Acceso administrador' : register ? 'Crea tu cuenta profesional' : 'Bienvenido a tu espacio'}</h2><p class="muted">${administrator ? 'Ingresa con tu correo autorizado y tu contraseña privada.' : register ? 'Regístrate y envía tu documentación para comenzar.' : 'Organiza tus atenciones, con todo en un solo lugar.'}</p>
     <form id="auth-form" class="form-stack">${register ? '<label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" placeholder="Ej. Psicología"></label>' : ''}
     <label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="200" placeholder="tu@correo.cl"></label><label>Contraseña<input name="password" type="password" autocomplete="${register?'new-password':'current-password'}" required minlength="${register?10:1}" maxlength="200" placeholder="${register?'Mínimo 10 caracteres':'Tu contraseña'}"></label>
     <p id="auth-error" class="error" role="alert"></p><button class="btn full" type="submit">${register?'Crear cuenta':'Iniciar sesión'} <span aria-hidden="true">→</span></button></form>
-    <div class="auth-switch">${register?'¿Ya tienes una cuenta?':'¿Primera vez en Valhalla?'} <button class="text-btn" id="auth-switch">${register?'Inicia sesión':'Regístrate'}</button></div>
-    <div class="demo-access"><strong>Explora el prototipo</strong><p class="muted">Usa datos ficticios. Estos accesos requieren iniciar el servidor con <code>--seed-demo</code>.</p><div class="row"><button class="btn secondary small" data-demo="professional">Acceso profesional</button><button class="btn ghost small" data-demo="admin">Acceso administrador</button></div></div></div></section></div>`;
-  document.querySelector('#auth-switch').onclick = () => auth(!register);
-  document.querySelectorAll('[data-demo]').forEach(button => button.onclick = () => {
-    if (register) { auth(false); }
-    const form = document.querySelector('#auth-form');
-    form.elements.email.value = button.dataset.demo==='admin'?'admin@valhalla.demo':'profesional@valhalla.demo';
-    form.elements.password.value = button.dataset.demo==='admin'?'ValhallaAdmin2026!':'ValhallaDemo2026!';
-    form.requestSubmit();
-  });
+    <div class="auth-switch">${administrator ? '¿Eres profesional?' : register?'¿Ya tienes una cuenta?':'¿Primera vez en Valhalla?'} <button class="text-btn" id="auth-switch">${administrator ? 'Volver al inicio' : register?'Inicia sesión':'Regístrate'}</button></div>
+    <div class="demo-access"><strong>Elige tu acceso</strong><p class="muted">Cada persona utiliza su propia cuenta. No hay accesos automáticos.</p><div class="row"><button class="btn secondary small" id="professional-access">Acceso profesional</button><button class="btn ghost small" id="administrator-access">Acceso administrador</button></div></div></div></section></div>`;
+  document.querySelector('#auth-switch').onclick = () => administrator ? auth() : auth(!register);
+  document.querySelector('#professional-access').onclick = () => auth(true);
+  document.querySelector('#administrator-access').onclick = () => auth(false, true);
   document.querySelector('#auth-form').onsubmit = async event => {
     event.preventDefault(); const form=event.currentTarget, button=form.querySelector('button[type=submit]');button.disabled=true;
-    try { await api(register?'register':'login', Object.fromEntries(new FormData(form))); await reload(); }
+    try { const credentials=Object.fromEntries(new FormData(form)); credentials.portal=administrator?'admin':'professional'; await api(register?'register':'login', credentials); await reload(); }
     catch(e) { document.querySelector('#auth-error').textContent=e.message; }
     finally { button.disabled=false; }
   };

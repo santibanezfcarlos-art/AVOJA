@@ -1,147 +1,84 @@
-# Valhalla Office — prototipo de reservas
+# Valhalla Office — reservas
 
-Aplicación funcional para desarrollar y validar el flujo de un centro con **tres boxes profesionales**. No procesa dinero, no se ha publicado y no se conecta a proveedores externos. Está separada de la página de bingo de AVOJA, que permanece intacta.
+Plataforma de prueba para tres boxes. Interfaz adaptable a celulares, API Python y SQLite. Los pagos siguen siendo simulados; no existe integración de cobros.
 
-## Requerimientos y decisiones
+## Acceso privado y registro profesional
 
-| Necesidad | Comportamiento implementado |
-| --- | --- |
-| Registro profesional | Nombre, correo único, especialidad y contraseña de al menos 10 caracteres. |
-| Verificación | Carga privada de PDF ficticio, revisión manual, aprobación o rechazo con motivo. Solo el último documento define la verificación. Una nueva carga vuelve la cuenta a revisión. |
-| Disponibilidad | Tres boxes, todos los días de 08:00 a 20:00, zona `America/Santiago`, consulta de hoy a 90 días. |
-| Paquetes | 5, 10 y 20 horas. Un saldo por paquete usable en cualquiera de los boxes. Precios de ejemplo: $45.000, $85.000 y $160.000 CLP. Sin vencimiento en este prototipo. |
-| Propiedad | El servidor toma el titular de la sesión; nunca de un identificador enviado por el cliente. No existe una operación de transferencia. |
-| Reserva | Una hora exacta, profesional activo/verificado, pago confirmado y saldo disponible. Consume primero el paquete confirmado más antiguo con saldo. |
-| Duplicados | Un box no admite dos reservas en el mismo horario. Un profesional tampoco puede reservar dos boxes simultáneamente. |
-| Modificación | Máximo una por reserva; al menos 2 horas antes de la reserva vigente y del nuevo horario. Cambiar box, fecha o ambos consume ese cambio. Un intento fallido o sin cambios no lo consume. |
-| Pagos | Solicitud pendiente; el administrador confirma o rechaza una **simulación**. No hay tarjetas, pasarelas ni cobros. |
-| Administración | Documentos, pagos, usuarios, reservas y registro de acciones. Desactivar cierra sesiones y conserva reservas existentes. |
-| Cancelación | Decisión provisional: solo administración cancela reservas futuras y devuelve 1 hora al paquete original, una sola vez. |
-| Interfaz | Panel profesional y administrativo, navegación móvil, diálogos de confirmación y mensajes de error. |
+- Inicio sin correo ni contraseña rellenados por la aplicación.
+- **Acceso profesional** abre el registro; quien ya tiene cuenta puede pulsar **Inicia sesión**.
+- Las nuevas cuentas profesionales no reciben saldo ni verificación automática. Deben enviar documentación, ser aprobadas por administración y solicitar un paquete cuyo pago simulado sea confirmado.
+- **Acceso administrador** abre un formulario vacío. El servidor admite como administrador exclusivamente a `santibanezf.carlos@gmail.com`, con una contraseña privada configurada por el propietario.
+- Ese correo está reservado: no se puede crear ni ascender una cuenta administradora desde el registro público. Escribir el correo por sí solo no concede acceso.
+- La aplicación no inicia sesión con Google ni comprueba el buzón Gmail: autentica con la contraseña privada que el propietario configura en el servidor. No uses tu contraseña de Gmail.
+- Las cuentas ficticias antiguas quedan inactivas y sus sesiones se revocan al iniciar la nueva versión. No se borran los historiales ni los datos de profesionales existentes.
+- Un cambio de la contraseña administradora en la configuración revoca sus sesiones anteriores. Reiniciar con la misma contraseña conserva la cuenta sin duplicarla.
 
-Horarios, duración y tamaños de paquetes fueron confirmados por el usuario. Precios, vigencia, requisitos documentales, feriados, política de cancelación y requisitos legales siguen siendo decisiones de producto para producción. La verificación de este prototipo es una revisión manual; no comprueba identidad ni autenticidad documental ante una entidad oficial.
+## Aplicar el cambio en Render
 
-## Arquitectura
+El servicio desplegado debe usar la rama `valhalla-demo` del repositorio AVOJA.
 
-La interfaz HTML/CSS/JavaScript consume una API JSON del mismo origen. La API autentica, autoriza y aplica las reglas antes de escribir en SQLite. Los archivos PDF se guardan en la base de datos y se entregan solo como descargas privadas al titular o administrador. La aplicación no depende de CDNs ni paquetes descargados.
+1. Abre el servicio en Render → **Environment** → **Add Environment Variable**.
+2. Nombre: `VALHALLA_ADMIN_PASSWORD`.
+3. Valor: elige una contraseña privada nueva de **14 a 200 caracteres**. Puedes usar el generador del proveedor y guardarla en tu gestor de contraseñas. No la envíes por chat ni la subas al repositorio.
+4. Guarda la configuración. En **Manual Deploy → Deploy latest commit**, despliega la última versión de `valhalla-demo`. Las variables de un servicio creado manualmente no se añaden automáticamente desde `render.yaml`.
+5. Espera a **Live**, abre el sitio y comprueba que los formularios están vacíos. Entra como administrador con el correo autorizado y la contraseña que elegiste. En una ventana privada prueba el registro profesional.
 
-```mermaid
-flowchart LR
-    P[Profesional] --> UI[Interfaz web adaptable]
-    A[Administrador] --> UI
-    UI --> API[API Python: sesión, permisos y reglas]
-    API --> DB[(SQLite: usuarios, paquetes, reservas, documentos)]
-    API --> LOG[Auditoría de acciones]
-```
+La retirada de las credenciales públicas solo se aplica al sitio publicado cuando Render ejecuta la nueva versión. Si despliegas sin la variable, los accesos ficticios se cierran igualmente, pero en una base nueva no habrá administrador disponible hasta configurarla. Una contraseña de configuración demasiado corta impide el arranque con un error que no muestra su valor.
 
-Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Cada reserva apunta al titular y al paquete que consumió. El estado del pago controla si su saldo es utilizable. Las transacciones `BEGIN IMMEDIATE` serializan los cambios de saldo y agenda; un índice único parcial sobre `(box, start)` protege las reservas confirmadas. Un trigger impide cambiar el propietario de un paquete incluso mediante una actualización directa de la tabla. Los horarios se normalizan a UTC y se muestran en Chile, incluyendo sus cambios de horario.
+`render.yaml` conserva el plan Free y solicita el secreto al crear un Blueprint nuevo. `Dockerfile` inicia la aplicación con cookies Secure y **no crea cuentas demo**. No se ha contratado almacenamiento ni servicios de pago.
 
-Las contraseñas usan PBKDF2 con sal individual. Las sesiones tienen vencimiento de 8 horas, cookie HttpOnly/SameSite y token CSRF para operaciones autenticadas. Las rutas administrativas y la descarga documental verifican permisos en el servidor. No se incluyen contraseñas ni contenido de PDFs en las respuestas de los paneles.
+**Persistencia pendiente:** el disco del plan gratuito de Render es efímero. Cuentas, documentos y reservas pueden perderse al reiniciar o desplegar. La contraseña de configuración permite recrear la cuenta administradora, pero no restaura los datos. Antes de un piloto que necesite conservar cuentas y reservas, hay que conectar una base persistente. Usa documentos ficticios mientras esto siga siendo un prototipo compartido.
 
-**Arquitectura recomendada para producción:** mantener el mismo dominio de negocio con una API de aplicación (por ejemplo FastAPI), PostgreSQL y restricciones de exclusión de intervalos si se admiten duraciones variables; almacenamiento privado de documentos con descargas firmadas; proveedor de identidad o autenticación endurecida; cola para notificaciones y webhooks de pago idempotentes. El saldo debe evolucionar a un libro de movimientos auditable. Incorporar migraciones, monitoreo, copias y restauración, HTTPS, cookies Secure, límites de intentos, recuperación de contraseña, validación de correo, MFA administrativo y análisis de archivos. Cualquier integración de cobros o publicación requiere autorización expresa.
+## Ejecutar localmente
 
-## Ejecutar
-
-### Vista previa dentro de ChatGPT
-
-Abre `vista-previa.html` en el panel de vista previa. Es un archivo autónomo con CSS y JavaScript integrados: no requiere servidor ni acceso a `/api`. Inicia directamente en el panel profesional de demostración. Para explorar administración, cierra sesión y pulsa Acceso administrador. Las reservas, paquetes, documentos y pagos de esta vista son simulaciones en memoria; los datos se reinician al recargar y no se comparten con la base SQLite ni con otros navegadores. Usa exclusivamente documentos ficticios.
-
-La versión completa con autenticación y reglas de servidor sigue en `app.py`. Para regenerar la vista después de cambios en la interfaz: `python3 build_preview.py`. `preview-api.js` contiene únicamente el adaptador de demostración; no sustituye la seguridad ni las transacciones del servidor.
-
-### Aplicación completa con servidor
-
-Requisitos: Python **3.10 o superior** y base de zonas horarias del sistema (incluida en este entorno). Sin instalación de dependencias.
+Python 3.10+ y zonas horarias del sistema; sin dependencias del servidor fuera de su biblioteca estándar. El contenedor incluye `tzdata` si la imagen no ofrece la zona de Chile.
 
 ```bash
 cd /workspace/AVOJA/valhalla
-python3 app.py --seed-demo
+python3 app.py
 ```
 
-En un equipo local abre `http://127.0.0.1:8080` en el navegador. En el entorno cloud usa las herramientas internas de navegador; no se ha publicado un enlace de acceso público. `Ctrl+C` detiene el servidor. Para otro puerto usa `--port 8081`. Escucha en loopback por defecto; `--host 0.0.0.0` solo si tu entorno de desarrollo necesita acceder al proceso desde otra interfaz.
-
-Se crea `data/valhalla.sqlite3` (ignorado por Git), con persistencia entre reinicios. `--seed-demo` es repetible: crea solo las cuentas y el paquete inicial que no existen; no repone horas consumidas ni reemplaza contraseñas. Puedes usar una base nueva para una demo limpia, sin eliminar tus datos:
+Sirve en el puerto 8080 de loopback. Para habilitar al administrador local sin escribir su contraseña en el comando ni en archivos:
 
 ```bash
-python3 app.py --seed-demo --db /tmp/valhalla-demo-nueva.sqlite3 --port 8081
+read -r -s -p 'Nueva contraseña administradora: ' VALHALLA_ADMIN_PASSWORD
+export VALHALLA_ADMIN_PASSWORD
+python3 app.py
+unset VALHALLA_ADMIN_PASSWORD
 ```
 
-| Rol | Correo ficticio | Contraseña de demostración |
-| --- | --- | --- |
-| Profesional verificado con 10 h iniciales | `profesional@valhalla.demo` | `ValhallaDemo2026!` |
-| Administrador | `admin@valhalla.demo` | `ValhallaAdmin2026!` |
+Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `--db /tmp/valhalla-prueba.sqlite3` y otro puerto con `--port 8081`. `--host 0.0.0.0` permite conexión desde otras interfaces. `--secure-cookie` es para HTTPS detrás del proxy del proveedor, no para las pruebas locales HTTP. La opción antigua `--seed-demo` solo se acepta por compatibilidad con comandos previos: ya no crea cuentas ni saldo.
 
-Los botones de acceso demo usan estas cuentas. Las credenciales son públicas y exclusivas de pruebas; no uses esta base ni estas cuentas para producción. Una ejecución sin `--seed-demo` permite registro profesional pero no crea un administrador: para explorar el flujo completo utiliza la base demo.
+## Reglas y arquitectura
 
-## Probar
+- Tres boxes, sesiones de una hora, todos los días de 08:00 a 20:00, zona `America/Santiago`, hasta 90 días hacia adelante.
+- Paquetes personales de 5, 10 y 20 horas; precios provisionales de $45.000, $85.000 y $160.000 CLP, sin vencimiento en este prototipo. Se comparten entre boxes, no entre profesionales.
+- Solo el profesional activo y verificado reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
+- Una transacción crea la reserva y descuenta el saldo. Un índice único protege el box y horario; el profesional tampoco puede reservar dos boxes simultáneamente. Un trigger impide transferir el paquete.
+- Una modificación por reserva, al menos dos horas antes tanto del horario original como del nuevo. No consume otra hora; un intento fallido no gasta el cambio.
+- Administración revisa el último PDF privado (hasta 2 MB), aprueba o rechaza con observaciones, confirma pagos simulados, activa usuarios y cancela reservas futuras devolviendo la hora una sola vez.
+- Subir un documento nuevo pausa la creación y modificación de reservas hasta su aprobación; conserva las reservas existentes.
+- Contraseñas con PBKDF2 y sal, sesiones HttpOnly/SameSite de ocho horas, protección CSRF, permisos comprobados en servidor y registro de operaciones. Los PDFs se descargan como adjuntos solo por el titular o administrador.
 
-Pruebas automáticas (bases temporales independientes de tus datos):
+Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Los horarios se guardan en UTC. La API y la interfaz usan el mismo origen.
+
+Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación y verificación de correo, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del PDF no certifica su autenticidad oficial. Precios, feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Ningún cobro real está implementado.
+
+## Pruebas
 
 ```bash
 cd /workspace/AVOJA/valhalla
 python3 -m unittest discover -s tests -v
 ```
 
-Prueba opcional en navegador, que crea datos ficticios: inicia otra instancia con una **base descartable**, por ejemplo `python3 app.py --seed-demo --db /tmp/valhalla-prueba-ui.sqlite3 --port 8081`, y en otra terminal ejecuta `node tests/browser.cjs`. Requiere Node, Playwright y Chromium (ya disponibles en este entorno; no son dependencias del servidor). Puedes cambiar la URL con `VALHALLA_TEST_URL` y la ruta de Chromium con `CHROMIUM_PATH`. Fuera de este entorno, instala Playwright en una carpeta temporal y expón su `node_modules` mediante `NODE_PATH`; el navegador debe estar instalado. Esta prueba recorre registro, documentos, pagos simulados, reserva, modificación, cancelación, devolución, desactivación y móvil. No la ejecutes contra datos reales.
+Las bases son temporales. Se cubren concurrencia, saldos, conflictos, límites de modificación, documentos, permisos, retiro de cuentas demo, reserva del correo administrador, contraseña privada y revocación de sesiones.
 
-Recorrido manual:
+Prueba opcional de navegador: `python3 tests/run_browser.py` inicia una instancia descartable con una contraseña aleatoria, ejecuta el recorrido y la detiene. Requiere Node, Playwright y Chromium. Para un servidor de pruebas que ya esté iniciado, usa `node tests/browser.cjs`. Ejecuta solo contra una instancia aislada; configura `VALHALLA_TEST_URL` y `VALHALLA_TEST_ADMIN_PASSWORD` con la URL local y la contraseña privada **de esa instancia de pruebas**, nunca la del sitio publicado. Recorre registro, verificación, pago simulado, reserva, modificación, cancelación, desactivación y móvil.
 
-1. Entra como profesional demo. Ve a Disponibilidad, elige mañana y confirma una hora. En Mis reservas debe aparecer y el saldo baja de 10 a 9.
-2. Modifica la reserva a otra hora futura con más de dos horas de anticipación. No se descuenta otra hora y el botón de modificación desaparece. El servidor también rechaza un segundo cambio.
-3. Solicita un paquete. Queda pendiente y no suma saldo disponible. Cierra sesión y entra como administrador; confirma el pago **simulado**. Al volver como profesional se habilita el saldo.
-4. Registra un nuevo profesional con otro correo. Puede ver disponibilidad pero no reservar. Adjunta un PDF ficticio; como administrador descarga el archivo, revísalo y apruébalo. Confirma también su paquete simulado para habilitar reservas.
-5. Con otro profesional verificado, intenta el mismo box y hora. Aparecerá ocupado; solicitudes simultáneas por API dejan solo una reserva confirmada. Reservar otro box a la misma hora con el mismo profesional también se rechaza.
-6. En Administración → Reservas cancela una reserva futura. Se devuelve su hora y se libera el box. Una segunda cancelación se rechaza.
-7. En Administración → Usuarios desactiva una cuenta profesional. Sus sesiones dejan de funcionar y no puede iniciar sesión hasta reactivarse.
-8. Reduce la ventana a 390 px: la navegación queda arriba y los contenidos se adaptan. Las tablas administrativas pueden desplazarse horizontalmente.
+Prueba manual: abre una ventana privada → Acceso profesional → crea una cuenta nueva → adjunta PDF ficticio → solicita paquete → entra como administrador para aprobar documento y pago → vuelve como profesional y reserva. Comprueba también que los accesos antiguos y el registro con el correo administrador se rechazan.
 
-Para crear un PDF ficticio de prueba válido sin datos personales:
+## Vista previa dentro del chat
 
-```bash
-python3 - <<'PY'
-from pathlib import Path
-objects = [
- b'<< /Type /Catalog /Pages 2 0 R >>',
- b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
- b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
- b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-]
-stream = b'BT /F1 12 Tf 20 75 Td (Documento FICTICIO - Solo pruebas) Tj ET'
-objects.append(b'<< /Length ' + str(len(stream)).encode() + b' >>\nstream\n' + stream + b'\nendstream')
-pdf = b'%PDF-1.4\n'
-offsets = [0]
-for i, obj in enumerate(objects, 1):
-    offsets.append(len(pdf))
-    pdf += str(i).encode() + b' 0 obj\n' + obj + b'\nendobj\n'
-xref = len(pdf)
-pdf += b'xref\n0 6\n0000000000 65535 f \n'
-pdf += b''.join(f'{offset:010d} 00000 n \n'.encode() for offset in offsets[1:])
-pdf += b'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + str(xref).encode() + b'\n%%EOF\n'
-Path('/tmp/acreditacion-ficticia.pdf').write_bytes(pdf)
-PY
-```
+`vista-previa.html` es autónomo y no se conecta a la base del sitio. Ahora abre el inicio con campos vacíos, sin cuentas precreadas. Permite explorar el registro con datos ficticios en memoria. No permite acceder a la administración privada: esa función se prueba en el servidor. Los datos se pierden al recargar. Regenera el archivo con `python3 build_preview.py` después de cambiar la interfaz o `preview-api.js`.
 
-## Alcance y límites
-
-Este servidor HTTP y SQLite son apropiados para un prototipo local de un solo servicio. No están preparados para exponer documentos reales ni operar reservas comerciales. No hay notificaciones, recuperación de cuenta, expiración de paquetes, agenda por profesional externo ni conciliación bancaria. La carga comprueba extensión, tamaño y firma PDF; no sustituye validación completa ni análisis antimalware. Las cuentas demo verificadas son una excepción explícita para recorrer la interfaz sin cargar documentos. Las pruebas automáticas cubren reglas, concurrencia y permisos; pantalla completa, pagos reales y despliegue no forman parte de este prototipo.
-
-## Publicar una demo de prueba en Render
-
-La publicación de una demo ficticia, sin cobros reales, fue autorizada. Se preparó `../render.yaml` para un servicio web Docker. **Aún no se ha desplegado ni existe un enlace público verificado.** La publicación en Render se completa desde la cuenta de alojamiento del usuario. La API GitHub y el acceso Git por HTTPS son capacidades distintas; esta entrega usa Git para subir la rama `valhalla-demo`.
-
-1. Crea una cuenta en `https://render.com` y conecta GitHub desde la interfaz del proveedor. No compartas contraseñas ni tokens por chat.
-2. Conecta la rama `valhalla-demo`, que contiene `valhalla/` y `render.yaml`. Conserva `valhalla/data/` fuera del repositorio; contiene los datos locales y no se copia a la imagen Docker.
-3. Crea un **Blueprint** desde `santibanezfcarlos-art/AVOJA` y la rama que contenga los archivos. Revisa el servicio `valhalla-office-demo` y las condiciones actuales del plan gratuito antes de crearlo. También puedes crear un Web Service Docker con directorio raíz `valhalla` y archivo `Dockerfile`.
-4. Render termina HTTPS y suministra `PORT`. El contenedor inicia las cuentas demo con cookies Secure y una base nueva. Usa solo nombres, correos y documentos ficticios: el administrador de demostración es compartido y puede ver todos los datos de la demo.
-5. Tras un despliegue correcto, copia la URL HTTPS que Render asigne. Verifica el título, el inicio de sesión profesional y administrador, y una reserva de prueba antes de compartirla.
-
-El disco del plan gratuito es efímero: los datos pueden perderse al reiniciar o desplegar, y el servicio puede suspenderse por inactividad. No cambies al plan de pago ni adjuntes un medio de pago sin decidirlo expresamente. Antes de una operación comercial se necesita la arquitectura de producción descrita arriba; esta configuración publica únicamente una demo compartida.
-
-Para construir y comprobar la imagen localmente:
-
-```bash
-cd /workspace/AVOJA/valhalla
-docker build -t valhalla-office:demo .
-# Para probar con HTTP local se reemplaza el comando HTTPS del contenedor:
-docker run --rm -p 127.0.0.1:8082:8080 valhalla-office:demo \
-  python app.py --host 0.0.0.0 --port 8080 --seed-demo
-```
+El bingo original de AVOJA permanece intacto.

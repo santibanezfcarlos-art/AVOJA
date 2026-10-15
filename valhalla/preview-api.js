@@ -1,13 +1,10 @@
 // In-memory adapter for the standalone ChatGPT preview. No network or real payments.
 const previewDB = {
-  users: [
-    {id:1,name:'Camila Rojas',email:'profesional@valhalla.demo',specialty:'Psicología',role:'professional',verified:1,active:1},
-    {id:2,name:'Administración',email:'admin@valhalla.demo',specialty:'',role:'admin',verified:1,active:1}
-  ],
-  packages:[{id:1,user_id:1,hours:10,remaining:10,price:85000,status:'paid',created_at:new Date().toISOString()}],
+  users: [],
+  packages:[],
   documents:[], bookings:[], audit:[]
 };
-let previewUser = 1;
+let previewUser = null;
 const previewCatalog=[{id:'5',hours:5,price:45000},{id:'10',hours:10,price:85000},{id:'20',hours:20,price:160000}];
 const previewToday=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date());
 const previewId=rows=>Math.max(0,...rows.map(r=>r.id))+1;
@@ -33,12 +30,14 @@ async function api(path,body){
   const db=previewDB;
   if(path==='login'){
     const user=db.users.find(u=>u.email===String(body.email).toLowerCase());
-    const valid=user?.password || (user?.role==='admin'?'ValhallaAdmin2026!':'ValhallaDemo2026!');
+    const valid=user?.password;
+    if(body.email==='santibanezf.carlos@gmail.com')throw Error('La administración requiere el sitio con servidor y tu contraseña privada.');
     if(!user||!user.active||body.password!==valid)throw Error('Correo o contraseña incorrectos, o cuenta desactivada.');
     previewUser=user.id;return {ok:true};
   }
   if(path==='register'){
     const email=String(body.email).trim().toLowerCase();
+    if(email==='santibanezf.carlos@gmail.com')throw Error('Este correo está reservado para administración.');
     if(db.users.some(u=>u.email===email))throw Error('Ya existe una cuenta con ese correo.');
     if(String(body.password).length<10)throw Error('La contraseña debe tener al menos 10 caracteres.');
     const user={id:previewId(db.users),name:body.name,email,specialty:body.specialty,password:body.password,role:'professional',active:1,verified:0};

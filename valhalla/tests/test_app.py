@@ -12,7 +12,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from app import CHILE, Handler, Problem, Store, password_hash, stamp
+from app import ADMIN_EMAIL, LEGACY_DEMO_EMAILS, CHILE, Handler, Problem, Store, password_hash, stamp
 
 
 class Rules(unittest.TestCase):
@@ -29,7 +29,7 @@ class Rules(unittest.TestCase):
         with self.store.connection(True) as c:
             for uid, role, verified in [(1, 'professional', 1), (2, 'professional', 1), (3, 'professional', 0), (4, 'admin', 1)]:
                 c.execute('INSERT INTO users(id,name,email,password,role,verified) VALUES(?,?,?,?,?,?)',
-                          (uid, f'Persona {uid}', f'{uid}@test.cl', self.encoded, role, verified))
+                          (uid, f'Persona {uid}', ADMIN_EMAIL if role=='admin' else f'{uid}@test.cl', self.encoded, role, verified))
                 if role == 'professional':
                     c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at) VALUES(?,5,5,45000,'paid',?)", (uid, stamp(self.clock)))
 
@@ -133,16 +133,11 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.balance(1),5)
         self.assertEqual(self.balance(2),5)
 
-    def test_repeated_demo_seed_does_not_replenish_spent_hours(self):
-        self.store.seed()
-        with self.store.connection(True) as c:
-            uid=c.execute("SELECT id FROM users WHERE email='profesional@valhalla.demo'").fetchone()['id']
-        self.store.reserve(uid,self.slot())
-        self.store.seed()
-        with self.store.connection() as c:
-            rows=c.execute('SELECT remaining FROM packages WHERE user_id=?',(uid,)).fetchall()
-        self.assertEqual(len(rows),1)
-        self.assertEqual(rows[0]['remaining'],9)
+    def test_repeated_access_configuration_preserves_balances(self):
+        self.store.reserve(1,self.slot())
+        self.store.configure_access('PrivateTestPassword2026!')
+        self.store.configure_access('PrivateTestPassword2026!')
+        self.assertEqual(self.balance(),4)
 
     def test_one_modification_preserves_balance_and_releases_slot(self):
         bid = self.store.reserve(1, self.slot())
@@ -249,7 +244,8 @@ class HTTPTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory()
         cls.store=Store(Path(cls.temp.name)/'http.sqlite3')
-        cls.store.seed()
+        cls.store.configure_access('PrivateAdminTest2026!')
+        cls.store.register({'name':'Profesional Prueba','email':'professional@test.cl','password':'ProfessionalTest2026!','specialty':'Psicología'})
         cls.server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
         cls.server.store=cls.store
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True)
@@ -271,8 +267,8 @@ class HTTPTests(unittest.TestCase):
         return response.status,data,response.headers
 
     def login(self,admin=False):
-        status,data,headers=self.request('/api/login',{'email':'admin@valhalla.demo' if admin else 'profesional@valhalla.demo',
-                                               'password':'ValhallaAdmin2026!' if admin else 'ValhallaDemo2026!'})
+        status,data,headers=self.request('/api/login',{'email':ADMIN_EMAIL if admin else 'professional@test.cl',
+                                               'password':'PrivateAdminTest2026!' if admin else 'ProfessionalTest2026!'})
         self.assertEqual(status,200)
         cookie=headers['Set-Cookie'].split(';')[0]
         _,profile,_=self.request('/api/me',cookie=cookie)
@@ -305,7 +301,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status,200)
         self.assertIn('attachment',headers['Content-Disposition'])
         self.assertEqual(self.request(f'/api/documents/{did}')[0],401)
-        token=self.store.login({'email':'admin@valhalla.demo','password':'ValhallaAdmin2026!'})
+        token=self.store.login({'email':ADMIN_EMAIL,'password':'PrivateAdminTest2026!'})
         self.assertEqual(self.request(f'/api/documents/{did}',cookie='session='+token)[0],200)
         self.store.register({'name':'Otra persona','email':'otro@ejemplo.cl','password':'OtraPersona2026!','specialty':'Kinesiología'})
         other=self.store.login({'email':'otro@ejemplo.cl','password':'OtraPersona2026!'})

@@ -1,4 +1,4 @@
-// Optional full browser flow. Run against a disposable demo database only.
+// Full browser flow against an isolated test instance with a private admin password.
 const {chromium} = require('playwright');
 const assert = require('node:assert/strict');
 const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
@@ -27,7 +27,11 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
     const tomorrow = date => new Date(new Date(date+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
 
     await page.goto(base);
-    await page.getByRole('button',{name:'Regístrate',exact:true}).click();
+    assert.equal(await page.getByLabel('Correo electrónico').inputValue(),'');
+    assert.equal(await page.getByLabel('Contraseña',{exact:true}).inputValue(),'');
+    assert.equal(await page.locator('[data-demo]').count(),0);
+    await page.getByRole('button',{name:'Acceso profesional',exact:true}).click();
+    await page.getByRole('heading',{name:'Crea tu cuenta profesional',exact:true}).waitFor();
     const email=`prueba.${Date.now()}@valhalla.demo`;
     await page.getByLabel('Nombre completo').fill('Profesional Prueba');
     await page.getByLabel('Profesión o especialidad').fill('Psicología');
@@ -52,6 +56,12 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
 
     await admin.goto(base);
     await admin.getByRole('button',{name:'Acceso administrador',exact:true}).click();
+    assert.equal(await admin.getByLabel('Correo electrónico').inputValue(),'');
+    assert.equal(await admin.getByLabel('Contraseña',{exact:true}).inputValue(),'');
+    if(!process.env.VALHALLA_TEST_ADMIN_PASSWORD)throw Error('Set VALHALLA_TEST_ADMIN_PASSWORD for the isolated test instance.');
+    await admin.getByLabel('Correo electrónico').fill('santibanezf.carlos@gmail.com');
+    await admin.getByLabel('Contraseña',{exact:true}).fill(process.env.VALHALLA_TEST_ADMIN_PASSWORD);
+    await admin.getByRole('button',{name:/Iniciar sesión/}).click();
     await admin.getByRole('heading',{name:'Administración',exact:true}).waitFor();
     await admin.locator(`[data-admin="payment"][data-id="${packageId}"][data-decision="paid"]`).click();
     await confirm(admin);

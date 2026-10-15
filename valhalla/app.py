@@ -5,6 +5,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import sqlite3
 import time
@@ -19,6 +20,8 @@ ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
 CATALOG = {'5': (5, 45000), '10': (10, 85000), '20': (20, 160000)}
 MAX_BODY = 3_000_000
+ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
+LEGACY_DEMO_EMAILS = ("admin@valhalla.demo", "profesional@valhalla.demo")
 
 
 class Problem(Exception):
@@ -106,23 +109,33 @@ class Store:
         c.execute('INSERT INTO audit(actor_id,action,target,created_at) VALUES (?,?,?,?)',
                   (actor, action, str(target), stamp(now())))
 
-    def seed(self):
+    def configure_access(self, admin_password=None):
+        """Retire public demo credentials and provision the owner only from a private setting."""
+        if admin_password is not None and not 14 <= len(admin_password) <= 200:
+            raise ValueError('VALHALLA_ADMIN_PASSWORD debe tener entre 14 y 200 caracteres.')
         with self.connection(True) as c:
-            demo = [('Administración', 'admin@valhalla.demo', 'ValhallaAdmin2026!', 'admin', ''),
-                    ('Camila Rojas', 'profesional@valhalla.demo', 'ValhallaDemo2026!', 'professional', 'Psicología')]
-            for name, email, password, role, specialty in demo:
-                if not c.execute('SELECT id FROM users WHERE email=?', (email,)).fetchone():
-                    c.execute('INSERT INTO users(name,email,password,role,specialty,verified) VALUES(?,?,?,?,?,1)',
-                              (name, email, password_hash(password), role, specialty))
-            uid = c.execute('SELECT id FROM users WHERE email=?', ('profesional@valhalla.demo',)).fetchone()['id']
-            if not c.execute('SELECT id FROM packages WHERE user_id=?', (uid,)).fetchone():
-                c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at) VALUES(?,10,10,85000,'paid',?)", (uid, stamp(now())))
+            blocked = c.execute("SELECT id FROM users WHERE email IN (?,?) OR (role='admin' AND email<>?)",
+                                (*LEGACY_DEMO_EMAILS, ADMIN_EMAIL)).fetchall()
+            for row in blocked:
+                c.execute('UPDATE users SET active=0 WHERE id=?', (row['id'],))
+                c.execute('DELETE FROM sessions WHERE user_id=?', (row['id'],))
+            if admin_password:
+                owner = c.execute('SELECT * FROM users WHERE email=?', (ADMIN_EMAIL,)).fetchone()
+                if owner:
+                    # Never promote a public registration while retaining its old password/session.
+                    if owner['role'] != 'admin' or not password_matches(admin_password, owner['password']):
+                        c.execute('DELETE FROM sessions WHERE user_id=?', (owner['id'],))
+                        c.execute("UPDATE users SET password=?,role='admin',active=1,verified=1 WHERE id=?",
+                                  (password_hash(admin_password), owner['id']))
+                else:
+                    c.execute("INSERT INTO users(name,email,password,role,verified) VALUES(?,?,?,'admin',1)",
+                              ('Administración Valhalla', ADMIN_EMAIL, password_hash(admin_password)))
 
     def session(self, token):
         with self.connection() as c:
             row = c.execute('SELECT u.*,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?',
                             (token, time.time())).fetchone()
-            if not row or not row['active']:
+            if not row or not row['active'] or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
                 raise Problem('Inicia sesión para continuar.', 401)
             return dict(row)
 
@@ -135,8 +148,10 @@ class Store:
             row = c.execute('SELECT * FROM users WHERE email=?', (email,)).fetchone()
             # Work comparable to a real password check for unknown users.
             encoded = row['password'] if row else password_hash('invalid', '0' * 32)
-            if not password_matches(password, encoded) or not row or not row['active']:
+            if not password_matches(password, encoded) or not row or not row['active'] or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
                 raise Problem('Correo o contraseña incorrectos, o cuenta desactivada.', 401)
+            if body.get('portal') == 'admin' and (row['role'] != 'admin' or row['email'] != ADMIN_EMAIL):
+                raise Problem('Este acceso está reservado para la cuenta administradora autorizada.', 403)
             token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
             c.execute('DELETE FROM sessions WHERE expires <= ?', (time.time(),))
             c.execute('INSERT INTO sessions VALUES(?,?,?,?)', (token, row['id'], csrf, time.time() + 28800))
@@ -145,6 +160,8 @@ class Store:
     def register(self, body):
         name, email = str(body.get('name', '')).strip(), str(body.get('email', '')).strip().lower()
         password, specialty = str(body.get('password', '')), str(body.get('specialty', '')).strip()
+        if email == ADMIN_EMAIL or email in LEGACY_DEMO_EMAILS:
+            raise Problem('Este correo está reservado y no admite registro profesional.', 403)
         if not 2 <= len(name) <= 100 or len(email) > 200 or '@' not in email or '.' not in email.split('@')[-1]:
             raise Problem('Ingresa un nombre y un correo válidos.')
         if not 10 <= len(password) <= 200:
@@ -380,7 +397,7 @@ class Handler(BaseHTTPRequestHandler):
             raise Problem('Solicitud JSON inválida.')
 
     def admin(self, user):
-        if user['role'] != 'admin':
+        if user['role'] != 'admin' or user['email'] != ADMIN_EMAIL:
             raise Problem('Acceso exclusivo de administración.', 403)
 
     def do_GET(self):
@@ -484,12 +501,14 @@ def main():
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8080)
     parser.add_argument('--db', default=str(ROOT / 'data' / 'valhalla.sqlite3'))
-    parser.add_argument('--seed-demo', action='store_true')
+    parser.add_argument('--seed-demo', action='store_true', help=argparse.SUPPRESS)  # Accepted for old launch commands; no accounts are seeded.
     parser.add_argument('--secure-cookie', action='store_true', help='Require HTTPS for session cookies (hosting behind TLS proxy).')
     args = parser.parse_args()
     store = Store(args.db)
-    if args.seed_demo:
-        store.seed()
+    try:
+        store.configure_access(os.environ.get('VALHALLA_ADMIN_PASSWORD'))
+    except ValueError as error:
+        parser.error(str(error))
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.store = store
     server.secure_cookie = args.secure_cookie

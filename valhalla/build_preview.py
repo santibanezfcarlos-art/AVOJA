@@ -6,9 +6,7 @@ js = (root / 'static/app.js').read_text()
 start = js.index('async function api(')
 end = js.index('function toast(', start)
 js = js[:start] + (root / 'preview-api.js').read_text() + '\n' + js[end:]
-js = js.replace('Estos accesos requieren iniciar el servidor con <code>--seed-demo</code>.',
-                'Vista previa autónoma. Los datos son ficticios y se reinician al recargar.')
-js = js.replace('DEMO · SIN COBROS', 'DEMO · SIN COBROS')
+js = js.replace('Cada persona utiliza su propia cuenta. No hay accesos automáticos.', 'Vista previa local: regístrate para explorar. Los datos se reinician al recargar. La administración privada funciona en el sitio con servidor.')
 css = (root / 'static/style.css').read_text()
 html = f'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
