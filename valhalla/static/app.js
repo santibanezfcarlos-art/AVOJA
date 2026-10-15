@@ -4,6 +4,7 @@ let state = null, adminData = null, view = 'overview', adminTab = 'payments', se
 let activeProfile = 'admin';
 let officeGallery = [];
 const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
+let disposeWelcomeCarousel = () => {};
 let toastTimer;
 const money = n => new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0}).format(n);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -34,8 +35,48 @@ function pendingBalance() { return state.packages.filter(p=>p.status==='paid').r
 function upcoming() { return state.bookings.filter(b=>b.status==='confirmed' && new Date(b.start)>new Date()); }
 function canModify(b) { return b.status==='confirmed' && b.modifications===0 && new Date(b.start)-Date.now() >= 7200000; }
 
+function welcomeCarousel() {
+  const order=['box-1','box-2','box-infantil','recepcion','entrada'];
+  const groups=order.map(id=>officeGallery.find(group=>group.id===id)).filter(Boolean);
+  const slides=groups.flatMap(group=>group.photos.map(photo=>({...photo,title:group.title})));
+  if(!slides.length)return '';
+  return `<section class="welcome-carousel" role="region" aria-roledescription="carrusel" aria-label="Fotos de Valhalla Office"><div class="welcome-photo-frame"><img id="welcome-photo" src="${escapeHTML(slides[0].image_url)}" alt="${escapeHTML(slides[0].alt)}" decoding="async" fetchpriority="high"></div><div class="welcome-photo-caption"><div><span class="eyebrow">CONOCE TU PRÓXIMO ESPACIO</span><strong id="welcome-photo-title">${escapeHTML(slides[0].title)}</strong></div><span id="welcome-photo-count">1 / ${slides.length}</span></div><div class="welcome-carousel-controls"><button type="button" id="welcome-previous" aria-label="Mostrar foto anterior">←</button><div class="welcome-dots" role="group" aria-label="Elegir foto">${slides.map((slide,index)=>`<button type="button" data-slide="${index}" aria-label="Foto ${index+1}: ${escapeHTML(slide.title)}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" id="welcome-next" aria-label="Mostrar foto siguiente">→</button><button type="button" id="welcome-pause" aria-label="Pausar carrusel" aria-pressed="false">Pausar</button></div></section>`;
+}
+function bindWelcomeCarousel() {
+  disposeWelcomeCarousel();
+  const carousel=document.querySelector('.welcome-carousel');if(!carousel)return;
+  const order=['box-1','box-2','box-infantil','recepcion','entrada'];
+  const slides=order.flatMap(id=>{const group=officeGallery.find(group=>group.id===id);return group?group.photos.map(photo=>({...photo,title:group.title})):[];});
+  const image=carousel.querySelector('#welcome-photo');
+  const pause=carousel.querySelector('#welcome-pause');
+  const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+  let index=0,timer=null,paused=reduced.matches,hovered=false,focused=false;
+  const stop=()=>{clearInterval(timer);timer=null;};
+  const paint=()=>{
+    const slide=slides[index];image.src=slide.image_url;image.alt=slide.alt;
+    image.classList.remove('slide-arrival');if(!reduced.matches)requestAnimationFrame(()=>image.isConnected&&image.classList.add('slide-arrival'));
+    carousel.querySelector('#welcome-photo-title').textContent=slide.title;
+    carousel.querySelector('#welcome-photo-count').textContent=`${index+1} / ${slides.length}`;
+    carousel.querySelectorAll('[data-slide]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.slide)===index)));
+  };
+  const schedule=()=>{stop();if(!paused&&!hovered&&!focused&&!document.hidden&&slides.length>1)timer=setInterval(()=>{if(!carousel.isConnected){stop();return;}index=(index+1)%slides.length;paint();},5000);};
+  const show=next=>{index=(next+slides.length)%slides.length;paint();schedule();};
+  const updatePause=()=>{pause.textContent=paused?'Reanudar':'Pausar';pause.setAttribute('aria-label',paused?'Reanudar carrusel':'Pausar carrusel');pause.setAttribute('aria-pressed',String(paused));};
+  carousel.querySelector('#welcome-previous').onclick=()=>show(index-1);
+  carousel.querySelector('#welcome-next').onclick=()=>show(index+1);
+  carousel.querySelectorAll('[data-slide]').forEach(button=>button.onclick=()=>show(Number(button.dataset.slide)));
+  pause.onclick=()=>{paused=!paused;updatePause();schedule();};
+  carousel.onmouseenter=()=>{hovered=true;schedule();};carousel.onmouseleave=()=>{hovered=false;schedule();};
+  carousel.onfocusin=()=>{focused=true;schedule();};carousel.onfocusout=event=>{focused=carousel.contains(event.relatedTarget);schedule();};
+  carousel.onkeydown=event=>{if(event.key==='ArrowRight'){event.preventDefault();show(index+1);}if(event.key==='ArrowLeft'){event.preventDefault();show(index-1);}};
+  const visibility=()=>schedule();const preference=()=>{if(reduced.matches)paused=true;updatePause();schedule();};
+  document.addEventListener('visibilitychange',visibility);reduced.addEventListener('change',preference);
+  disposeWelcomeCarousel=()=>{stop();document.removeEventListener('visibilitychange',visibility);reduced.removeEventListener('change',preference);disposeWelcomeCarousel=()=>{};};
+  updatePause();schedule();
+}
 function auth(register = false, administrator = false) {
-  root.innerHTML = `<div class="auth"><section class="auth-story">${brand}<div><div class="eyebrow">UN LUGAR PARA CRECER</div><h1>Tu vocación.<br>Tu tiempo.<br><em>Tu espacio.</em></h1><p>Tres boxes profesionales. Una comunidad. La libertad de atender a tu ritmo.</p><div class="story-art" aria-hidden="true"><div class="arch">01</div><div class="arch">02</div><div class="arch">03</div></div></div><footer>VALHALLA OFFICE · ESPACIOS QUE ACOMPAÑAN</footer></section>
+  disposeWelcomeCarousel();
+  root.innerHTML = `<div class="auth"><section class="auth-story">${brand}<div><div class="eyebrow">UN LUGAR PARA CRECER</div><h1>Tu vocación.<br><em>Su mejor espacio.</em></h1><p>Tres boxes para atender a tu ritmo, una recepción para tus pacientes y un espacio para hacer crecer tu práctica.</p><div class="welcome-benefits"><span>3 boxes profesionales</span><span>Paquetes de horas</span><span>Box infantil</span></div>${welcomeCarousel()}<a class="welcome-gallery-link" href="#office-gallery-title">Recorre todos nuestros espacios <span aria-hidden="true">↓</span></a></div><footer>COLO COLO 222 · OFICINA 710</footer></section>
     <section class="auth-form"><div class="auth-inner"><span class="demo-label">PROTOTIPO · SIN COBROS REALES</span><h2>${administrator ? 'Acceso administrador' : register ? 'Crea tu cuenta profesional' : 'Bienvenido a tu espacio'}</h2><p class="muted">${administrator ? 'Ingresa con tu correo autorizado y tu contraseña privada.' : register ? 'Regístrate y envía tu documentación para comenzar.' : 'Organiza tus atenciones, con todo en un solo lugar.'}</p>
     <form id="auth-form" class="form-stack">${register ? '<label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" placeholder="Ej. Psicología"></label>' : ''}
     <label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="200" placeholder="tu@correo.cl"></label><label>Contraseña<input name="password" type="password" autocomplete="${register?'new-password':'current-password'}" required minlength="${register?10:1}" maxlength="200" placeholder="${register?'Mínimo 10 caracteres':'Tu contraseña'}"></label>
@@ -43,6 +84,7 @@ function auth(register = false, administrator = false) {
     <div class="auth-switch">${administrator ? '¿Eres profesional?' : register?'¿Ya tienes una cuenta?':'¿Primera vez en Valhalla?'} <button class="text-btn" id="auth-switch">${administrator ? 'Volver al inicio' : register?'Inicia sesión':'Regístrate'}</button></div>
     <div class="demo-access"><strong>Elige tu acceso</strong><p class="muted">Cada persona utiliza su propia cuenta. No hay accesos automáticos.</p><div class="row"><button class="btn secondary small" id="professional-access">Acceso profesional</button><button class="btn ghost small" id="administrator-access">Acceso administrador</button></div></div></div></section></div>${gallerySection()}`;
   bindGallery();
+  bindWelcomeCarousel();
   document.querySelector('#auth-switch').onclick = () => administrator ? auth() : auth(!register);
   document.querySelector('#professional-access').onclick = () => auth(true);
   document.querySelector('#administrator-access').onclick = () => auth(false, true);
@@ -61,6 +103,7 @@ async function reload() {
   await render();
 }
 function shell() {
+  disposeWelcomeCarousel();
   const u = state.user;
   const links = adminMode() ? [['admin','▦','Administración'],['availability','▤','Disponibilidad']] : [['overview','▦','Mi espacio'],['availability','▤','Disponibilidad'],['bookings','◷','Mis reservas'],['packages','◇','Paquetes'],['documents','▱','Documentación'],['profile','○','Mi perfil']];
   root.innerHTML=`<div class="shell"><aside class="sidebar">${brand}<nav aria-label="Navegación principal">${links.map(([id,icon,label])=>`<button class="nav-item ${view===id?'active':''}" data-view="${id}" ${view===id?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note"><strong>Un saldo, tres espacios</strong><p>Tus horas te acompañan en cualquiera de nuestros boxes.</p></div><div class="profile"><span class="avatar">${escapeHTML(u.name.split(' ').map(s=>s[0]).slice(0,2).join(''))}</span><div><div class="profile-name">${escapeHTML(u.name)}</div><small>${adminMode()?'Administración':escapeHTML(u.specialty)||'Perfil profesional'}</small></div></div><button class="btn ghost small full" data-logout>Cerrar sesión</button></div></aside>

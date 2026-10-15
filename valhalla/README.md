@@ -96,3 +96,9 @@ El bingo original de AVOJA permanece intacto.
 Galería pública agrupada: Entrada (1), Recepción (2 y 3), Box infantil (6 y 7), Box 1 (11 y 12) y Box 2 (13, 14 y 15). El box infantil es el tercer box reservable. Todas las fotografías se conservan completas y el visor permite recorrer las de cada espacio. En disponibilidad aparecen únicamente los boxes, con sus fotos correspondientes.
 
 Las fotos viven en `static/images` y se publican desde Git, sin depender de SQLite. Consulta `static/images/README.md` para reemplazarlas. La vista del chat tiene interfaz y operaciones locales, pero carga estas imágenes desde la web pública para mantener liviano el HTML.
+
+## Presentación del inicio
+
+El panel verde presenta las fotos originales mediante un carrusel automático de cinco segundos, con flechas, selector de foto y botón Pausar/Reanudar. Sustituye a los arcos decorativos 01/02/03. El texto explica los tres boxes, la recepción y los paquetes de horas, y enlaza a la galería completa.
+
+El carrusel pausa al situar el puntero o el foco sobre sus controles y cuando la pestaña queda oculta. Si el navegador solicita movimiento reducido, comienza detenido y permite navegación manual. Al entrar a la aplicación se detiene y limpia su temporizador. Las fotos conservan su encuadre completo en computador y celular.
