@@ -33,21 +33,60 @@ def supports_professional(user):
     return user and (user['role'] == 'professional' or (user['role'] == 'admin' and user['email'] == ADMIN_EMAIL))
 
 
+GALLERY_GROUPS = (
+    ('entrada', 'Entrada', None, ('1.png',)),
+    ('recepcion', 'Recepción', None, ('2.png', '3.png')),
+    ('box-infantil', 'Box infantil', 3, ('6.png', '7.png')),
+    ('box-1', 'Box 1', 1, ('11.png', '12.png')),
+    ('box-2', 'Box 2', 2, ('13.png', '14.png', '15.png')),
+)
+IMAGE_TYPES = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}
+
+
+def image_asset(filename):
+    allowed = {filename for _, _, _, names in GALLERY_GROUPS for filename in names}
+    allowed.update(f'box-{box}.{extension}' for box in (1, 2, 3) for extension in IMAGE_TYPES)
+    if filename not in allowed:
+        return None
+    directory = (ROOT / 'static' / 'images').resolve()
+    image = directory / filename
+    if image.is_file() and image.resolve().parent == directory:
+        return image, IMAGE_TYPES[image.suffix.lstrip('.')]
+    return None
+
+
+def gallery_items():
+    groups = []
+    for gid, title, box, names in GALLERY_GROUPS:
+        photos = []
+        for filename in names:
+            asset = image_asset(filename)
+            if asset:
+                photos.append({'image_url': f'/images/{filename}?v={asset[0].stat().st_mtime_ns}',
+                               'alt': f'{title} · fotografía {len(photos) + 1}'})
+        if not photos and box:
+            for extension in IMAGE_TYPES:
+                filename = f'box-{box}.{extension}'
+                asset = image_asset(filename)
+                if asset:
+                    photos.append({'image_url': f'/images/{filename}?v={asset[0].stat().st_mtime_ns}', 'alt': title})
+                    break
+        if photos:
+            groups.append({'id': gid, 'title': title, 'box': box, 'photos': photos})
+    return groups
+
+
 def room_photo(box):
-    for extension, mime in (('jpg', 'image/jpeg'), ('jpeg', 'image/jpeg'), ('png', 'image/png'), ('webp', 'image/webp')):
-        image = ROOT / 'static' / 'images' / f'box-{box}.{extension}'
-        if image.is_file():
-            return image, mime
+    group = next((group for group in gallery_items() if group['box'] == box), None)
+    if group:
+        filename = group['photos'][0]['image_url'].split('?')[0].rsplit('/', 1)[-1]
+        return image_asset(filename)
     return None
 
 
 def room_photos():
-    result = []
-    for box in (1, 2, 3):
-        photo = room_photo(box)
-        if photo:
-            result.append({'box': box, 'image_url': f'/images/box-{box}?v={photo[0].stat().st_mtime_ns}'})
-    return result
+    return [{'box': group['box'], 'title': group['title'], 'image_url': group['photos'][0]['image_url'],
+             'photos': group['photos']} for group in sorted((g for g in gallery_items() if g['box']), key=lambda g: g['box'])]
 
 
 def now():
@@ -389,11 +428,11 @@ class Store:
 class Handler(BaseHTTPRequestHandler):
     server_version = 'ValhallaPrototype'
 
-    def headers_common(self):
+    def headers_common(self, cache='no-store'):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Referrer-Policy', 'same-origin')
-        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Cache-Control', cache)
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 
     def respond(self, data, status=200, cookie=None):
@@ -436,6 +475,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not route.path.startswith('/api/'):
                 files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+                if route.path.startswith('/images/'):
+                    asset = image_asset(route.path.removeprefix('/images/'))
+                    if asset:
+                        files[route.path] = (str(asset[0]), asset[1])
                 if route.path in ('/images/box-1', '/images/box-2', '/images/box-3'):
                     photo = room_photo(int(route.path[-1]))
                     if photo:
@@ -445,11 +488,14 @@ class Handler(BaseHTTPRequestHandler):
                 filename, mime = files[route.path]
                 raw = (ROOT / 'static' / filename).read_bytes()
                 self.send_response(200)
-                self.headers_common()
+                self.headers_common('public, max-age=86400' if mime.startswith('image/') else 'no-store')
                 self.send_header('Content-Type', mime if mime.startswith('image/') else mime + '; charset=utf-8')
                 self.send_header('Content-Length', str(len(raw)))
                 self.end_headers()
                 self.wfile.write(raw)
+                return
+            if route.path == '/api/gallery':
+                self.respond({'groups': gallery_items()})
                 return
             user = self.server.store.session(self.cookie())
             if route.path == '/api/me':

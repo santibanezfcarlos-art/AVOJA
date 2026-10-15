@@ -2,6 +2,7 @@ const root = document.querySelector('#root');
 const modal = document.querySelector('#modal');
 let state = null, adminData = null, view = 'overview', adminTab = 'payments', selectedDate = '', modifying = null;
 let activeProfile = 'admin';
+let officeGallery = [];
 const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
 let toastTimer;
 const money = n => new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0}).format(n);
@@ -11,7 +12,7 @@ const hourText = value => new Intl.DateTimeFormat('es-CL', {timeZone:'America/Sa
 const labels = {pending:'Pendiente',paid:'Confirmado',rejected:'Rechazado',approved:'Aprobado',confirmed:'Confirmada',cancelled:'Cancelada'};
 const pill = status => `<span class="pill ${escapeHTML(status)}">${labels[status] || escapeHTML(status)}</span>`;
 const brand = `<div class="brand"><span class="mark" aria-hidden="true">V</span><div>VALHALLA<small>OFFICE & WELLBEING</small></div></div>`;
-const rooms = ['Box 01','Box 02','Box 03'];
+const rooms = ['Box 1','Box 2','Box infantil'];
 
 async function api(path, body) {
   const response = await fetch('/api/' + path, body === undefined ? {} : {
@@ -40,7 +41,8 @@ function auth(register = false, administrator = false) {
     <label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="200" placeholder="tu@correo.cl"></label><label>Contraseña<input name="password" type="password" autocomplete="${register?'new-password':'current-password'}" required minlength="${register?10:1}" maxlength="200" placeholder="${register?'Mínimo 10 caracteres':'Tu contraseña'}"></label>
     <p id="auth-error" class="error" role="alert"></p><button class="btn full" type="submit">${register?'Crear cuenta':'Iniciar sesión'} <span aria-hidden="true">→</span></button></form>
     <div class="auth-switch">${administrator ? '¿Eres profesional?' : register?'¿Ya tienes una cuenta?':'¿Primera vez en Valhalla?'} <button class="text-btn" id="auth-switch">${administrator ? 'Volver al inicio' : register?'Inicia sesión':'Regístrate'}</button></div>
-    <div class="demo-access"><strong>Elige tu acceso</strong><p class="muted">Cada persona utiliza su propia cuenta. No hay accesos automáticos.</p><div class="row"><button class="btn secondary small" id="professional-access">Acceso profesional</button><button class="btn ghost small" id="administrator-access">Acceso administrador</button></div></div></div></section></div>`;
+    <div class="demo-access"><strong>Elige tu acceso</strong><p class="muted">Cada persona utiliza su propia cuenta. No hay accesos automáticos.</p><div class="row"><button class="btn secondary small" id="professional-access">Acceso profesional</button><button class="btn ghost small" id="administrator-access">Acceso administrador</button></div></div></div></section></div>${gallerySection()}`;
+  bindGallery();
   document.querySelector('#auth-switch').onclick = () => administrator ? auth() : auth(!register);
   document.querySelector('#professional-access').onclick = () => auth(true);
   document.querySelector('#administrator-access').onclick = () => auth(false, true);
@@ -68,9 +70,29 @@ function shell() {
   document.querySelectorAll('[data-logout]').forEach(b=>b.onclick=async()=>{try{await api('logout',{});state=null;selectedDate='';view='overview';auth();}catch(e){toast(e.message);}});
 }
 function head(title,subtitle,action='') {return `<div class="page-head"><div><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`;}
+function gallerySection() {
+  if(!officeGallery.length)return '';
+  return `<section class="office-gallery" aria-labelledby="office-gallery-title"><div class="gallery-intro"><div class="eyebrow">CONOCE VALHALLA</div><h2 id="office-gallery-title">Un espacio para cada atención</h2><p>Recorre la entrada, la recepción y nuestros tres boxes. Pulsa una foto para verla completa.</p></div><div class="office-gallery-grid">${officeGallery.map(group=>`<article class="gallery-group"><div class="row spread"><h3>${escapeHTML(group.title)}</h3><span class="pill neutral">${group.photos.length} ${group.photos.length===1?'foto':'fotos'}</span></div><div class="gallery-photos">${group.photos.map((photo,index)=>`<button class="gallery-photo" data-gallery="${escapeHTML(group.id)}" data-photo-index="${index}" aria-label="Ver ${escapeHTML(photo.alt)}"><img src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}" loading="lazy" decoding="async"><span>Ampliar foto ${index+1}</span></button>`).join('')}</div></article>`).join('')}</div></section>`;
+}
+function bindGallery() {
+  document.querySelectorAll('[data-gallery]').forEach(button=>button.onclick=()=>{
+    const group=officeGallery.find(group=>group.id===button.dataset.gallery);if(!group)return;
+    let index=Number(button.dataset.photoIndex||0);
+    const show=()=>{
+      const photo=group.photos[index];
+      modal.innerHTML=`<h2 id="modal-title">${escapeHTML(group.title)}</h2><p class="muted">Foto ${index+1} de ${group.photos.length}</p><img class="room-photo-full" src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}"><div class="modal-actions gallery-controls">${group.photos.length>1?`<button class="btn ghost small" id="photo-previous" aria-label="Foto anterior">← Anterior</button><button class="btn ghost small" id="photo-next" aria-label="Foto siguiente">Siguiente →</button>`:''}<button class="btn small" id="photo-close">Cerrar foto</button></div>`;
+      document.querySelector('#photo-close').onclick=()=>modal.close();
+      const previous=document.querySelector('#photo-previous'),next=document.querySelector('#photo-next');
+      if(previous)previous.onclick=()=>{index=(index+group.photos.length-1)%group.photos.length;show();};
+      if(next)next.onclick=()=>{index=(index+1)%group.photos.length;show();};
+    };
+    show();modal.showModal();
+  });
+}
 function roomPhoto(box, large=false) {
-  const photo=state.rooms?.find(room=>room.box===box);
-  return photo ? `<button class="room-photo ${large?'room-photo-large':''}" data-photo="${box}" aria-label="Ver foto completa del Box ${box}"><img src="${escapeHTML(photo.image_url)}" alt="Fotografía de la oficina Box ${box}" loading="lazy" decoding="async"><span>Box ${box} · Ver foto</span></button>` : '';
+  const group=officeGallery.find(group=>group.box===box);
+  const photo=group?.photos[0];
+  return photo ? `<button class="room-photo ${large?'room-photo-large':''}" data-gallery="${escapeHTML(group.id)}" data-photo-index="0" aria-label="Ver fotos de ${escapeHTML(group.title)}"><img src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}" loading="lazy" decoding="async"><span>${escapeHTML(group.title)} · ${group.photos.length} ${group.photos.length===1?'foto':'fotos'}</span></button>` : '';
 }
 function bookingItem(b, actions=true) {
   return `<div class="booking-item"><div class="booking-info"><span class="box-avatar">0${b.box}</span><div><strong>${rooms[b.box-1]}</strong><p>${dateText(b.start)} · ${hourText(b.start)} · 1 hora</p>${pill(b.status)} ${b.modifications?'<span class="pill neutral">Cambio utilizado</span>':''}</div></div>${actions&&canModify(b)?`<button class="btn ghost small" data-modify="${b.id}">Modificar</button>`:''}</div>`;
@@ -83,14 +105,14 @@ function overview() {
   return head(`Hola, ${first} <span aria-hidden="true">✦</span>`, 'Un buen día empieza con un espacio para ti.', '<button class="btn" data-go="availability">Reservar un box →</button>')+stats()+
   `${!state.user.verified?'<div class="notice">Tu cuenta necesita documentación aprobada para reservar. <button class="text-btn" data-go="documents">Enviar documentación →</button></div>':''}
   <section class="hero"><div><div class="eyebrow">ESPACIO PARA LO QUE IMPORTA</div><h2>Tú cuidas de tus pacientes.<br>Nosotros, de tu espacio.</h2><p>Elige el box y el horario que mejor se adapten a ti. Tus horas funcionan en los tres espacios.</p><button class="btn" data-go="availability">Ver disponibilidad <span aria-hidden="true">→</span></button></div><div class="hero-art" aria-hidden="true"><div class="arch">01</div><div class="arch">02</div><div class="arch">03</div></div></section>
-  <div class="grid columns"><section class="card"><div class="card-head"><h2>Tus próximas atenciones</h2><button class="text-btn" data-go="bookings">Ver todas →</button></div>${upcoming().slice(0,3).map(b=>bookingItem(b)).join('')||empty('Tu agenda está abierta. Reserva tu primera hora.')}</section><section class="card"><h2>Tres boxes. Tu elección.</h2><p class="section-intro">Un entorno privado para tu práctica profesional.</p>${rooms.map((r,i)=>`<div class="room">${roomPhoto(i+1)||`<span class="room-badge">0${i+1}</span>`}<div><p>${r}</p><small>Uso profesional · Reserva de 1 hora</small></div></div>`).join('')}<small>Horarios: 08:00 a 20:00 · Chile</small></section></div>`;
+  <div class="grid columns"><section class="card"><div class="card-head"><h2>Tus próximas atenciones</h2><button class="text-btn" data-go="bookings">Ver todas →</button></div>${upcoming().slice(0,3).map(b=>bookingItem(b)).join('')||empty('Tu agenda está abierta. Reserva tu primera hora.')}</section><section class="card"><h2>Tres boxes. Tu elección.</h2><p class="section-intro">Un entorno privado para tu práctica profesional.</p>${rooms.map((r,i)=>`<div class="room">${roomPhoto(i+1)||`<span class="room-badge">0${i+1}</span>`}<div><p>${r}</p><small>Uso profesional · Reserva de 1 hora</small></div></div>`).join('')}<small>Horarios: 08:00 a 20:00 · Chile</small></section></div>${gallerySection()}`;
 }
 async function availability() {
   const data=await api('availability?date='+selectedDate);
   return head(modifying?'Modifica tu reserva':'Encuentra tu próximo espacio',modifying?'Un único cambio, sin consumir horas adicionales.':'Elige una hora y cualquiera de los tres boxes.')+
   `${modifying?`<div class="notice info">Reserva #${modifying.id}: ${rooms[modifying.box-1]} · ${dateText(modifying.start)} · ${hourText(modifying.start)}. <button class="text-btn" id="abort-change">Salir sin modificar</button></div>`:''}
   ${!state.user.verified&&state.user.role!=='admin'?'<div class="notice">Puedes consultar la agenda. Para reservar, primero verifica tu documentación.</div>':''}
-  ${(state.rooms||[]).length?`<section class="room-gallery" aria-label="Fotos de los boxes">${state.rooms.map(room=>roomPhoto(room.box,true)).join('')}</section>`:''}<section class="card"><div class="calendar-toolbar"><label>Fecha de atención<input id="schedule-date" type="date" value="${selectedDate}" min="${state.today}" max="${new Date(new Date(state.today+'T12:00:00Z').getTime()+90*86400000).toISOString().slice(0,10)}"></label><div><div class="legend"><span><i class="dot"></i>Disponible</span><span><i class="dot busy"></i>No disponible</span></div><p class="data-note">Hora de Chile · Sesiones de 60 minutos</p></div></div><div class="table-wrap"><table class="availability"><thead><tr><th scope="col">Hora</th>${rooms.map(r=>`<th scope="col"><span class="room-heading">${r}</span><span class="room-subtitle">Espacio profesional</span></th>`).join('')}</tr></thead><tbody>${data.slots.map(slot=>`<tr><td>${slot.label}</td>${slot.boxes.map(box=>`<td><button class="slot" data-slot="${slot.start}" data-box="${box.box}" ${box.available?'':'disabled'} aria-label="${rooms[box.box-1]}, ${slot.label}, ${box.available?'disponible':'no disponible'}">${box.available?'Disponible':'—'}</button></td>`).join('')}</tr>`).join('')}</tbody></table></div></section><p class="data-note">Las reservas se confirman con saldo y verificación vigentes. Un profesional no puede ocupar dos boxes a la misma hora.</p>`;
+  ${(state.rooms||[]).length?`<section class="room-gallery" aria-label="Fotos de los boxes">${state.rooms.map(room=>roomPhoto(room.box,true)).join('')}</section>`:''}<section class="card"><div class="calendar-toolbar"><label>Fecha de atención<input id="schedule-date" type="date" value="${selectedDate}" min="${state.today}" max="${new Date(new Date(state.today+'T12:00:00Z').getTime()+90*86400000).toISOString().slice(0,10)}"></label><div><div class="legend"><span><i class="dot"></i>Disponible</span><span><i class="dot busy"></i>No disponible</span></div><p class="data-note">Hora de Chile · Sesiones de 60 minutos</p></div></div><div class="table-wrap"><table class="availability"><thead><tr><th scope="col">Hora</th>${rooms.map((r,index)=>`<th scope="col"><span class="room-heading">${r}</span><span class="room-subtitle">${index===2?'Atención infantil':'Espacio profesional'}</span></th>`).join('')}</tr></thead><tbody>${data.slots.map(slot=>`<tr><td>${slot.label}</td>${slot.boxes.map(box=>`<td><button class="slot" data-slot="${slot.start}" data-box="${box.box}" ${box.available?'':'disabled'} aria-label="${rooms[box.box-1]}, ${slot.label}, ${box.available?'disponible':'no disponible'}">${box.available?'Disponible':'—'}</button></td>`).join('')}</tr>`).join('')}</tbody></table></div></section><p class="data-note">Las reservas se confirman con saldo y verificación vigentes. Un profesional no puede ocupar dos boxes a la misma hora.</p>`;
 }
 function bookings() {
   return head('Tu agenda, en orden','Una sola modificación por reserva, con al menos 2 horas de anticipación.','<button class="btn" data-go="availability">Nueva reserva →</button>')+
@@ -138,11 +160,7 @@ function showModal(title, content, confirmLabel, action) {
   };
 }
 function bind() {
-  document.querySelectorAll('[data-photo]').forEach(button=>button.onclick=()=>{
-    const box=Number(button.dataset.photo),photo=state.rooms.find(room=>room.box===box);
-    modal.innerHTML=`<h2 id="modal-title">Box ${box}</h2><img class="room-photo-full" src="${escapeHTML(photo.image_url)}" alt="Fotografía completa del Box ${box}"><div class="modal-actions"><button class="btn" id="photo-close">Cerrar foto</button></div>`;
-    modal.showModal();document.querySelector('#photo-close').onclick=()=>modal.close();
-  });
+  bindGallery();
   const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{event.preventDefault();const button=profileForm.querySelector('button');button.disabled=true;try{await api('profile',Object.fromEntries(new FormData(profileForm)));await reload();toast('Perfil profesional actualizado.');}catch(e){document.querySelector('#profile-error').textContent=e.message;}finally{button.disabled=false;}};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{view=b.dataset.go;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-modify]').forEach(b=>b.onclick=()=>{modifying=state.bookings.find(x=>x.id===Number(b.dataset.modify));selectedDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(modifying.start));view='availability';render().catch(e=>toast(e.message));});
@@ -177,4 +195,9 @@ function bind() {
     showModal(title,`<p>${copy}</p>${action==='document'?`<label class="review-label">Observación ${decision==='rejected'?'(obligatoria)':'(opcional)'}<textarea id="review-note" rows="3" maxlength="500"></textarea></label>`:''}`,'Confirmar',async()=>{await api('admin',{action,id:Number(b.dataset.id),decision,active,note:document.querySelector('#review-note')?.value||''});toast('Operación registrada.');});
   });
 }
-api('me').then(async data=>{state=data;selectedDate=data.today;if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}).catch(()=>auth());
+async function startApp() {
+  try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
+  try{const data=await api('me');state=data;selectedDate=data.today;if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}
+  catch{auth();}
+}
+startApp();

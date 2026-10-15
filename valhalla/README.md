@@ -90,3 +90,9 @@ Prueba manual: abre una ventana privada → Acceso profesional → crea una cuen
 `vista-previa.html` es autónomo y no se conecta a la base del sitio. Ahora abre el inicio con campos vacíos, sin cuentas precreadas. Permite explorar el registro con datos ficticios en memoria. No permite acceder a la administración privada: esa función se prueba en el servidor. Los datos se pierden al recargar. Regenera el archivo con `python3 build_preview.py` después de cambiar la interfaz o `preview-api.js`.
 
 El bingo original de AVOJA permanece intacto.
+
+## Fotos de la oficina
+
+Galería pública agrupada: Entrada (1), Recepción (2 y 3), Box infantil (6 y 7), Box 1 (11 y 12) y Box 2 (13, 14 y 15). El box infantil es el tercer box reservable. Todas las fotografías se conservan completas y el visor permite recorrer las de cada espacio. En disponibilidad aparecen únicamente los boxes, con sus fotos correspondientes.
+
+Las fotos viven en `static/images` y se publican desde Git, sin depender de SQLite. Consulta `static/images/README.md` para reemplazarlas. La vista del chat tiene interfaz y operaciones locales, pero carga estas imágenes desde la web pública para mantener liviano el HTML.

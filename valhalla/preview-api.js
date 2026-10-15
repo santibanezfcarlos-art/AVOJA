@@ -28,6 +28,7 @@ function previewSlot(body){
 }
 async function api(path,body){
   const db=previewDB;
+  if(path==='gallery')return {groups:globalThis.VALHALLA_GALLERY||[]};
   if(path==='login'){
     const user=db.users.find(u=>u.email===String(body.email).toLowerCase());
     const valid=user?.password;
