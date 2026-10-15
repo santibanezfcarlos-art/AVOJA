@@ -1,0 +1,11 @@
+# Public TEST demo only. Data is ephemeral; this service never processes payments.
+services:
+  - type: web
+    name: valhalla-office-demo
+    runtime: docker
+    plan: free
+    rootDir: valhalla
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: false
