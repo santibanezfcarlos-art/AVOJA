@@ -35,13 +35,21 @@ def main():
         private=secrets.token_urlsafe(32)
         store=Store(Path(directory)/'test.sqlite3');store.configure_access(private)
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.store=store;server.email_delivery=delivery
+        script=sys.argv[1] if len(sys.argv)>1 else 'browser.cjs'
+        if script not in ('browser.cjs','migration_payments_browser.cjs'):
+            raise ValueError('Unknown browser suite')
+        if script=='migration_payments_browser.cjs':
+            sys.path.insert(0,str(root/'tests'))
+            from test_migration_payments import FakeGateway
+            from payments import PaymentService
+            server.webpay=PaymentService(store,FakeGateway())
         mailbox=ThreadingHTTPServer(('127.0.0.1',0),Mailbox)
         threads=[threading.Thread(target=s.serve_forever,daemon=True) for s in (server,mailbox)]
         for thread in threads:thread.start()
         env=os.environ.copy();env['VALHALLA_TEST_ADMIN_PASSWORD']=private
         env['VALHALLA_TEST_URL']=f'http://127.0.0.1:{server.server_port}'
         env['VALHALLA_TEST_MAILBOX_URL']=f'http://127.0.0.1:{mailbox.server_port}'
-        try:return subprocess.run(['node','tests/browser.cjs'],cwd=root,env=env).returncode
+        try:return subprocess.run(['node','tests/'+script],cwd=root,env=env).returncode
         finally:
             for s in (server,mailbox):s.shutdown();s.server_close()
             for thread in threads:thread.join()

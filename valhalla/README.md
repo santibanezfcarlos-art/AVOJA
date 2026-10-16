@@ -61,7 +61,7 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 
 - Tres boxes, sesiones de 55 minutos con inicios cada hora de 08:00 a 19:00 (última atención hasta 19:55), zona `America/Santiago`, hasta 90 días hacia adelante.
 - Sesión individual de $5.990 y planes personales mixtos de 5, 10, 30, 60, 100 y 200 horas, sin vencimiento en este prototipo. Cada hora contratada equivale a una sesión de 55 minutos. Se comparten entre boxes, no entre profesionales.
-- Solo el profesional activo y verificado reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
+- Solo el profesional activo, con correo confirmado e identidad validada por carnet o migración administrativa, reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
 - Una transacción crea la reserva y descuenta el saldo. Un índice único protege el box y horario; el profesional tampoco puede reservar dos boxes simultáneamente. Un trigger impide transferir el paquete.
 - Una modificación por reserva, al menos dos horas antes tanto del horario original como del nuevo. No consume otra hora; un intento fallido no gasta el cambio.
 - Administración revisa el último envío privado (hasta 5 archivos y 10 MB en total), aprueba o rechaza con observaciones, confirma pagos simulados, activa usuarios y cancela reservas futuras devolviendo la hora una sola vez.
@@ -70,7 +70,7 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 
 Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Los horarios se guardan en UTC. La API y la interfaz usan el mismo origen.
 
-Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación de cuentas, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del carnet no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Ningún cobro real está implementado.
+Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación de cuentas, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del carnet no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Webpay está implementado únicamente en integración, desactivado por defecto; ningún cobro real está habilitado.
 
 ## Pruebas
 
@@ -105,7 +105,7 @@ El carrusel pausa al situar el puntero o el foco sobre sus controles y cuando la
 
 ## Carnet obligatorio y agenda administrativa
 
-Todos los perfiles profesionales, incluido el propietario, necesitan el último carnet de identidad aprobado **y** saldo con pago confirmado para crear o modificar reservas. El carnet se envía como entre 1 y 5 archivos de cualquier formato, hasta 10 MB en total, que incluyan anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar su carnet pendiente de revisión. La revisión es manual, no una validación contra un registro oficial.
+Los perfiles profesionales nuevos, incluido el propietario, necesitan el último carnet de identidad aprobado **y** saldo con pago confirmado. Los clientes anteriores pueden recibir una validación administrativa de migración, sin repetir el carnet, según [MIGRACION.md](MIGRACION.md); todos necesitan confirmar su correo y tener saldo para reservar. Para los nuevos perfiles, se requiere carnet aprobado para crear o modificar reservas. El carnet se envía en entre 1 y 5 archivos de cualquier formato, hasta 10 MB en total, que incluyan anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar su carnet pendiente de revisión. La revisión es manual, no una validación contra un registro oficial.
 
 La migración añade `documents.kind` sin borrar archivos ni reservas. Los documentos anteriores se clasifican como acreditaciones, por lo que requieren enviar un carnet nuevo; los usuarios conservan sus cuentas, saldos y reservas. La identidad pendiente no bloquea el acceso administrativo del propietario. Hasta contar con almacenamiento persistente y protección de documentos adecuada para un piloto, usa carnets ficticios.
 
@@ -148,7 +148,7 @@ Para producción conviene un dominio propio con autenticación del remitente. Ta
 
 Los adjuntos se descargan como binarios privados, nunca se ejecutan ni muestran incrustados. Admitir cualquier extensión no demuestra que el documento sea legible o auténtico: administración debe revisar ambos lados. En Render gratuito la base local puede perderse al desplegar o reiniciar; antes de usar carnets reales o pagos, se requiere almacenamiento persistente y protegido.
 
-La conexión de pagos propuesta está en [TRANSBANK.md](TRANSBANK.md). Los cobros siguen simulados.
+La conexión de pagos de prueba está en [TRANSBANK.md](TRANSBANK.md). Los cobros reales siguen deshabilitados.
 
 
 ## Confirmación y recuperación de contraseña
@@ -162,3 +162,11 @@ La recuperación utiliza el mismo servicio SendGrid/Resend ya documentado. Si to
 La contraseña del administrador, incluso cuando utiliza su perfil profesional, sigue gestionándose únicamente mediante `VALHALLA_ADMIN_PASSWORD` en Render y un nuevo despliegue. La pantalla de recuperación del acceso administrador explica ese procedimiento. Esto evita que un restablecimiento web sea reemplazado al reiniciar por el valor privado configurado.
 
 Prueba manual: registra una cuenta con contraseñas distintas y comprueba el rechazo; vuelve a enviarlas iguales. Desde el inicio solicita recuperación, abre el correo, escribe dos veces la contraseña nueva e inicia sesión. Comprueba que el enlace no pueda reutilizarse y que la contraseña anterior ya no funcione. Usa una instancia aislada para estas pruebas.
+
+
+## Clientes anteriores y Webpay
+
+- [MIGRACION.md](MIGRACION.md): carga individual o CSV con vista previa, migración de saldos restantes y reconocimiento de identidades ya validadas. Solo administración puede realizarla. No se crean contraseñas compartidas.
+- [TRANSBANK.md](TRANSBANK.md): API Webpay Plus de integración, checkout alojado, acreditación automática y única, conciliación, configuración y pasos pendientes para producción. El proxy de este entorno bloqueó la conexión al sandbox; la aprobación real de integración queda pendiente de probar desde Render.
+
+La base local de Render gratuito sigue siendo temporal. Antes de trasladar saldos reales, configura almacenamiento persistente y respaldo. `VALHALLA_DB_PATH` permite elegir la ruta de una base en un disco persistente, sin cambiar la ruta predeterminada de la demo. Un despliegue de código no contrata ni monta ese disco.

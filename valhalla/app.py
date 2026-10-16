@@ -2,6 +2,8 @@
 import argparse
 import base64
 import binascii
+import csv
+import io
 import hashlib
 import hmac
 import json
@@ -11,13 +13,14 @@ import secrets
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from mailer import EmailDelivery
+from payments import PaymentService, WebpayGateway, PaymentError
 
 ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
@@ -156,6 +159,22 @@ class Store:
               hours INTEGER NOT NULL, remaining INTEGER NOT NULL CHECK(remaining >= 0),
               price INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
               created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS payment_attempts (
+              id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+              package_id INTEGER NOT NULL UNIQUE REFERENCES packages(id), idempotency_key TEXT NOT NULL,
+              buy_order TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL UNIQUE, amount INTEGER NOT NULL,
+              hours INTEGER NOT NULL, environment TEXT NOT NULL, state TEXT NOT NULL,
+              token TEXT UNIQUE, checkout_url TEXT, processing_until REAL NOT NULL DEFAULT 0, checked_at REAL NOT NULL DEFAULT 0,
+              commit_requested INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+              UNIQUE(user_id,idempotency_key));
+            CREATE UNIQUE INDEX IF NOT EXISTS one_open_webpay_per_user ON payment_attempts(user_id)
+              WHERE state IN ('creating','ready','uncertain','review');
+            CREATE TABLE IF NOT EXISTS legacy_imports (
+              id INTEGER PRIMARY KEY, reference TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL, specialty TEXT NOT NULL, sessions INTEGER NOT NULL CHECK(sessions>=0),
+              note TEXT NOT NULL, actor_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL,
+              user_id INTEGER UNIQUE REFERENCES users(id), package_id INTEGER UNIQUE REFERENCES packages(id),
+              identity_valid INTEGER NOT NULL DEFAULT 1);
             CREATE TABLE IF NOT EXISTS bookings (
               id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               package_id INTEGER NOT NULL REFERENCES packages(id),
@@ -176,6 +195,13 @@ class Store:
             user_columns = {row['name'] for row in c.execute('PRAGMA table_info(users)')}
             if 'email_verified' not in user_columns:
                 c.execute('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0')
+            payment_columns = {row['name'] for row in c.execute('PRAGMA table_info(payment_attempts)')}
+            for column in ('checked_at','commit_requested'):
+                if column not in payment_columns:
+                    c.execute(f'ALTER TABLE payment_attempts ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0')
+            package_columns = {row['name'] for row in c.execute('PRAGMA table_info(packages)')}
+            if 'source' not in package_columns:
+                c.execute("ALTER TABLE packages ADD COLUMN source TEXT NOT NULL DEFAULT 'simulated'")
             if 'kind' not in columns:
                 c.execute("ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'accreditation'")
 
@@ -223,10 +249,12 @@ class Store:
 
             c.execute("UPDATE users SET email_verified=1 WHERE email=? AND role='admin'", (ADMIN_EMAIL,))
             # Old professional accreditation or a legacy flag is not an identity check.
-            c.execute("""UPDATE users SET verified=COALESCE((SELECT status='approved' FROM documents
-                         WHERE user_id=users.id AND kind='identity' ORDER BY id DESC LIMIT 1),0)""")
+            c.execute("""UPDATE users SET verified=CASE WHEN EXISTS(SELECT 1 FROM legacy_imports WHERE user_id=users.id AND identity_valid=1) THEN 1 ELSE COALESCE((SELECT status='approved' FROM documents
+                         WHERE user_id=users.id AND kind='identity' ORDER BY id DESC LIMIT 1),0) END""")
 
     def identity_verified(self, c, uid):
+        if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (uid,)).fetchone():
+            return True
         row = c.execute("SELECT status FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
         return bool(row and row['status'] == 'approved')
 
@@ -273,9 +301,88 @@ class Store:
                                    (name, email, password_hash(password), specialty))
                 self.log(c, cursor.lastrowid, 'registered', cursor.lastrowid)
                 uid = cursor.lastrowid
+                self.attach_legacy(c, uid, email)
         except sqlite3.IntegrityError:
             raise Problem('Ya existe una cuenta con ese correo.', 409)
         return uid
+
+    def attach_legacy(self, c, uid, email):
+        legacy = c.execute('SELECT * FROM legacy_imports WHERE email=? AND user_id IS NULL', (email,)).fetchone()
+        if not legacy:
+            return
+        package = None
+        if legacy['sessions']:
+            package = c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at,source) VALUES(?,?,?,0,'paid',?,'migration')", (uid, legacy['sessions'], legacy['sessions'], stamp(now()))).lastrowid
+        c.execute('UPDATE legacy_imports SET user_id=?,package_id=? WHERE id=? AND user_id IS NULL', (uid, package, legacy['id']))
+        c.execute('UPDATE users SET verified=1 WHERE id=?', (uid,))
+        self.log(c, legacy['actor_id'], 'legacy_balance_attached', legacy['id'])
+
+    def import_legacy(self, actor, body, connection=None):
+        email = str(body.get('email', '')).strip().lower()
+        name = str(body.get('name', '')).strip()
+        specialty = str(body.get('specialty', '')).strip()
+        reference = str(body.get('reference', '')).strip()
+        note = str(body.get('note', '')).strip()
+        sessions = body.get('sessions')
+        if body.get('identity_confirmed') is not True:
+            raise Problem('Confirma que este cliente ya fue validado en el sistema anterior.')
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email) or len(email)>200 or email == ADMIN_EMAIL or email in LEGACY_DEMO_EMAILS:
+            raise Problem('Indica el correo de un cliente profesional válido.')
+        if not 2<=len(name)<=100 or not 2<=len(specialty)<=100 or not 2<=len(reference)<=100 or not 5<=len(note)<=500:
+            raise Problem('Completa nombre, especialidad, referencia anterior y observación (mínimo 5 caracteres).')
+        if type(sessions) is not int or not 0<=sessions<=10000:
+            raise Problem('Indica un saldo entero entre 0 y 10.000 sesiones.')
+        with (nullcontext(connection) if connection is not None else self.connection(True)) as c:
+            administrator = c.execute('SELECT * FROM users WHERE id=?', (actor,)).fetchone()
+            if not administrator or administrator['email'] != ADMIN_EMAIL or administrator['role'] != 'admin' or not administrator['active']:
+                raise Problem('Acceso reservado a administración.', 403)
+            if c.execute('SELECT id FROM legacy_imports WHERE email=? OR reference=?', (email,reference)).fetchone():
+                raise Problem('Este correo o referencia ya fue migrado. No se volvió a cargar saldo.', 409)
+            existing = c.execute('SELECT * FROM users WHERE email=?', (email,)).fetchone()
+            if existing and (existing['role']!='professional' or not existing['active']):
+                raise Problem('La cuenta existente debe ser profesional y estar activa.', 409)
+            if existing and existing['name'].casefold() != name.casefold():
+                raise Problem('El nombre no coincide con la cuenta existente. Verifica el titular antes de migrar.', 409)
+            iid = c.execute('INSERT INTO legacy_imports(reference,email,name,specialty,sessions,note,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)', (reference,email,name,specialty,sessions,note,actor,stamp(now()))).lastrowid
+            if existing:
+                self.attach_legacy(c, existing['id'], email)
+            self.log(c, actor, 'legacy_import_validated', iid)
+            return iid
+
+    def import_legacy_csv(self, actor, body, preview=False):
+        text = body.get('csv')
+        if not isinstance(text, str) or not text.strip() or len(text.encode())>1_000_000:
+            raise Problem('Adjunta un CSV con contenido, hasta 1 MB.')
+        if body.get('identity_confirmed') is not True:
+            raise Problem('Confirma que los clientes de esta planilla ya fueron validados.')
+        try:
+            delimiter = ';' if text.splitlines()[0].count(';')>text.splitlines()[0].count(',') else ','
+            reader = csv.DictReader(io.StringIO(text.lstrip('\ufeff')), delimiter=delimiter, strict=True)
+            expected = ['referencia','nombre','correo','especialidad','sesiones','observacion']
+            if reader.fieldnames != expected:
+                raise Problem('Las columnas deben ser: referencia,nombre,correo,especialidad,sesiones,observacion. Descarga la plantilla.')
+            rows = list(reader)
+        except (csv.Error, IndexError):
+            raise Problem('El CSV no tiene un formato válido.')
+        if not 1<=len(rows)<=500:
+            raise Problem('Importa entre 1 y 500 clientes por archivo.')
+        summary = []
+        with self.connection(True) as c:
+            for number, row in enumerate(rows, 2):
+                try:
+                    if None in row or any(value is None for value in row.values()) or not re.fullmatch(r'\d{1,5}',row['sesiones'].strip()):
+                        raise Problem('Verifica el número de columnas y el saldo entero de sesiones.')
+                    data = dict(zip(('reference','name','email','specialty','sessions','note'), (row[key] for key in expected)))
+                    data['sessions'] = int(data['sessions'])
+                    data['identity_confirmed'] = True
+                    self.import_legacy(actor, data, connection=c)
+                    summary.append({'name':data['name'].strip(), 'email':data['email'].strip().lower(), 'sessions':data['sessions'], 'reference':data['reference'].strip()})
+                except Problem as error:
+                    raise Problem(f'Fila {number}: {error.message} No se importó ningún cliente.', error.status)
+            if preview:
+                # Reuse every real constraint while rolling back rows, balances and audit entries.
+                c.rollback()
+        return {'rows':summary, 'count':len(summary), 'sessions':sum(row['sessions'] for row in summary), 'preview':preview}
 
     def issue_email_token(self, uid):
         token = secrets.token_urlsafe(32)
@@ -354,10 +461,12 @@ class Store:
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
             profile['verified'] = int(self.identity_verified(c, user['id']))
+            profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
             return {'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
+                    'payments': [dict(r) for r in c.execute('SELECT id,package_id,buy_order,amount,hours,environment,state,created_at FROM payment_attempts WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'session_minutes': SESSION_MINUTES, 'booking_interval_minutes': 60,
                     'catalog': [{'id': key, 'hours': val[0], 'sessions': val[0], 'duration_minutes': SESSION_MINUTES, 'price': val[1]} for key, val in CATALOG.items()]}
 
@@ -370,6 +479,7 @@ class Store:
             previous = c.execute('SELECT name FROM users WHERE id=?', (uid,)).fetchone()
             c.execute('UPDATE users SET name=?,specialty=? WHERE id=?', (name, specialty, uid))
             if previous and previous['name'] != name:
+                c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
                 c.execute("""UPDATE documents SET status='pending',reviewer_id=NULL,
                              note='El nombre del perfil cambió; revisa nuevamente la identidad.'
                              WHERE id=(SELECT id FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1)""", (uid,))
@@ -419,7 +529,7 @@ class Store:
     def professional(self, c, uid):
         row = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
         if not row or not supports_professional(row) or not row['active'] or not self.identity_verified(c, uid):
-            raise Problem('Para reservar necesitas una cuenta activa y el carnet de identidad aprobado, además de saldo confirmado.', 403)
+            raise Problem('Para reservar necesitas una cuenta activa, identidad validada por administración y saldo confirmado.', 403)
         if not row['email_verified']:
             raise Problem('Confirma tu correo electrónico antes de reservar.', 403)
 
@@ -517,12 +627,15 @@ class Store:
             for position, (filename, raw) in enumerate(prepared[1:], 2):
                 c.execute("INSERT INTO document_attachments VALUES(?,?,?,'application/octet-stream',?)", (cursor.lastrowid, position, filename, raw))
             if kind == 'identity':
+                c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
             self.log(c, uid, 'document_uploaded', cursor.lastrowid)
 
     def admin_state(self):
         with self.connection() as c:
-            return {'users': [dict(r) for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
+            return {'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
+                    'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
+                    'users': [dict(r) | {'verified':int(self.identity_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,u.name FROM packages p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
@@ -537,6 +650,8 @@ class Store:
                 row = c.execute('SELECT * FROM packages WHERE id=?', (target,)).fetchone()
                 if not row:
                     raise Problem('Paquete no encontrado.', 404)
+                if row['source'] != 'simulated':
+                    raise Problem('Este paquete no es un pago simulado y no admite confirmación manual.', 403)
                 if row['status'] != 'pending':
                     raise Problem('El pago ya fue procesado.', 409)
                 decision = body.get('decision')
@@ -607,7 +722,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Cache-Control', cache)
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self' https://webpay3gint.transbank.cl; frame-ancestors 'none'")
 
     def respond(self, data, status=200, cookie=None):
         raw = json.dumps(data, ensure_ascii=False).encode()
@@ -643,10 +758,31 @@ class Handler(BaseHTTPRequestHandler):
         if user['role'] != 'admin' or user['email'] != ADMIN_EMAIL:
             raise Problem('Acceso exclusivo de administración.', 403)
 
+    def webpay_return(self, fields):
+        service = getattr(self.server, 'webpay', None)
+        try:
+            if not service:
+                raise PaymentError('Webpay no está habilitado.')
+            result = service.returned(fields)
+            status = result['state']
+        except (PaymentError, sqlite3.Error):
+            status = 'pending'
+        self.send_response(303)
+        self.headers_common()
+        self.send_header('Location', '/?payment_result=' + status)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         route = urlparse(self.path)
         try:
+            if route.path == '/api/webpay/return':
+                query = parse_qs(route.query)
+                if len(route.query)>8192 or any(len(values)!=1 for values in query.values()):
+                    raise Problem('Retorno de pago inválido.')
+                self.webpay_return({key:values[0] for key,values in query.items()})
+                return
             if not route.path.startswith('/api/'):
                 files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
                 if route.path.startswith('/images/'):
@@ -674,6 +810,7 @@ class Handler(BaseHTTPRequestHandler):
             user = self.server.store.session(self.cookie())
             if route.path == '/api/me':
                 data = self.server.store.state(user)
+                data['webpay_mode'] = getattr(getattr(self.server, 'webpay', None), 'mode', 'disabled')
                 data['email_delivery_available'] = bool(getattr(self.server, 'email_delivery', None) and self.server.email_delivery.configured)
                 self.respond(data)
             elif route.path == '/api/admin/availability':
@@ -708,9 +845,26 @@ class Handler(BaseHTTPRequestHandler):
                 raise Problem('Ruta no encontrada.', 404)
         except Problem as e:
             self.respond({'error': e.message}, e.status)
+        except sqlite3.Error:
+            self.respond({'error': 'No se pudo consultar la información. Inténtalo nuevamente.'}, 503)
 
     def do_POST(self):
         try:
+            if self.path == '/api/webpay/return':
+                from urllib.parse import parse_qs
+                if self.headers.get('Content-Type','').split(';')[0] != 'application/x-www-form-urlencoded':
+                    raise Problem('Retorno de pago inválido.',415)
+                try:
+                    size = int(self.headers.get('Content-Length','0'))
+                    if not 0<size<=8192:
+                        raise ValueError()
+                    query = parse_qs(self.rfile.read(size).decode('utf-8'), max_num_fields=10)
+                    if any(len(values)!=1 for values in query.values()):
+                        raise ValueError()
+                except (ValueError, UnicodeDecodeError):
+                    raise Problem('Retorno de pago inválido.')
+                self.webpay_return({key:values[0] for key,values in query.items()})
+                return
             # JSON-only public endpoints and same-origin checks prevent login CSRF.
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 raise Problem('Se requiere JSON.', 415)
@@ -774,7 +928,28 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/profile':
                 result = store.update_profile(user['id'], body)
             elif self.path == '/api/packages':
+                if getattr(getattr(self.server,'webpay',None),'mode','disabled') != 'disabled':
+                    raise Problem('Utiliza Webpay para comprar este plan.',409)
                 result = store.buy(user['id'], body)
+            elif self.path == '/api/webpay/create':
+                service = getattr(self.server,'webpay',None)
+                if not service:
+                    raise PaymentError('Webpay no está habilitado.',409)
+                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key')))
+                return
+            elif self.path == '/api/webpay/reconcile':
+                service = getattr(self.server,'webpay',None)
+                if not service or type(body.get('id')) is not int:
+                    raise PaymentError('Pago inválido.',400)
+                self.respond(service.reconcile(body['id'],uid=user['id']))
+                return
+            elif self.path == '/api/admin/webpay/reconcile':
+                self.admin(user)
+                service = getattr(self.server,'webpay',None)
+                if not service or type(body.get('id')) is not int:
+                    raise PaymentError('Pago inválido.',400)
+                self.respond(service.reconcile(body['id']))
+                return
             elif self.path == '/api/bookings':
                 result = store.reserve(user['id'], body)
             elif self.path.startswith('/api/bookings/'):
@@ -785,13 +960,21 @@ class Handler(BaseHTTPRequestHandler):
                 result = store.modify(user['id'], bid, body)
             elif self.path == '/api/documents':
                 result = store.upload(user['id'], body)
+            elif self.path in ('/api/admin/migrations/preview', '/api/admin/migrations/import'):
+                self.admin(user)
+                result = store.import_legacy_csv(user['id'], body, preview=self.path.endswith('/preview'))
+                self.respond(result)
+                return
+            elif self.path == '/api/admin/migrations':
+                self.admin(user)
+                result = store.import_legacy(user['id'], body)
             elif self.path == '/api/admin':
                 self.admin(user)
                 result = store.admin_action(user['id'], body)
             else:
                 raise Problem('Ruta no encontrada.', 404)
             self.respond({'ok': True, 'id': result})
-        except Problem as e:
+        except (Problem, PaymentError) as e:
             self.respond({'error': e.message}, e.status)
         except sqlite3.Error:
             self.respond({'error': 'No se pudo completar la operación. Inténtalo nuevamente.'}, 503)
@@ -801,7 +984,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8080)
-    parser.add_argument('--db', default=str(ROOT / 'data' / 'valhalla.sqlite3'))
+    parser.add_argument('--db', default=os.environ.get('VALHALLA_DB_PATH', str(ROOT / 'data' / 'valhalla.sqlite3')))
     parser.add_argument('--seed-demo', action='store_true', help=argparse.SUPPRESS)  # Accepted for old launch commands; no accounts are seeded.
     parser.add_argument('--secure-cookie', action='store_true', help='Require HTTPS for session cookies (hosting behind TLS proxy).')
     args = parser.parse_args()
@@ -814,10 +997,27 @@ def main():
     server.store = store
     server.secure_cookie = args.secure_cookie
     server.email_delivery = EmailDelivery()
+    try:
+        server.webpay = PaymentService(store, WebpayGateway())
+    except ValueError as error:
+        parser.error(str(error))
+    stop_payments = threading.Event()
+    def reconcile_payments():
+        while not stop_payments.is_set():
+            try:
+                server.webpay.reconcile_pending()
+            except sqlite3.Error:
+                pass  # Keep pending attempts for the next pass; never credit on database failure.
+            stop_payments.wait(30)
+    if server.webpay.mode == 'integration':
+        threading.Thread(target=reconcile_payments, daemon=True).start()
     print(f'Valhalla Office · prototipo local · puerto {args.port}', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
+        pass
+    finally:
+        stop_payments.set()
         server.server_close()
 
 
