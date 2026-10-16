@@ -28,6 +28,8 @@ function previewSlot(body){
 }
 async function api(path,body){
   const db=previewDB;
+  if(path==='email-verification/resend')return {sent:false,available:false,message:'La confirmación de correo funciona en el sitio con servidor, después de configurar el servicio de envío.'};
+  if(path==='verify-email')throw Error('Confirma tu correo en el sitio publicado con servidor.');
   if(path==='gallery')return {groups:globalThis.VALHALLA_GALLERY||[]};
   if(path==='login'){
     const user=db.users.find(u=>u.email===String(body.email).toLowerCase());
@@ -41,7 +43,7 @@ async function api(path,body){
     if(email==='santibanezf.carlos@gmail.com')throw Error('Este correo está reservado para administración.');
     if(db.users.some(u=>u.email===email))throw Error('Ya existe una cuenta con ese correo.');
     if(String(body.password).length<10)throw Error('La contraseña debe tener al menos 10 caracteres.');
-    const user={id:previewId(db.users),name:body.name,email,specialty:body.specialty,password:body.password,role:'professional',active:1,verified:0};
+    const user={id:previewId(db.users),name:body.name,email,specialty:body.specialty,password:body.password,role:'professional',active:1,verified:0,email_verified:0};
     db.users.push(user);previewUser=user.id;return {ok:true};
   }
   if(path==='logout'){previewUser=null;return {ok:true};}
@@ -78,9 +80,12 @@ async function api(path,body){
     const b={id:previewId(db.bookings),user_id:user.id,package_id:p.id,box:body.box,start,status:'confirmed',modifications:0,created_at:new Date().toISOString()};p.remaining--;db.bookings.push(b);previewRecord('reserved',b.id);return {ok:true,id:b.id};
   }
   if(path==='documents'){
-    const binary=atob(body.content);
-    if(user.role!=='professional'||!body.filename.toLowerCase().endsWith('.pdf')||!binary.startsWith('%PDF-')||binary.length>2000000)throw Error('Adjunta un PDF ficticio de hasta 2 MB.');
-    db.documents.push({id:previewId(db.documents),user_id:user.id,filename:body.filename,kind:body.kind||'accreditation',content:body.content,status:'pending',note:'',created_at:new Date().toISOString()});user.verified=0;previewRecord('document_uploaded',user.id);return {ok:true};
+    const files=body.files||[body];
+    if(!Array.isArray(files)||!files.length||files.length>5)throw Error('Selecciona de 1 a 5 archivos.');
+    let size=0;for(const file of files){const binary=atob(file.content);if(!binary.length)throw Error('Archivo vacío.');size+=binary.length;}
+    if(size>10*1024*1024)throw Error('Los archivos deben sumar como máximo 10 MB.');
+    const id=previewId(db.documents);
+    db.documents.push({id,user_id:user.id,filename:files[0].filename,kind:body.kind||'accreditation',content:files[0].content,files:files.map((file,index)=>({...file,position:index+1,download_url:index?`/api/documents/${id}/files/${index+1}`:`/api/documents/${id}`})),status:'pending',note:'',created_at:new Date().toISOString()});user.verified=0;previewRecord('document_uploaded',user.id);return {ok:true};
   }
   if(path==='admin'){
     if(user.role!=='admin')throw Error('Acceso exclusivo de administración.');
@@ -103,7 +108,7 @@ async function api(path,body){
 }
 document.addEventListener('click',event=>{
   const link=event.target.closest('a[href^="/api/documents/"]');if(!link)return;
-  event.preventDefault();const id=Number(link.getAttribute('href').split('/').pop());
-  const d=previewDB.documents.find(d=>d.id===id);if(!d)return;
-  const download=document.createElement('a');download.href='data:application/pdf;base64,'+d.content;download.download=d.filename;download.click();
+  event.preventDefault();const parts=link.getAttribute('href').split('/');const id=Number(parts[3]),position=Number(parts[5]||1);
+  const document=previewDB.documents.find(d=>d.id===id);if(!document)return;const d=document.files?.[position-1]||document;
+  const download=document.createElement('a');download.href='data:application/octet-stream;base64,'+d.content;download.download=d.filename;download.click();
 });

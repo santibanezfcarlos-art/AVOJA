@@ -30,6 +30,8 @@ class IdentityAndSchedule(unittest.TestCase):
         self.store.register({'name': 'Profesional Agenda', 'email': 'agenda@test.cl', 'password': self.password, 'specialty': 'Psicología'})
         self.pro_token = self.store.login({'email': 'agenda@test.cl', 'password': self.password})
         self.uid = self.store.session(self.pro_token)['id']
+        email_token,_ = self.store.issue_email_token(self.uid)
+        self.store.confirm_email(email_token)
 
     def slot(self, hour=10, day=1):
         return {'box': 1, 'start': stamp((self.clock + timedelta(days=day)).replace(hour=hour, minute=0, second=0, microsecond=0))}
@@ -170,3 +172,14 @@ class IdentityAndSchedule(unittest.TestCase):
             self.assertEqual(cell['booking']['user_id'], self.uid)
         finally:
             server.shutdown(); server.server_close(); thread.join()
+
+    def test_email_is_required_even_after_payment_and_identity_approval(self):
+        self.approve(self.upload())
+        self.pay()
+        with self.store.connection(True) as c:
+            c.execute('UPDATE users SET email_verified=0 WHERE id=?',(self.uid,))
+            c.execute('DELETE FROM email_verifications WHERE user_id=?',(self.uid,))
+        with self.assertRaises(Problem): self.store.reserve(self.uid,self.slot())
+        token,_ = self.store.issue_email_token(self.uid)
+        self.store.confirm_email(token)
+        self.store.reserve(self.uid,self.slot())

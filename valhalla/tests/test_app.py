@@ -30,6 +30,7 @@ class Rules(unittest.TestCase):
             for uid, role, verified in [(1, 'professional', 1), (2, 'professional', 1), (3, 'professional', 0), (4, 'admin', 1)]:
                 c.execute('INSERT INTO users(id,name,email,password,role,verified) VALUES(?,?,?,?,?,?)',
                           (uid, f'Persona {uid}', ADMIN_EMAIL if role=='admin' else f'{uid}@test.cl', self.encoded, role, verified))
+                c.execute('UPDATE users SET email_verified=1 WHERE id=?',(uid,))
                 if verified:
                     c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,?,'application/pdf',?,'approved',?,'identity')", (0 if uid==4 else -uid,uid,'fixture.pdf',b'%PDF-1.4\nTEST',stamp(self.clock)))
                 if role == 'professional':
@@ -233,10 +234,10 @@ class Rules(unittest.TestCase):
             self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected'})
         self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected','note':'Documento incompleto'})
 
-    def test_invalid_pdf_is_rejected(self):
-        for data in [{'filename':'x.html','content':base64.b64encode(b'<html>bad').decode()},
-                     {'filename':'x.pdf','content':'!!'},
-                     {'filename':'x.pdf','content':base64.b64encode(b'%PDF-'+b'x'*2000000).decode()}]:
+    def test_invalid_or_empty_files_are_rejected(self):
+        for data in [{'filename':'x.pdf','content':'!!'},
+                     {'filename':'empty.png','content':''},
+                     {'filename':'large.bin','content':base64.b64encode(b'x'*(10*1024*1024+1)).decode()}]:
             with self.subTest(data=data['filename']),self.assertRaises(Problem):
                 self.store.upload(1,data)
 

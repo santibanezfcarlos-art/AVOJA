@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -15,12 +16,14 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from mailer import EmailDelivery
 
 ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
 CATALOG = {'1': (1, 5990), '5': (5, 28990), '10': (10, 54990), '30': (30, 144990), '60': (60, 254990), '100': (100, 364990), '200': (200, 599990)}
 SESSION_MINUTES = 55
-MAX_BODY = 3_000_000
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_BODY = 14_100_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
 LEGACY_DEMO_EMAILS = ("admin@valhalla.demo", "profesional@valhalla.demo")
 
@@ -127,6 +130,9 @@ class Store:
               password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'professional',
               specialty TEXT NOT NULL DEFAULT '', verified INTEGER NOT NULL DEFAULT 0,
               active INTEGER NOT NULL DEFAULT 1);
+            CREATE TABLE IF NOT EXISTS email_verifications (
+              token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+              created_at REAL NOT NULL, expires REAL NOT NULL, consumed INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
@@ -135,6 +141,10 @@ class Store:
               filename TEXT NOT NULL, mime TEXT NOT NULL, content BLOB NOT NULL,
               status TEXT NOT NULL DEFAULT 'pending', note TEXT NOT NULL DEFAULT '',
               reviewer_id INTEGER REFERENCES users(id), created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS document_attachments (
+              document_id INTEGER NOT NULL REFERENCES documents(id), position INTEGER NOT NULL,
+              filename TEXT NOT NULL, mime TEXT NOT NULL, content BLOB NOT NULL,
+              PRIMARY KEY(document_id, position));
             CREATE TABLE IF NOT EXISTS packages (
               id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               hours INTEGER NOT NULL, remaining INTEGER NOT NULL CHECK(remaining >= 0),
@@ -157,6 +167,9 @@ class Store:
               action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL);
             ''')
             columns = {row['name'] for row in c.execute('PRAGMA table_info(documents)')}
+            user_columns = {row['name'] for row in c.execute('PRAGMA table_info(users)')}
+            if 'email_verified' not in user_columns:
+                c.execute('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0')
             if 'kind' not in columns:
                 c.execute("ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'accreditation'")
 
@@ -202,6 +215,7 @@ class Store:
                     c.execute("INSERT INTO users(name,email,password,role,verified) VALUES(?,?,?,'admin',0)",
                               ('Administración Valhalla', ADMIN_EMAIL, password_hash(admin_password)))
 
+            c.execute("UPDATE users SET email_verified=1 WHERE email=? AND role='admin'", (ADMIN_EMAIL,))
             # Old professional accreditation or a legacy flag is not an identity check.
             c.execute("""UPDATE users SET verified=COALESCE((SELECT status='approved' FROM documents
                          WHERE user_id=users.id AND kind='identity' ORDER BY id DESC LIMIT 1),0)""")
@@ -241,7 +255,7 @@ class Store:
         password, specialty = str(body.get('password', '')), str(body.get('specialty', '')).strip()
         if email == ADMIN_EMAIL or email in LEGACY_DEMO_EMAILS:
             raise Problem('Este correo está reservado y no admite registro profesional.', 403)
-        if not 2 <= len(name) <= 100 or len(email) > 200 or '@' not in email or '.' not in email.split('@')[-1]:
+        if not 2 <= len(name) <= 100 or len(email) > 200 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
             raise Problem('Ingresa un nombre y un correo válidos.')
         if not 10 <= len(password) <= 200:
             raise Problem('La contraseña debe tener entre 10 y 200 caracteres.')
@@ -252,17 +266,54 @@ class Store:
                 cursor = c.execute('INSERT INTO users(name,email,password,specialty) VALUES(?,?,?,?)',
                                    (name, email, password_hash(password), specialty))
                 self.log(c, cursor.lastrowid, 'registered', cursor.lastrowid)
+                uid = cursor.lastrowid
         except sqlite3.IntegrityError:
             raise Problem('Ya existe una cuenta con ese correo.', 409)
+        return uid
+
+    def issue_email_token(self, uid):
+        token = secrets.token_urlsafe(32)
+        with self.connection(True) as c:
+            user = c.execute('SELECT email,email_verified FROM users WHERE id=?', (uid,)).fetchone()
+            if not user:
+                raise Problem('Cuenta no encontrada.', 404)
+            if user['email_verified']:
+                return None, user['email']
+            previous = c.execute('SELECT MAX(created_at) FROM email_verifications WHERE user_id=?', (uid,)).fetchone()[0]
+            if previous is not None and time.time()-previous < 60:
+                raise Problem('Espera un minuto antes de solicitar otro correo.', 429)
+            c.execute('DELETE FROM email_verifications WHERE user_id=?', (uid,))
+            c.execute('INSERT INTO email_verifications(token_hash,user_id,created_at,expires) VALUES(?,?,?,?)', (hashlib.sha256(token.encode()).hexdigest(), uid, time.time(), time.time()+86400))
+        return token, user['email']
+
+    def confirm_email(self, token):
+        if not isinstance(token, str) or not 20 <= len(token) <= 100:
+            raise Problem('El enlace de confirmación es inválido o venció.')
+        with self.connection(True) as c:
+            row = c.execute('SELECT * FROM email_verifications WHERE token_hash=? AND consumed=0 AND expires>?', (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
+            if not row:
+                raise Problem('El enlace de confirmación es inválido, ya se utilizó o venció.')
+            c.execute('UPDATE email_verifications SET consumed=1 WHERE token_hash=?', (row['token_hash'],))
+            c.execute('UPDATE users SET email_verified=1 WHERE id=?', (row['user_id'],))
+            self.log(c, row['user_id'], 'email_verified', row['user_id'])
+
+    def document_metadata(self, c, row):
+        document = dict(row)
+        document['files'] = [{'position': 1, 'filename': document['filename'],
+                              'download_url': f"/api/documents/{document['id']}"}]
+        document['files'] += [{'position': file['position'], 'filename': file['filename'],
+                               'download_url': f"/api/documents/{document['id']}/files/{file['position']}"}
+                              for file in c.execute('SELECT position,filename FROM document_attachments WHERE document_id=? ORDER BY position', (document['id'],))]
+        return document
 
     def state(self, user):
         with self.connection() as c:
-            profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active')}
+            profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
             profile['verified'] = int(self.identity_verified(c, user['id']))
             return {'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
-                    'documents': [dict(r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
+                    'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'session_minutes': SESSION_MINUTES, 'booking_interval_minutes': 60,
                     'catalog': [{'id': key, 'hours': val[0], 'sessions': val[0], 'duration_minutes': SESSION_MINUTES, 'price': val[1]} for key, val in CATALOG.items()]}
 
@@ -325,6 +376,8 @@ class Store:
         row = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
         if not row or not supports_professional(row) or not row['active'] or not self.identity_verified(c, uid):
             raise Problem('Para reservar necesitas una cuenta activa y el carnet de identidad aprobado, además de saldo confirmado.', 403)
+        if not row['email_verified']:
+            raise Problem('Confirma tu correo electrónico antes de reservar.', 403)
 
     def buy(self, uid, body):
         key = str(body.get('catalog_id', ''))
@@ -390,27 +443,43 @@ class Store:
         kind = body.get('kind', 'accreditation')
         if kind not in ('identity', 'accreditation'):
             raise Problem('Tipo de documento inválido.')
-        filename = Path(str(body.get('filename', ''))).name[:150]
-        try:
-            raw = base64.b64decode(body.get('content', ''), validate=True)
-        except (ValueError, TypeError, binascii.Error):
-            raise Problem('Archivo inválido.')
-        # The prototype accepts PDF only; files are stored privately and downloaded as attachments.
-        if not filename.lower().endswith('.pdf') or not raw.startswith(b'%PDF-') or not 5 < len(raw) <= 2_000_000:
-            raise Problem('Adjunta un PDF de hasta 2 MB.')
+        files = body.get('files', [body])
+        if not isinstance(files, list) or not 1 <= len(files) <= 5:
+            raise Problem('Selecciona entre 1 y 5 archivos.')
+        prepared = []
+        total = 0
+        for file in files:
+            if not isinstance(file, dict):
+                raise Problem('Archivo inválido.')
+            filename = Path(str(file.get('filename', '')).replace('\\', '/')).name
+            filename = ''.join(char for char in filename if ord(char) >= 32).strip()[:180]
+            if not filename:
+                raise Problem('Cada archivo necesita un nombre.')
+            try:
+                raw = base64.b64decode(file.get('content', ''), validate=True)
+            except (ValueError, TypeError, binascii.Error):
+                raise Problem('Archivo inválido.')
+            total += len(raw)
+            if not raw or total > MAX_UPLOAD_BYTES:
+                raise Problem('Los archivos deben tener contenido y sumar como máximo 10 MB.')
+            prepared.append((filename, raw))
+        # All file types remain private binary attachments; none are rendered or executed.
         with self.connection(True) as c:
             role = c.execute('SELECT role,email FROM users WHERE id=?', (uid,)).fetchone()
             if not supports_professional(role):
                 raise Problem('Solo profesionales pueden adjuntar documentos.', 403)
-            c.execute("INSERT INTO documents(user_id,filename,mime,content,created_at,kind) VALUES(?,?,'application/pdf',?,?,?)", (uid, filename, raw, stamp(now()), kind))
+            filename, raw = prepared[0]
+            cursor = c.execute("INSERT INTO documents(user_id,filename,mime,content,created_at,kind) VALUES(?,?,'application/octet-stream',?,?,?)", (uid, filename, raw, stamp(now()), kind))
+            for position, (filename, raw) in enumerate(prepared[1:], 2):
+                c.execute("INSERT INTO document_attachments VALUES(?,?,?,'application/octet-stream',?)", (cursor.lastrowid, position, filename, raw))
             if kind == 'identity':
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
-            self.log(c, uid, 'document_uploaded', uid)
+            self.log(c, uid, 'document_uploaded', cursor.lastrowid)
 
     def admin_state(self):
         with self.connection() as c:
-            return {'users': [dict(r) for r in c.execute('SELECT id,name,email,specialty,role,verified,active FROM users ORDER BY id')],
-                    'documents': [dict(r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
+            return {'users': [dict(r) for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
+                    'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,u.name FROM packages p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
                     'audit': [dict(r) for r in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 30')]}
@@ -469,6 +538,23 @@ class Store:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'ValhallaPrototype'
+
+    def log_request(self, code='-', size='-'):
+        from urllib.parse import urlsplit
+        self.log_message('%s %s %s', self.command, urlsplit(self.path).path, code)
+
+    def send_email_verification(self, uid):
+        delivery = getattr(self.server, 'email_delivery', None)
+        if not delivery or not delivery.configured:
+            return {'sent': False, 'available': False, 'message': 'Tu cuenta está creada, pero el envío de correos todavía no está habilitado. No podrás reservar hasta confirmar tu correo.'}
+        token, email = self.server.store.issue_email_token(uid)
+        if token is None:
+            return {'sent': False, 'available': True, 'verified': True}
+        try:
+            delivery.send_verification(email, token)
+            return {'sent': True, 'available': True, 'message': 'Te enviamos un enlace de confirmación. Revisa tu correo y la carpeta de spam.'}
+        except RuntimeError:
+            return {'sent': False, 'available': True, 'message': 'No se pudo enviar la confirmación. Tu cuenta está creada; solicita otro enlace en un minuto.'}
 
     def headers_common(self, cache='no-store'):
         self.send_header('X-Content-Type-Options', 'nosniff')
@@ -541,7 +627,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             user = self.server.store.session(self.cookie())
             if route.path == '/api/me':
-                self.respond(self.server.store.state(user))
+                data = self.server.store.state(user)
+                data['email_delivery_available'] = bool(getattr(self.server, 'email_delivery', None) and self.server.email_delivery.configured)
+                self.respond(data)
             elif route.path == '/api/admin/availability':
                 self.admin(user)
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True))
@@ -551,18 +639,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.admin(user)
                 self.respond(self.server.store.admin_state())
             elif route.path.startswith('/api/documents/'):
-                try:
-                    did = int(route.path.rsplit('/', 1)[-1])
-                except ValueError:
+                match = re.fullmatch(r'/api/documents/(\d+)(?:/files/(\d+))?', route.path)
+                if not match:
                     raise Problem('Documento no encontrado.', 404)
+                did, position = int(match[1]), int(match[2] or 1)
                 with self.server.store.connection() as c:
-                    doc = c.execute('SELECT * FROM documents WHERE id=?', (did,)).fetchone()
-                if not doc or (user['role'] != 'admin' and user['id'] != doc['user_id']):
-                    raise Problem('Documento no encontrado.', 404)
+                    document = c.execute('SELECT * FROM documents WHERE id=?', (did,)).fetchone()
+                    if not document or (user['role'] != 'admin' and user['id'] != document['user_id']):
+                        raise Problem('Documento no encontrado.', 404)
+                    doc = document if position == 1 else c.execute('SELECT * FROM document_attachments WHERE document_id=? AND position=?', (did, position)).fetchone()
+                    if not doc:
+                        raise Problem('Archivo no encontrado.', 404)
+                from urllib.parse import quote
                 self.send_response(200)
                 self.headers_common()
                 self.send_header('Content-Type', 'application/octet-stream')
-                self.send_header('Content-Disposition', f'attachment; filename="documento-{did}.pdf"')
+                self.send_header('Content-Disposition', "attachment; filename=\"archivo-" + str(did) + "\"; filename*=UTF-8''" + quote(doc['filename'], safe=''))
                 self.send_header('Content-Length', str(len(doc['content'])))
                 self.end_headers()
                 self.wfile.write(doc['content'])
@@ -580,12 +672,18 @@ class Handler(BaseHTTPRequestHandler):
             if origin and origin not in ('http://' + self.headers.get('Host', ''), 'https://' + self.headers.get('Host', '')):
                 raise Problem('Origen no permitido.', 403)
             body = self.body()
+            if self.path == '/api/verify-email':
+                self.server.store.confirm_email(body.get('token'))
+                self.respond({'ok': True})
+                return
             if self.path in ('/api/login', '/api/register'):
+                delivery_result = None
                 if self.path == '/api/register':
-                    self.server.store.register(body)
+                    uid = self.server.store.register(body)
+                    delivery_result = self.send_email_verification(uid)
                 token = self.server.store.login(body)
                 secure = '; Secure' if getattr(self.server, 'secure_cookie', False) else ''
-                self.respond({'ok': True}, cookie=f'session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{secure}')
+                self.respond({'ok': True, 'email_verification': delivery_result}, cookie=f'session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{secure}')
                 return
             user = self.server.store.session(self.cookie())
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token', ''), user['csrf']):
@@ -596,6 +694,9 @@ class Handler(BaseHTTPRequestHandler):
                     c.execute('DELETE FROM sessions WHERE token=?', (self.cookie(),))
                 secure = '; Secure' if getattr(self.server, 'secure_cookie', False) else ''
                 self.respond({'ok': True}, cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + secure)
+                return
+            elif self.path == '/api/email-verification/resend':
+                self.respond(self.send_email_verification(user['id']))
                 return
             elif self.path == '/api/profile':
                 result = store.update_profile(user['id'], body)
@@ -639,6 +740,7 @@ def main():
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.store = store
     server.secure_cookie = args.secure_cookie
+    server.email_delivery = EmailDelivery()
     print(f'Valhalla Office · prototipo local · puerto {args.port}', flush=True)
     try:
         server.serve_forever()

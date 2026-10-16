@@ -64,13 +64,13 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 - Solo el profesional activo y verificado reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
 - Una transacción crea la reserva y descuenta el saldo. Un índice único protege el box y horario; el profesional tampoco puede reservar dos boxes simultáneamente. Un trigger impide transferir el paquete.
 - Una modificación por reserva, al menos dos horas antes tanto del horario original como del nuevo. No consume otra hora; un intento fallido no gasta el cambio.
-- Administración revisa el último PDF privado (hasta 2 MB), aprueba o rechaza con observaciones, confirma pagos simulados, activa usuarios y cancela reservas futuras devolviendo la hora una sola vez.
+- Administración revisa el último envío privado (hasta 5 archivos y 10 MB en total), aprueba o rechaza con observaciones, confirma pagos simulados, activa usuarios y cancela reservas futuras devolviendo la hora una sola vez.
 - Subir un carnet de identidad nuevo pausa la creación y modificación de reservas hasta su aprobación; conserva las reservas existentes.
-- Contraseñas con PBKDF2 y sal, sesiones HttpOnly/SameSite de ocho horas, protección CSRF, permisos comprobados en servidor y registro de operaciones. Los PDFs se descargan como adjuntos solo por el titular o administrador.
+- Contraseñas con PBKDF2 y sal, sesiones HttpOnly/SameSite de ocho horas, protección CSRF, permisos comprobados en servidor y registro de operaciones. Los archivos se descargan como adjuntos solo por el titular o administrador.
 
 Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Los horarios se guardan en UTC. La API y la interfaz usan el mismo origen.
 
-Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación y verificación de correo, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del PDF no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Ningún cobro real está implementado.
+Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación de cuentas, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del carnet no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Ningún cobro real está implementado.
 
 ## Pruebas
 
@@ -83,7 +83,7 @@ Las bases son temporales. Se cubren concurrencia, saldos, conflictos, límites d
 
 Prueba opcional de navegador: `python3 tests/run_browser.py` inicia una instancia descartable con una contraseña aleatoria, ejecuta el recorrido y la detiene. Requiere Node, Playwright y Chromium. Para un servidor de pruebas que ya esté iniciado, usa `node tests/browser.cjs`. Ejecuta solo contra una instancia aislada; configura `VALHALLA_TEST_URL` y `VALHALLA_TEST_ADMIN_PASSWORD` con la URL local y la contraseña privada **de esa instancia de pruebas**, nunca la del sitio publicado. Recorre registro, verificación, pago simulado, reserva, modificación, cancelación, desactivación y móvil.
 
-Prueba manual: abre una ventana privada → Acceso profesional → crea una cuenta nueva → adjunta PDF ficticio → solicita paquete → entra como administrador para aprobar documento y pago → vuelve como profesional y reserva. Comprueba también que los accesos antiguos y el registro con el correo administrador se rechazan.
+Prueba manual: abre una ventana privada → Acceso profesional → crea una cuenta nueva → confirma tu correo → adjunta archivos ficticios → solicita paquete → entra como administrador para aprobar documento y pago → vuelve como profesional y reserva. Comprueba también que los accesos antiguos y el registro con el correo administrador se rechazan.
 
 ## Vista previa dentro del chat
 
@@ -105,7 +105,7 @@ El carrusel pausa al situar el puntero o el foco sobre sus controles y cuando la
 
 ## Carnet obligatorio y agenda administrativa
 
-Todos los perfiles profesionales, incluido el propietario, necesitan el último carnet de identidad aprobado **y** saldo con pago confirmado para crear o modificar reservas. El carnet se envía como un PDF de hasta 2 MB con anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar su carnet pendiente de revisión. La revisión es manual, no una validación contra un registro oficial.
+Todos los perfiles profesionales, incluido el propietario, necesitan el último carnet de identidad aprobado **y** saldo con pago confirmado para crear o modificar reservas. El carnet se envía como entre 1 y 5 archivos de cualquier formato, hasta 10 MB en total, que incluyan anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar su carnet pendiente de revisión. La revisión es manual, no una validación contra un registro oficial.
 
 La migración añade `documents.kind` sin borrar archivos ni reservas. Los documentos anteriores se clasifican como acreditaciones, por lo que requieren enviar un carnet nuevo; los usuarios conservan sus cuentas, saldos y reservas. La identidad pendiente no bloquea el acceso administrativo del propietario. Hasta contar con almacenamiento persistente y protección de documentos adecuada para un piloto, usa carnets ficticios.
 
@@ -122,3 +122,30 @@ Administración → Disponibilidad muestra nombre, correo, box y rango de 55 min
 | 200 horas | $599.990 | 200 |
 
 Las reservas empiezan a las horas exactas; una atención de 10:00 termina a las 10:55 y el siguiente inicio es 11:00. Una reserva consume una sesión. Los planes previamente solicitados conservan su precio histórico y saldo; solo las nuevas solicitudes usan el catálogo actualizado. Los pagos continúan simulados.
+
+
+## Confirmación de correo sin dominio propio
+
+Las cuentas profesionales nuevas y anteriores necesitan confirmar el correo antes de reservar. El propietario administrador conserva su acceso de confianza. El enlace vence en 24 horas, se utiliza una sola vez y no inicia sesión. Reenviarlo invalida el anterior y exige esperar un minuto. La base almacena solo su hash. Sin proveedor configurado, la cuenta sigue pendiente; no existe aprobación automática.
+
+Para pruebas sin dominio propio puedes verificar una dirección Gmail como remitente individual en SendGrid:
+
+1. Crea una cuenta en [SendGrid](https://sendgrid.com/). Revisa las condiciones y límites vigentes; el correo no se garantiza gratuito de forma indefinida.
+2. En Settings → Sender Authentication → Single Sender Verification, registra tu dirección y confirma el mensaje que recibas. No necesitas entregar tu contraseña Gmail a la aplicación.
+3. En Settings → API Keys, crea una clave restringida con permiso Mail Send.
+4. En Render → valhalla-office-demo → Environment, agrega:
+
+| Variable | Valor |
+| --- | --- |
+| `VALHALLA_EMAIL_PROVIDER` | `sendgrid` |
+| `VALHALLA_EMAIL_FROM` | La dirección que verificaste en SendGrid |
+| `VALHALLA_SENDGRID_API_KEY` | La clave privada de SendGrid, solo en Render |
+| `VALHALLA_PUBLIC_URL` | `https://valhalla-office-demo.onrender.com` |
+
+Guarda y vuelve a desplegar con las variables. Crea una cuenta con un correo distinto, revisa entrada y spam, abre el enlace y pulsa Confirmar correo. Después inicia sesión normalmente. La aplicación exige también carnet aprobado y saldo confirmado para reservar. El envío del proveedor no garantiza recepción; el usuario puede solicitar otro enlace. Nunca pegues claves en el chat ni en GitHub.
+
+Para producción conviene un dominio propio con autenticación del remitente. También se admite Resend configurando `VALHALLA_EMAIL_PROVIDER=resend`, `VALHALLA_RESEND_API_KEY` y un remitente autorizado por ese proveedor. No se ha realizado ningún envío real en las pruebas automatizadas: usan un buzón local aislado.
+
+Los adjuntos se descargan como binarios privados, nunca se ejecutan ni muestran incrustados. Admitir cualquier extensión no demuestra que el documento sea legible o auténtico: administración debe revisar ambos lados. En Render gratuito la base local puede perderse al desplegar o reiniciar; antes de usar carnets reales o pagos, se requiere almacenamiento persistente y protegido.
+
+La conexión de pagos propuesta está en [TRANSBANK.md](TRANSBANK.md). Los cobros siguen simulados.

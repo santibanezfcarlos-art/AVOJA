@@ -21,6 +21,8 @@
 #welcome-pause{width:auto;min-width:50px;padding:0 8px;font-size:.65rem}
 
 .admin-occupied{display:grid;gap:4px;padding:10px 7px;background:#edf0e9;border-radius:8px;min-height:65px;overflow-wrap:anywhere}.admin-occupied strong{font-size:.78rem}.admin-occupied span{font-size:.72rem}.admin-occupied small{font-size:.63rem}.admin-occupied.current{background:#dcebb9;border:1px solid #a6bc7b}.identity-confirmation{display:flex;align-items:flex-start;gap:10px;font-size:.85rem;line-height:1.5;margin-top:18px}.identity-confirmation input{width:20px;height:20px;flex-shrink:0;margin-top:2px}.package-grid{align-items:start}
+
+.email-confirmation{min-height:100vh;max-width:500px;margin:auto;padding:50px 20px;display:grid;align-content:center;gap:28px}.email-confirmation h1{font-size:1.8rem;margin:15px 0}.email-confirmation p{font-size:.9rem;margin-bottom:22px}.email-confirmation .text-btn{display:block;margin:14px auto 0}
 </style></head>
 <body><div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="root"></div><dialog id="modal" aria-labelledby="modal-title"></dialog>
@@ -34,6 +36,8 @@ let officeGallery = [];
 const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
 let disposeWelcomeCarousel = () => {};
 let toastTimer;
+let emailConfirmationToken = new URLSearchParams(window.location.search).get('verify_email');
+if(emailConfirmationToken){const clean=new URL(window.location.href);clean.searchParams.delete('verify_email');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
 const money = n => new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0}).format(n);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const dateText = value => new Intl.DateTimeFormat('es-CL', {timeZone:'America/Santiago', day:'numeric',month:'short',year:'numeric'}).format(new Date(value));
@@ -75,6 +79,8 @@ function previewSlot(body){
 }
 async function api(path,body){
   const db=previewDB;
+  if(path==='email-verification/resend')return {sent:false,available:false,message:'La confirmación de correo funciona en el sitio con servidor, después de configurar el servicio de envío.'};
+  if(path==='verify-email')throw Error('Confirma tu correo en el sitio publicado con servidor.');
   if(path==='gallery')return {groups:globalThis.VALHALLA_GALLERY||[]};
   if(path==='login'){
     const user=db.users.find(u=>u.email===String(body.email).toLowerCase());
@@ -88,7 +94,7 @@ async function api(path,body){
     if(email==='santibanezf.carlos@gmail.com')throw Error('Este correo está reservado para administración.');
     if(db.users.some(u=>u.email===email))throw Error('Ya existe una cuenta con ese correo.');
     if(String(body.password).length<10)throw Error('La contraseña debe tener al menos 10 caracteres.');
-    const user={id:previewId(db.users),name:body.name,email,specialty:body.specialty,password:body.password,role:'professional',active:1,verified:0};
+    const user={id:previewId(db.users),name:body.name,email,specialty:body.specialty,password:body.password,role:'professional',active:1,verified:0,email_verified:0};
     db.users.push(user);previewUser=user.id;return {ok:true};
   }
   if(path==='logout'){previewUser=null;return {ok:true};}
@@ -125,9 +131,12 @@ async function api(path,body){
     const b={id:previewId(db.bookings),user_id:user.id,package_id:p.id,box:body.box,start,status:'confirmed',modifications:0,created_at:new Date().toISOString()};p.remaining--;db.bookings.push(b);previewRecord('reserved',b.id);return {ok:true,id:b.id};
   }
   if(path==='documents'){
-    const binary=atob(body.content);
-    if(user.role!=='professional'||!body.filename.toLowerCase().endsWith('.pdf')||!binary.startsWith('%PDF-')||binary.length>2000000)throw Error('Adjunta un PDF ficticio de hasta 2 MB.');
-    db.documents.push({id:previewId(db.documents),user_id:user.id,filename:body.filename,kind:body.kind||'accreditation',content:body.content,status:'pending',note:'',created_at:new Date().toISOString()});user.verified=0;previewRecord('document_uploaded',user.id);return {ok:true};
+    const files=body.files||[body];
+    if(!Array.isArray(files)||!files.length||files.length>5)throw Error('Selecciona de 1 a 5 archivos.');
+    let size=0;for(const file of files){const binary=atob(file.content);if(!binary.length)throw Error('Archivo vacío.');size+=binary.length;}
+    if(size>10*1024*1024)throw Error('Los archivos deben sumar como máximo 10 MB.');
+    const id=previewId(db.documents);
+    db.documents.push({id,user_id:user.id,filename:files[0].filename,kind:body.kind||'accreditation',content:files[0].content,files:files.map((file,index)=>({...file,position:index+1,download_url:index?`/api/documents/${id}/files/${index+1}`:`/api/documents/${id}`})),status:'pending',note:'',created_at:new Date().toISOString()});user.verified=0;previewRecord('document_uploaded',user.id);return {ok:true};
   }
   if(path==='admin'){
     if(user.role!=='admin')throw Error('Acceso exclusivo de administración.');
@@ -150,9 +159,9 @@ async function api(path,body){
 }
 document.addEventListener('click',event=>{
   const link=event.target.closest('a[href^="/api/documents/"]');if(!link)return;
-  event.preventDefault();const id=Number(link.getAttribute('href').split('/').pop());
-  const d=previewDB.documents.find(d=>d.id===id);if(!d)return;
-  const download=document.createElement('a');download.href='data:application/pdf;base64,'+d.content;download.download=d.filename;download.click();
+  event.preventDefault();const parts=link.getAttribute('href').split('/');const id=Number(parts[3]),position=Number(parts[5]||1);
+  const document=previewDB.documents.find(d=>d.id===id);if(!document)return;const d=document.files?.[position-1]||document;
+  const download=document.createElement('a');download.href='data:application/octet-stream;base64,'+d.content;download.download=d.filename;download.click();
 });
 
 function toast(message) {
@@ -219,7 +228,7 @@ function auth(register = false, administrator = false) {
   document.querySelector('#administrator-access').onclick = () => auth(false, true);
   document.querySelector('#auth-form').onsubmit = async event => {
     event.preventDefault(); const form=event.currentTarget, button=form.querySelector('button[type=submit]');button.disabled=true;
-    try { const credentials=Object.fromEntries(new FormData(form)); credentials.portal=administrator?'admin':'professional'; await api(register?'register':'login', credentials); activeProfile=administrator?'admin':'professional'; view=administrator?'admin':'overview'; await reload(); }
+    try { const credentials=Object.fromEntries(new FormData(form)); credentials.portal=administrator?'admin':'professional'; const result=await api(register?'register':'login', credentials); activeProfile=administrator?'admin':'professional'; view=administrator?'admin':'overview'; await reload(); if(result.email_verification?.message)toast(result.email_verification.message); }
     catch(e) { document.querySelector('#auth-error').textContent=e.message; }
     finally { button.disabled=false; }
   };
@@ -236,7 +245,8 @@ function shell() {
   const u = state.user;
   const links = adminMode() ? [['admin','▦','Administración'],['availability','▤','Disponibilidad']] : [['overview','▦','Mi espacio'],['availability','▤','Disponibilidad'],['bookings','◷','Mis reservas'],['packages','◇','Paquetes'],['documents','▱','Documentación'],['profile','○','Mi perfil']];
   root.innerHTML=`<div class="shell"><aside class="sidebar">${brand}<nav aria-label="Navegación principal">${links.map(([id,icon,label])=>`<button class="nav-item ${view===id?'active':''}" data-view="${id}" ${view===id?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note"><strong>Un saldo, tres espacios</strong><p>Tus horas te acompañan en cualquiera de nuestros boxes.</p></div><div class="profile"><span class="avatar">${escapeHTML(u.name.split(' ').map(s=>s[0]).slice(0,2).join(''))}</span><div><div class="profile-name">${escapeHTML(u.name)}</div><small>${adminMode()?'Administración':escapeHTML(u.specialty)||'Perfil profesional'}</small></div></div><button class="btn ghost small full" data-logout>Cerrar sesión</button></div></aside>
-  <main class="main"><header class="topbar"><span class="topbar-date">Tu espacio profesional / ${links.find(l=>l[0]===view)?.[2]||'Reservas'}</span>${brand}<div class="topbar-right"><span class="demo-label">DEMO · SIN COBROS</span>${adminMode()?'<span class="pill">Administración</span>':`<span class="pill ${u.verified?'approved':'pending'}">${u.verified?'✓ Cuenta verificada':'Por verificar'}</span>`}<button class="btn ghost small mobile-logout" data-logout aria-label="Cerrar sesión">Salir</button></div></header>${u.role==='admin'?`<section class="profile-switcher row spread" aria-label="Cambiar perfil"><div><strong>Perfil activo</strong><p>${adminMode()?'Administración del centro':'Tu agenda y saldo personal'}</p></div><div class="row"><button class="btn ${adminMode()?'':'ghost'} small" data-mode="admin" aria-pressed="${adminMode()}">Administración</button><button class="btn ${adminMode()?'ghost':''} small" data-mode="professional" aria-pressed="${!adminMode()}">Perfil profesional</button></div></section>`:''}<div id="content"></div></main></div>`;
+  <main class="main"><header class="topbar"><span class="topbar-date">Tu espacio profesional / ${links.find(l=>l[0]===view)?.[2]||'Reservas'}</span>${brand}<div class="topbar-right"><span class="demo-label">DEMO · SIN COBROS</span>${adminMode()?'<span class="pill">Administración</span>':`<span class="pill ${u.verified?'approved':'pending'}">${u.verified?'✓ Carnet aprobado':'Por verificar'}</span>`}<button class="btn ghost small mobile-logout" data-logout aria-label="Cerrar sesión">Salir</button></div></header>${u.role==='admin'?`<section class="profile-switcher row spread" aria-label="Cambiar perfil"><div><strong>Perfil activo</strong><p>${adminMode()?'Administración del centro':'Tu agenda y saldo personal'}</p></div><div class="row"><button class="btn ${adminMode()?'':'ghost'} small" data-mode="admin" aria-pressed="${adminMode()}">Administración</button><button class="btn ${adminMode()?'ghost':''} small" data-mode="professional" aria-pressed="${!adminMode()}">Perfil profesional</button></div></section>`:''}${!u.email_verified?`<div class="notice" role="status"><strong>Confirma tu correo electrónico</strong><p>${state.email_delivery_available?'Revisa el enlace que te enviamos. Necesitas confirmar tu correo, aprobar tu carnet y tener saldo para reservar.':'El envío de confirmaciones todavía no está habilitado. Administración debe configurarlo antes de que puedas confirmar tu correo y reservar.'}</p><button class="btn ghost small" id="resend-email" ${state.email_delivery_available?'':'disabled'}>Reenviar confirmación</button></div>`:adminMode()&&!state.email_delivery_available?'<div class="notice">El envío de correos aún no está habilitado. Configura el servicio de correo para que los profesionales puedan confirmar sus cuentas y reservar.</div>':''}<div id="content"></div></main></div>`;
+  const resend=document.querySelector('#resend-email');if(resend)resend.onclick=async()=>{resend.disabled=true;try{const result=await api('email-verification/resend',{});toast(result.message||'Tu correo ya está confirmado.');await reload();}catch(e){toast(e.message);}finally{resend.disabled=false;}};
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=async()=>{activeProfile=b.dataset.mode;view=adminMode()?'admin':'overview';modifying=null;try{await reload();}catch(e){toast(e.message);}});
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-logout]').forEach(b=>b.onclick=async()=>{try{await api('logout',{});state=null;selectedDate='';view='overview';auth();}catch(e){toast(e.message);}});
@@ -300,16 +310,20 @@ function profile() {
   return head('Mi perfil profesional','Tu cuenta conserva el mismo correo, saldo y reservas al cambiar de perfil.')+
     `<section class="card"><form id="profile-form" class="form-stack"><label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100" value="${escapeHTML(state.user.name)}"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" value="${escapeHTML(state.user.specialty)}" placeholder="Ej. Psicología"></label><label>Correo de la cuenta<input type="email" value="${escapeHTML(state.user.email)}" disabled></label><p class="data-note">Cambiar tu nombre requiere una nueva revisión del carnet. Tu correo y permisos se conservan.</p><p id="profile-error" class="error" role="alert"></p><button class="btn" type="submit">Guardar perfil</button></form></section>`;
 }
+function documentLinks(document) {
+  const files=document.files||[{filename:document.filename,download_url:'/api/documents/'+document.id}];
+  return files.map(file=>`<a class="btn ghost small" href="${escapeHTML(file.download_url)}">${escapeHTML(file.filename)}</a>`).join(' ');
+}
 function documents() {
   return head('Verificación de identidad','Carnet obligatorio para cada perfil profesional, incluido el del administrador.')+
-  `<div class="notice ${state.user.verified?'info':''}">${state.user.verified?'✓ Tu cuenta está verificada. Puedes reservar con saldo disponible.':'Tu carnet aún no está aprobado. Aunque tengas saldo pagado, no podrás reservar hasta completar la revisión.'}</div><section class="card"><h2>Envía tu carnet de identidad</h2><p class="section-intro">Adjunta un único PDF con ambos lados de tu carnet. Administración debe revisar que sean legibles y correspondan a tu cuenta. Mientras probamos con almacenamiento temporal, usa un documento ficticio.</p><form id="upload-form"><div class="upload-card"><strong>Carnet de identidad · anverso y reverso</strong><p>Formato PDF · Hasta 2 MB · Acceso exclusivo del titular y administración</p><label>Seleccionar documento<input id="document-file" type="file" accept="application/pdf,.pdf" required></label></div><p class="muted upload-note">Al adjuntar un nuevo carnet, la cuenta vuelve a revisión y se pausa la creación y modificación de reservas. Las reservas existentes se conservan.</p><p id="upload-error" class="error" role="alert"></p><button class="btn" type="submit">Enviar a revisión →</button></form></section>
-  <section class="card spaced-card"><div class="card-head"><h2>Estado de tus documentos</h2></div>${state.documents.length?state.documents.map(d=>`<div class="booking-item"><div><strong class="document-name">${escapeHTML(d.filename)}</strong><p class="muted caption-text">${d.kind==='identity'?'Carnet de identidad':'Documento anterior: no acredita identidad'}</p><p class="muted caption-text">Enviado el ${dateText(d.created_at)}</p>${d.note?`<p class="small-text">Observación: ${escapeHTML(d.note)}</p>`:''}</div><div class="row">${pill(d.status)}<a class="btn ghost small" href="/api/documents/${d.id}">Descargar</a></div></div>`).join(''):empty('Todavía no has enviado documentos.')}</section>`;
+  `<div class="notice ${state.user.verified?'info':''}">${state.user.verified?'✓ Tu cuenta está verificada. Puedes reservar con saldo disponible.':'Tu carnet aún no está aprobado. Aunque tengas saldo pagado, no podrás reservar hasta completar la revisión.'}</div><section class="card"><h2>Envía tu carnet de identidad</h2><p class="section-intro">Adjunta el anverso y reverso de tu carnet, juntos o en archivos separados. Se aceptan fotos, PDF y cualquier otro formato. Administración debe revisar que sean legibles y correspondan a tu cuenta. Mientras probamos con almacenamiento temporal, usa un documento ficticio.</p><form id="upload-form"><div class="upload-card"><strong>Carnet de identidad · anverso y reverso</strong><p>Cualquier formato · Hasta 5 archivos y 10 MB en total · Acceso privado</p><label>Seleccionar archivos<input id="document-file" type="file" multiple required></label></div><p class="muted upload-note">Al adjuntar un nuevo carnet, la cuenta vuelve a revisión y se pausa la creación y modificación de reservas. Las reservas existentes se conservan.</p><p id="upload-error" class="error" role="alert"></p><button class="btn" type="submit">Enviar a revisión →</button></form></section>
+  <section class="card spaced-card"><div class="card-head"><h2>Estado de tus documentos</h2></div>${state.documents.length?state.documents.map(d=>`<div class="booking-item"><div><strong class="document-name">${escapeHTML(d.filename)}</strong><p class="muted caption-text">${d.kind==='identity'?'Carnet de identidad':'Documento anterior: no acredita identidad'}</p><p class="muted caption-text">Enviado el ${dateText(d.created_at)}</p>${d.note?`<p class="small-text">Observación: ${escapeHTML(d.note)}</p>`:''}</div><div class="row">${pill(d.status)}${documentLinks(d)}</div></div>`).join(''):empty('Todavía no has enviado documentos.')}</section>`;
 }
 function administration() {
   const pending=adminData.packages.filter(p=>p.status==='pending');
   let body='';
   if(adminTab==='payments') body=`<h2>Pagos y paquetes</h2><p class="section-intro">Confirmación manual de operaciones ficticias. Ninguna acción mueve dinero.</p><div class="table-wrap"><table class="admin-table"><thead><tr><th>Profesional</th><th>Paquete</th><th>Monto del plan</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${adminData.packages.map(p=>`<tr><td>${escapeHTML(p.name)}<small>Titular #${p.user_id}</small></td><td>#${p.id} · ${p.hours} h<small>${p.remaining} h restantes</small></td><td>${money(p.price)}</td><td>${pill(p.status)}</td><td>${p.status==='pending'?`<div class="row"><button class="btn small" data-admin="payment" data-id="${p.id}" data-decision="paid">Confirmar pago simulado</button><button class="btn ghost small" data-admin="payment" data-id="${p.id}" data-decision="rejected">Rechazar</button></div>`:'—'}</td></tr>`).join('')}</tbody></table></div>`;
-  if(adminTab==='documents') body=`<h2>Revisión de documentación</h2><p class="section-intro">Revisa ambos lados del último carnet y su correspondencia con el titular antes de aprobar. Un título u otro documento no reemplaza la verificación de identidad. La revisión es manual.</p>${adminData.documents.length?`<div class="table-wrap"><table class="admin-table"><thead><tr><th>Profesional</th><th>Documento</th><th>Estado</th><th>Revisión</th></tr></thead><tbody>${adminData.documents.map(d=>{const latest=!adminData.documents.some(x=>x.user_id===d.user_id&&x.kind===d.kind&&x.id>d.id);return `<tr><td>${escapeHTML(d.name)}<small>Titular #${d.user_id}</small></td><td><a href="/api/documents/${d.id}">${escapeHTML(d.filename)}</a><small>${dateText(d.created_at)} · ${d.kind==='identity'?'Carnet':'Acreditación anterior'}</small></td><td>${pill(d.status)}${d.note?`<small>${escapeHTML(d.note)}</small>`:''}</td><td>${latest?`<div class="row"><button class="btn small" data-admin="document" data-id="${d.id}" data-decision="approved">Aprobar</button><button class="btn ghost small" data-admin="document" data-id="${d.id}" data-decision="rejected">Rechazar</button></div>`:'Documento anterior'}</td></tr>`;}).join('')}</tbody></table></div>`:empty('No hay documentos para revisar.')}`;
+  if(adminTab==='documents') body=`<h2>Revisión de documentación</h2><p class="section-intro">Descarga todos los adjuntos del último carnet y revisa ambos lados y su correspondencia con el titular antes de aprobar. Un título u otro documento no reemplaza la verificación de identidad. La revisión es manual.</p>${adminData.documents.length?`<div class="table-wrap"><table class="admin-table"><thead><tr><th>Profesional</th><th>Documento</th><th>Estado</th><th>Revisión</th></tr></thead><tbody>${adminData.documents.map(d=>{const latest=!adminData.documents.some(x=>x.user_id===d.user_id&&x.kind===d.kind&&x.id>d.id);return `<tr><td>${escapeHTML(d.name)}<small>Titular #${d.user_id}</small></td><td>${documentLinks(d)}<small>${dateText(d.created_at)} · ${d.kind==='identity'?'Carnet':'Acreditación anterior'}</small></td><td>${pill(d.status)}${d.note?`<small>${escapeHTML(d.note)}</small>`:''}</td><td>${latest?`<div class="row"><button class="btn small" data-admin="document" data-id="${d.id}" data-decision="approved">Aprobar</button><button class="btn ghost small" data-admin="document" data-id="${d.id}" data-decision="rejected">Rechazar</button></div>`:'Documento anterior'}</td></tr>`;}).join('')}</tbody></table></div>`:empty('No hay documentos para revisar.')}`;
   if(adminTab==='users') body=`<h2>Profesionales y usuarios</h2><p class="section-intro">Desactivar una cuenta cierra sus sesiones e impide nuevas operaciones. Sus reservas existentes se conservan.</p><div class="table-wrap"><table class="admin-table"><thead><tr><th>Nombre</th><th>Correo</th><th>Especialidad</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${adminData.users.map(u=>`<tr><td>${escapeHTML(u.name)}<small>${u.role==='admin'?'Administrador':'Profesional'}</small></td><td>${escapeHTML(u.email)}</td><td>${escapeHTML(u.specialty)||'—'}</td><td><span class="pill ${u.active?'approved':'rejected'}">${u.active?'Activa':'Inactiva'}</span><small>${u.verified?'Verificada':'Por verificar'}</small></td><td>${u.role==='professional'?`<button class="btn ghost small" data-admin="user" data-id="${u.id}" data-active="${!u.active}">${u.active?'Desactivar':'Activar'}</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`;
   if(adminTab==='bookings') body=`<h2>Agenda general</h2><p class="section-intro">Cancelar una reserva futura libera el box y devuelve 1 hora al paquete original, una sola vez.</p>${adminData.bookings.length?`<div class="table-wrap"><table class="admin-table"><thead><tr><th>Profesional</th><th>Box / fecha</th><th>Estado</th><th>Modificaciones</th><th>Acciones</th></tr></thead><tbody>${adminData.bookings.map(b=>`<tr><td>${escapeHTML(b.name)}<small>Reserva #${b.id}</small></td><td>${rooms[b.box-1]}<small>${dateText(b.start)} · ${sessionRange(b.start)}</small></td><td>${pill(b.status)}</td><td>${b.modifications} / 1</td><td>${b.status==='confirmed'&&new Date(b.start)>new Date()?`<button class="btn danger small" data-admin="cancel" data-id="${b.id}">Cancelar y devolver hora</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('No hay reservas registradas.')}`;
   if(adminTab==='audit') body=`<h2>Registro de operaciones</h2><p class="section-intro">Últimas 30 acciones realizadas en el prototipo.</p>${adminData.audit.map(a=>`<div class="audit-item"><strong>${escapeHTML(a.name||'Sistema')}</strong><p>${escapeHTML(a.action)} · registro #${escapeHTML(a.target)}</p><small>${dateText(a.created_at)} · ${hourText(a.created_at)}</small></div>`).join('')||empty('Aún no hay operaciones.')}`;
@@ -341,6 +355,7 @@ function bind() {
   const date=document.querySelector('#schedule-date');if(date)date.onchange=()=>{if(date.value){selectedDate=date.value;render().catch(e=>toast(e.message));}};
   document.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>{
     if(adminMode()){toast('La agenda administrativa es de consulta. Las reservas se crean desde la cuenta profesional.');return;}
+    if(!state.user.email_verified){toast('Confirma tu correo electrónico antes de reservar.');return;}
     if(!state.user.verified){toast('Primero envía tu carnet de identidad y espera su aprobación.');return;}
     if(!modifying && pendingBalance()===0){toast('Necesitas sesiones de un plan con pago confirmado.');return;}
     const box=Number(b.dataset.box),start=b.dataset.slot, current=modifying;
@@ -353,11 +368,13 @@ function bind() {
     showModal('Solicitar paquete',`<p>Esta operación es una simulación. No ingreses datos bancarios.</p><div class="modal-detail"><strong>${p.hours} ${p.hours===1?'sesión':'sesiones'} · ${money(p.price)}</strong><br>55 minutos por sesión. Inicios cada hora en cualquiera de los tres boxes.</div><p>El saldo se habilitará cuando administración confirme el pago de prueba.</p>`,'Solicitar sin cobro',async()=>{await api('packages',{catalog_id:p.id});toast('Solicitud registrada. Pago simulado pendiente de confirmación.');});
   });
   const upload=document.querySelector('#upload-form');if(upload)upload.onsubmit=async event=>{
-    event.preventDefault();const file=document.querySelector('#document-file').files[0],button=upload.querySelector('button');
-    if(!file || !file.name.toLowerCase().endsWith('.pdf') || file.size>2000000){document.querySelector('#upload-error').textContent='Selecciona un PDF de hasta 2 MB.';return;}
+    event.preventDefault();const selected=Array.from(document.querySelector('#document-file').files),button=upload.querySelector('button');
+    if(!selected.length||selected.length>5||selected.some(file=>!file.size)||selected.reduce((sum,file)=>sum+file.size,0)>10*1024*1024){document.querySelector('#upload-error').textContent='Selecciona de 1 a 5 archivos, con un total de hasta 10 MB.';return;}
     button.disabled=true;
-    try {const buffer=new Uint8Array(await file.arrayBuffer());let binary='';for(const byte of buffer)binary+=String.fromCharCode(byte);await api('documents',{filename:file.name,content:btoa(binary),kind:'identity'});toast('Documento enviado. Tu cuenta está en revisión.');await reload();}
-    catch(e){document.querySelector('#upload-error').textContent=e.message;}
+    try {
+      const files=await Promise.all(selected.map(file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('No se pudo leer el archivo.'));reader.onload=()=>resolve({filename:file.name,content:String(reader.result).split(',')[1]});reader.readAsDataURL(file);})));
+      await api('documents',{files,kind:'identity'});toast('Archivos enviados. Tu carnet está en revisión.');await reload();
+    }catch(e){document.querySelector('#upload-error').textContent=e.message;}
     finally{button.disabled=false;}
   };
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{adminTab=b.dataset.tab;render().catch(e=>toast(e.message));});
@@ -369,7 +386,18 @@ function bind() {
     showModal(title,`<p>${copy}</p>${identityReview?'<label class="identity-confirmation"><input type="checkbox" id="identity-confirmed">He revisado ambos lados del carnet y corresponden al titular de esta cuenta.</label>':''}${action==='document'?`<label class="review-label">Observación ${decision==='rejected'?'(obligatoria)':'(opcional)'}<textarea id="review-note" rows="3" maxlength="500"></textarea></label>`:''}`,'Confirmar',async()=>{await api('admin',{action,id:Number(b.dataset.id),decision,active,identity_confirmed:document.querySelector('#identity-confirmed')?.checked===true,note:document.querySelector('#review-note')?.value||''});toast('Operación registrada.');});
   });
 }
+function emailConfirmation() {
+  disposeWelcomeCarousel();
+  root.innerHTML=`<main class="email-confirmation">${brand}<section class="card"><div class="eyebrow">CONFIRMACIÓN DE CUENTA</div><h1>Confirma tu correo</h1><p>Pulsa el botón para confirmar que este correo te pertenece. El enlace vence a las 24 horas y se usa una sola vez.</p><p class="error" id="email-confirmation-error" role="alert"></p><button class="btn full" id="confirm-email-button">Confirmar mi correo</button><button class="text-btn" id="back-to-account">Volver a mi cuenta</button></section></main>`;
+  document.querySelector('#back-to-account').onclick=async()=>{emailConfirmationToken=null;try{await reload();}catch{auth();}};
+  document.querySelector('#confirm-email-button').onclick=async event=>{
+    const button=event.currentTarget;button.disabled=true;
+    try{await api('verify-email',{token:emailConfirmationToken});emailConfirmationToken=null;button.textContent='Correo confirmado';document.querySelector('#email-confirmation-error').textContent='';toast('Correo confirmado. Ya puedes continuar con tu carnet y tus reservas.');}
+    catch(e){document.querySelector('#email-confirmation-error').textContent=e.message;button.disabled=false;}
+  };
+}
 async function startApp() {
+  if(emailConfirmationToken){emailConfirmation();return;}
   try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
   try{const data=await api('me');state=data;selectedDate=data.today;if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}
   catch{auth();}
