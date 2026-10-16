@@ -19,7 +19,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from mailer import EmailDelivery
+from mailer import EmailDelivery, EmailDeliveryError
 from payments import PaymentService, WebpayGateway, PaymentError
 
 ROOT = Path(__file__).resolve().parent
@@ -187,6 +187,10 @@ class Store:
               BEGIN SELECT RAISE(ABORT, 'Package ownership cannot be transferred'); END;
             CREATE UNIQUE INDEX IF NOT EXISTS occupied_slot ON bookings(box, start)
               WHERE status = 'confirmed';
+            CREATE TABLE IF NOT EXISTS mail_events (
+              id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), kind TEXT NOT NULL,
+              provider TEXT NOT NULL, status TEXT NOT NULL, category TEXT NOT NULL DEFAULT '',
+              http_status INTEGER, created_at TEXT NOT NULL, created_epoch REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS audit (
               id INTEGER PRIMARY KEY, actor_id INTEGER REFERENCES users(id),
               action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -224,6 +228,20 @@ class Store:
     def log(self, c, actor, action, target):
         c.execute('INSERT INTO audit(actor_id,action,target,created_at) VALUES (?,?,?,?)',
                   (actor, action, str(target), stamp(now())))
+
+    def mail_event(self, uid, kind, provider, status, category='', http_status=None):
+        with self.connection(True) as c:
+            if kind == 'test':
+                previous = c.execute("SELECT MAX(created_epoch) FROM mail_events WHERE kind='test'").fetchone()[0]
+                if previous is not None and time.time()-previous < 60:
+                    raise Problem('Espera un minuto antes de enviar otra prueba.',429)
+            # No recipient supplied by an anonymous request, provider body, token or secret is stored.
+            return c.execute('INSERT INTO mail_events(user_id,kind,provider,status,category,http_status,created_at,created_epoch) VALUES(?,?,?,?,?,?,?,?)',
+                             (uid,kind,provider,status,category,http_status,stamp(now()),time.time())).lastrowid
+
+    def mail_outcome(self, eid, status, category='', http_status=None):
+        with self.connection(True) as c:
+            c.execute('UPDATE mail_events SET status=?,category=?,http_status=? WHERE id=?',(status,category,http_status,eid))
 
     def configure_access(self, admin_password=None):
         """Retire public demo credentials and provision the owner only from a private setting."""
@@ -466,6 +484,7 @@ class Store:
                     'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
+                    'email_verification_delivery': next((row['status'] for row in c.execute("SELECT status FROM mail_events WHERE user_id=? AND kind='verification' ORDER BY id DESC LIMIT 1",(user['id'],))),None),
                     'payments': [dict(r) for r in c.execute('SELECT id,package_id,buy_order,amount,hours,environment,state,created_at FROM payment_attempts WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'session_minutes': SESSION_MINUTES, 'booking_interval_minutes': 60,
                     'catalog': [{'id': key, 'hours': val[0], 'sessions': val[0], 'duration_minutes': SESSION_MINUTES, 'price': val[1]} for key, val in CATALOG.items()]}
@@ -633,7 +652,8 @@ class Store:
 
     def admin_state(self):
         with self.connection() as c:
-            return {'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
+            return {'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
+                    'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
                     'users': [dict(r) | {'verified':int(self.identity_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
@@ -704,6 +724,34 @@ class Handler(BaseHTTPRequestHandler):
         from urllib.parse import urlsplit
         self.log_message('%s %s %s', self.command, urlsplit(self.path).path, code)
 
+    def email_diagnostics(self):
+        delivery = getattr(self.server, 'email_delivery', None)
+        if delivery and hasattr(delivery,'diagnostics'):
+            return delivery.diagnostics()
+        return {'configured':bool(delivery and delivery.configured), 'provider':'test' if delivery else 'none',
+                'api_key_present':False, 'sender':'', 'public_url':''}
+
+    def deliver_email(self, kind, uid, email, token=None):
+        delivery = getattr(self.server, 'email_delivery', None)
+        provider = self.email_diagnostics()['provider']
+        eid = self.server.store.mail_event(uid,kind,provider,'pending')
+        try:
+            if kind=='test':
+                delivery.send_test(email)
+            elif kind=='verification':
+                delivery.send_verification(email,token)
+            else:
+                delivery.send_password_reset(email,token)
+        except RuntimeError as error:
+            category = error.category if isinstance(error,EmailDeliveryError) else 'delivery_error'
+            code = error.http_status if isinstance(error,EmailDeliveryError) else None
+            self.server.store.mail_outcome(eid,'error',category,code)
+            # Safe operational log: fixed category and status only, no error body or addresses.
+            self.log_message('Email delivery failed: category=%s http=%s',category,code or '-')
+            return False
+        self.server.store.mail_outcome(eid,'accepted')
+        return True
+
     def send_email_verification(self, uid):
         delivery = getattr(self.server, 'email_delivery', None)
         if not delivery or not delivery.configured:
@@ -711,11 +759,9 @@ class Handler(BaseHTTPRequestHandler):
         token, email = self.server.store.issue_email_token(uid)
         if token is None:
             return {'sent': False, 'available': True, 'verified': True}
-        try:
-            delivery.send_verification(email, token)
+        if self.deliver_email('verification',uid,email,token):
             return {'sent': True, 'available': True, 'message': 'Te enviamos un enlace de confirmación. Revisa tu correo y la carpeta de spam.'}
-        except RuntimeError:
-            return {'sent': False, 'available': True, 'message': 'No se pudo enviar la confirmación. Tu cuenta está creada; solicita otro enlace en un minuto.'}
+        return {'sent': False, 'available': True, 'message': 'No se pudo enviar la confirmación. Tu cuenta está creada; administración puede revisar el diagnóstico de correo. Solicita otro enlace en un minuto.'}
 
     def headers_common(self, cache='no-store'):
         self.send_header('X-Content-Type-Options', 'nosniff')
@@ -820,7 +866,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0]))
             elif route.path == '/api/admin':
                 self.admin(user)
-                self.respond(self.server.store.admin_state())
+                data=self.server.store.admin_state()
+                data['email_config']=self.email_diagnostics()
+                self.respond(data)
             elif route.path.startswith('/api/documents/'):
                 match = re.fullmatch(r'/api/documents/(\d+)(?:/files/(\d+))?', route.path)
                 if not match:
@@ -887,10 +935,11 @@ class Handler(BaseHTTPRequestHandler):
                         entries.append(timestamp)
                 result = self.server.store.issue_password_reset(body.get('email', '')) if allowed else None
                 if result:
-                    try:
-                        delivery.send_password_reset(result[1], result[0])
-                    except RuntimeError:
-                        pass  # Same public response for unknown accounts and failed delivery.
+                    with self.server.store.connection() as c:
+                        recipient=c.execute('SELECT id FROM users WHERE email=?',(result[1],)).fetchone()[0]
+                    self.deliver_email('recovery',recipient,result[1],result[0])
+                elif allowed:
+                    self.server.store.mail_event(None,'recovery',self.email_diagnostics()['provider'],'skipped','account_or_limit')
                 self.respond({'ok': True, 'message': 'Si existe una cuenta profesional activa con ese correo, recibirás un enlace. Revisa también spam. Puedes solicitar otro después de un minuto.'})
                 return
             if self.path == '/api/password-reset/confirm':
@@ -964,6 +1013,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.admin(user)
                 result = store.import_legacy_csv(user['id'], body, preview=self.path.endswith('/preview'))
                 self.respond(result)
+                return
+            elif self.path == '/api/admin/email/test':
+                self.admin(user)
+                delivery=getattr(self.server,'email_delivery',None)
+                if not delivery or not delivery.configured:
+                    raise Problem('Configura el proveedor, remitente, URL HTTPS y clave en Render antes de probar.',503)
+                sent=self.deliver_email('test',user['id'],ADMIN_EMAIL)
+                self.respond({'ok':sent,'message':'El proveedor aceptó la prueba. Revisa entrada y spam; aceptación no garantiza entrega.' if sent else 'La prueba falló. Revisa el diagnóstico de correo en administración.'})
                 return
             elif self.path == '/api/admin/migrations':
                 self.admin(user)

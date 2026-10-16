@@ -334,7 +334,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_recovery_same_response_for_unknown_and_existing_and_no_token_leak(self):
         from unittest.mock import Mock
-        delivery=Mock(configured=True)
+        delivery=Mock(configured=True, spec=['configured','send_password_reset'])
         self.server.email_delivery=delivery
         try:
             known=self.request('/api/password-reset/request',{'email':'professional@test.cl'})

@@ -170,3 +170,14 @@ Prueba manual: registra una cuenta con contraseñas distintas y comprueba el rec
 - [TRANSBANK.md](TRANSBANK.md): API Webpay Plus de integración, checkout alojado, acreditación automática y única, conciliación, configuración y pasos pendientes para producción. El proxy de este entorno bloqueó la conexión al sandbox; la aprobación real de integración queda pendiente de probar desde Render.
 
 La base local de Render gratuito sigue siendo temporal. Antes de trasladar saldos reales, configura almacenamiento persistente y respaldo. `VALHALLA_DB_PATH` permite elegir la ruta de una base en un disco persistente, sin cambiar la ruta predeterminada de la demo. Un despliegue de código no contrata ni monta ese disco.
+
+
+## Diagnóstico de confirmaciones y recuperación
+
+Administración → Correos muestra el proveedor, remitente, origen HTTPS de los enlaces y si existe una clave configurada, sin mostrar su valor. El botón «Enviar prueba a mi correo administrador» envía únicamente a la dirección administradora fija, requiere sesión administrativa y CSRF y admite una prueba por minuto. No permite enviar a destinatarios arbitrarios ni cambia contraseñas o validaciones.
+
+Los intentos recientes diferencian aceptación del proveedor, error y recuperación sin intento (cuenta profesional no disponible o límite/cooldown). La aceptación **no** garantiza entrega; comprueba también Resend → Emails y el buzón. El aviso profesional ya no afirma que se envió un correo cuando el último intento falló. Por privacidad, la recuperación pública mantiene la misma respuesta para cuentas inexistentes y errores de proveedor.
+
+Diagnósticos seguros: HTTP 401 indica que se rechazó la autenticación; HTTP 403 requiere revisar permisos/dominio o filtros; 422 indica remitente/payload; 429, límites del proveedor; los fallos de red se registran aparte. Solo se retienen categorías fijas, estado HTTP, tipo y cuenta asociada al evento; no cuerpos de respuesta, claves, contenido de correos ni tokens. Los fallos también dejan una línea segura en Render → Logs. Estos registros son privados de administración.
+
+El cliente identifica la aplicación mediante User-Agent y normaliza espacios exteriores de las variables. Esto mejora compatibilidad y elimina errores accidentales de pegado; no demuestra por sí solo que una clave sea válida. La confirmación requiere que Resend acepte una prueba real desde Render y que el destinatario la reciba. Primero prueba el envío administrador, después registra una cuenta profesional de prueba y comprueba confirmación y recuperación. Un nuevo despliegue todavía puede eliminar cuentas de prueba mientras no exista almacenamiento persistente.

@@ -18,6 +18,7 @@ def main():
     class FakeDelivery:
         configured=True
         def __init__(self):self.tokens={}
+        def send_test(self,email):self.tokens["test:"+email]="accepted"
         def send_verification(self,email,token):self.tokens[email]=token
         def send_password_reset(self,email,token):self.tokens["reset:"+email]=token
     delivery=FakeDelivery()

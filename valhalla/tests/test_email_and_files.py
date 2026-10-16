@@ -71,3 +71,41 @@ class Mailer(unittest.TestCase):
         with patch('mailer.urlopen') as send:
             with self.assertRaises(RuntimeError): delivery.send_verification('x@example.cl','token')
             send.assert_not_called()
+
+class ResendDelivery(unittest.TestCase):
+    def setUp(self):
+        self.environment=patch.dict(os.environ,{'VALHALLA_EMAIL_PROVIDER':' resend ','VALHALLA_RESEND_API_KEY':' test-private-key ','VALHALLA_EMAIL_FROM':' Valhalla Office <notificaciones@valhallaoffice.cl> ','VALHALLA_PUBLIC_URL':'https://valhallaoffice.cl'},clear=True)
+        self.environment.start();self.addCleanup(self.environment.stop)
+    def test_resend_verification_and_recovery_payloads_have_correct_links_and_client_header(self):
+        response=MagicMock();response.__enter__.return_value.read.return_value=b'{"id":"test-message-id"}'
+        with patch('mailer.urlopen',return_value=response) as send:
+            delivery=EmailDelivery();self.assertTrue(delivery.configured)
+            delivery.send_verification('person@example.cl','verification-token')
+            request=send.call_args.args[0];payload=json.loads(request.data)
+            self.assertEqual(request.full_url,'https://api.resend.com/emails')
+            self.assertEqual(request.get_header('Authorization'),'Bearer test-private-key')
+            self.assertTrue(request.get_header('User-agent').startswith('ValhallaOffice/'))
+            self.assertEqual(payload['from'],'Valhalla Office <notificaciones@valhallaoffice.cl>')
+            self.assertIn('https://valhallaoffice.cl/?verify_email=verification-token',payload['text'])
+            delivery.send_password_reset('person@example.cl','reset-token')
+            self.assertIn('https://valhallaoffice.cl/?reset_password=reset-token',json.loads(send.call_args.args[0].data)['text'])
+            self.assertNotIn('test-private-key',json.dumps(delivery.diagnostics()))
+    def test_provider_errors_are_classified_without_exposing_secret_response(self):
+        import io
+        from urllib.error import HTTPError,URLError
+        from mailer import EmailDeliveryError
+        for status,category in ((401,'invalid_key'),(403,'permissions_or_domain'),(422,'invalid_sender_or_payload'),(429,'rate_limited'),(500,'provider_unavailable')):
+            error=HTTPError('https://api.resend.com/emails',status,'private response',{},io.BytesIO(b'test-private-key reset-token person@example.cl'))
+            with patch('mailer.urlopen',side_effect=error):
+                with self.assertRaises(EmailDeliveryError) as raised:EmailDelivery().send_test('owner@example.cl')
+                self.assertEqual(raised.exception.category,category);self.assertEqual(raised.exception.http_status,status)
+                for value in ('test-private-key','reset-token','person@example.cl'):self.assertNotIn(value,str(raised.exception))
+        with patch('mailer.urlopen',side_effect=URLError('secret network details')):
+            with self.assertRaises(EmailDeliveryError) as raised:EmailDelivery().send_test('owner@example.cl')
+            self.assertEqual(raised.exception.category,'network_error')
+    def test_malformed_provider_success_is_not_reported_as_sent(self):
+        from mailer import EmailDeliveryError
+        for raw in (b'[]',b'{}',b'not json',b'{"id":null}'):
+            response=MagicMock();response.__enter__.return_value.read.return_value=raw
+            with patch('mailer.urlopen',return_value=response):
+                with self.assertRaises(EmailDeliveryError):EmailDelivery().send_test('owner@example.cl')

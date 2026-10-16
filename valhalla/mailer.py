@@ -7,17 +7,37 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
+class EmailDeliveryError(RuntimeError):
+    def __init__(self, category, http_status=None):
+        self.category, self.http_status = category, http_status
+        super().__init__('No se pudo enviar el correo. Administración puede revisar el diagnóstico del servicio.')
+
+
 class EmailDelivery:
     def __init__(self):
-        self.provider = os.environ.get('VALHALLA_EMAIL_PROVIDER', 'sendgrid').lower()
-        self.api_key = os.environ.get('VALHALLA_SENDGRID_API_KEY' if self.provider == 'sendgrid' else 'VALHALLA_RESEND_API_KEY', '')
-        self.sender = os.environ.get('VALHALLA_EMAIL_FROM', '')
-        self.public_url = os.environ.get('VALHALLA_PUBLIC_URL', 'https://valhalla-office-demo.onrender.com').rstrip('/')
+        self.provider = os.environ.get('VALHALLA_EMAIL_PROVIDER', 'sendgrid').strip().lower()
+        self.api_key = os.environ.get('VALHALLA_SENDGRID_API_KEY' if self.provider == 'sendgrid' else 'VALHALLA_RESEND_API_KEY', '').strip()
+        self.sender = os.environ.get('VALHALLA_EMAIL_FROM', '').strip()
+        self.public_url = os.environ.get('VALHALLA_PUBLIC_URL', 'https://valhalla-office-demo.onrender.com').strip().rstrip('/')
 
     @property
     def configured(self):
-        parsed = urlsplit(self.public_url)
-        return bool(self.provider in ('sendgrid', 'resend') and self.api_key and '@' in parseaddr(self.sender)[1] and '\n' not in self.sender and '\r' not in self.sender and parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.fragment and not parsed.query)
+        try:
+            parsed = urlsplit(self.public_url)
+            return bool(self.provider in ('sendgrid', 'resend') and self.api_key and '@' in parseaddr(self.sender)[1] and '\n' not in self.sender and '\r' not in self.sender and parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password and not parsed.fragment and not parsed.query and parsed.path in ('', '/'))
+        except ValueError:
+            return False
+
+    def diagnostics(self):
+        return {'provider':self.provider if self.provider in ('resend','sendgrid') else 'invalid',
+                'sender':self.sender, 'public_url':self.public_url,
+                'api_key_present':bool(self.api_key), 'configured':self.configured}
+
+    def send_test(self, email):
+        self.send_message(email, 'Prueba de correo · Valhalla Office',
+                          'Este es un mensaje de prueba solicitado desde la administración de Valhalla Office.\n'
+                          'Si lo recibiste, el servicio de envío aceptó este mensaje y tu buzón lo recibió.\n'
+                          'Esta prueba no confirma cuentas, no cambia contraseñas y no contiene enlaces de acceso.')
 
     def send_verification(self, email, token):
         if not self.configured:
@@ -46,17 +66,25 @@ class EmailDelivery:
             endpoint = 'https://api.resend.com/emails'
             payload = {'from': self.sender, 'to': [email], 'subject': subject, 'text': text}
         request = Request(endpoint, method='POST',
-                          headers={'Authorization': 'Bearer ' + self.api_key, 'Content-Type': 'application/json'},
+                          headers={'Authorization': 'Bearer ' + self.api_key, 'Content-Type': 'application/json', 'User-Agent':'ValhallaOffice/1.0 (transactional-email)'},
                           data=json.dumps(payload).encode())
         try:
             with urlopen(request, timeout=10) as response:
                 if self.provider == 'sendgrid':
                     if response.status != 202:
-                        raise RuntimeError('El proveedor no confirmó el envío.')
+                        raise EmailDeliveryError('unexpected_response', response.status)
                     return
                 data = json.load(response)
-                if not data.get('id'):
-                    raise RuntimeError('El proveedor no confirmó el envío.')
-        except (HTTPError, URLError, TimeoutError, ValueError) as error:
-            # Provider responses and credentials must never appear in app messages/logs.
-            raise RuntimeError('No se pudo enviar el correo. Inténtalo nuevamente más tarde.') from None
+                if not isinstance(data, dict) or not isinstance(data.get('id'),str) or not data['id']:
+                    raise EmailDeliveryError('unexpected_response')
+        except HTTPError as error:
+            # Fixed categories only. Provider bodies can include addresses, keys or links.
+            category = {400:'invalid_request',401:'invalid_key',403:'permissions_or_domain',
+                        404:'provider_endpoint',422:'invalid_sender_or_payload',429:'rate_limited'}.get(error.code,'provider_unavailable' if error.code>=500 else 'provider_rejected')
+            status=error.code
+            error.close()
+            raise EmailDeliveryError(category,status) from None
+        except (TimeoutError, URLError, OSError):
+            raise EmailDeliveryError('network_error') from None
+        except (ValueError, TypeError):
+            raise EmailDeliveryError('unexpected_response') from None
