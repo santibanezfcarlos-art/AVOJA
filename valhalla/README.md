@@ -149,3 +149,16 @@ Para producción conviene un dominio propio con autenticación del remitente. Ta
 Los adjuntos se descargan como binarios privados, nunca se ejecutan ni muestran incrustados. Admitir cualquier extensión no demuestra que el documento sea legible o auténtico: administración debe revisar ambos lados. En Render gratuito la base local puede perderse al desplegar o reiniciar; antes de usar carnets reales o pagos, se requiere almacenamiento persistente y protegido.
 
 La conexión de pagos propuesta está en [TRANSBANK.md](TRANSBANK.md). Los cobros siguen simulados.
+
+
+## Confirmación y recuperación de contraseña
+
+El registro exige escribir la contraseña dos veces; la coincidencia se verifica también en el servidor. En el inicio de sesión, «Olvidé mi contraseña» permite solicitar un enlace al correo de una cuenta profesional activa. El enlace vence en 30 minutos, es de un solo uso y solo se almacena su hash. Solicitar otro enlace tras un minuto invalida el anterior. Guardar una contraseña nueva cierra todas las sesiones anteriores, sin cambiar la verificación de correo, el carnet, los saldos o las reservas.
+
+La respuesta pública no revela si una cuenta existe. Hay límites por correo y por dirección de conexión; detrás de un proxy, varias personas pueden compartir el límite de 10 solicitudes por hora. El límite por conexión vive en memoria y se reinicia con el proceso. Para un despliegue mayor, trasladarlo a un limitador persistente con conocimiento de los proxies de confianza.
+
+La recuperación utiliza el mismo servicio SendGrid/Resend ya documentado. Si todavía no está configurado, la interfaz lo indica y no simula un envío. Tras activar el dominio y HTTPS, establece `VALHALLA_PUBLIC_URL=https://valhallaoffice.cl` en Render para que los enlaces lleguen con tu dominio. Las pruebas usan un buzón local aislado; no envían correos reales.
+
+La contraseña del administrador, incluso cuando utiliza su perfil profesional, sigue gestionándose únicamente mediante `VALHALLA_ADMIN_PASSWORD` en Render y un nuevo despliegue. La pantalla de recuperación del acceso administrador explica ese procedimiento. Esto evita que un restablecimiento web sea reemplazado al reiniciar por el valor privado configurado.
+
+Prueba manual: registra una cuenta con contraseñas distintas y comprueba el rechazo; vuelve a enviarlas iguales. Desde el inicio solicita recuperación, abre el correo, escribe dos veces la contraseña nueva e inicia sesión. Comprueba que el enlace no pueda reutilizarse y que la contraseña anterior ya no funcione. Usa una instancia aislada para estas pruebas.

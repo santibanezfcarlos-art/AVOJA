@@ -29,6 +29,7 @@ function previewSlot(body){
 async function api(path,body){
   const db=previewDB;
   if(path==='email-verification/resend')return {sent:false,available:false,message:'La confirmación de correo funciona en el sitio con servidor, después de configurar el servicio de envío.'};
+  if(path.startsWith('password-reset/'))throw Error('La recuperación requiere el sitio con servidor y el servicio de correo configurado.');
   if(path==='verify-email')throw Error('Confirma tu correo en el sitio publicado con servidor.');
   if(path==='gallery')return {groups:globalThis.VALHALLA_GALLERY||[]};
   if(path==='login'){
@@ -39,6 +40,7 @@ async function api(path,body){
     previewUser=user.id;return {ok:true};
   }
   if(path==='register'){
+    if(body.password!==body.password_confirmation)throw Error('Las contraseñas no coinciden.');
     const email=String(body.email).trim().toLowerCase();
     if(email==='santibanezf.carlos@gmail.com')throw Error('Este correo está reservado para administración.');
     if(db.users.some(u=>u.email===email))throw Error('Ya existe una cuenta con ese correo.');

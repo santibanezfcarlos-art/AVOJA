@@ -311,16 +311,43 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request(f'/api/documents/{did}',cookie='session='+other)[0],404)
 
     def test_registration_cookie_and_static_page(self):
-        status,body,headers=self.request('/api/register',{'name':'Registro prueba','email':'nuevo@ejemplo.cl','password':'NuevaPersona2026!','specialty':'Psicología','role':'admin','verified':True})
+        status,body,headers=self.request('/api/register',{'name':'Registro prueba','email':'nuevo@ejemplo.cl','password':'NuevaPersona2026!','password_confirmation':'NuevaPersona2026!','specialty':'Psicología','role':'admin','verified':True})
         self.assertEqual(status,200)
         self.assertIn('HttpOnly',headers['Set-Cookie'])
         cookie=headers['Set-Cookie'].split(';')[0]
         _,profile,_=self.request('/api/me',cookie=cookie)
         self.assertEqual(profile['user']['role'],'professional')
         self.assertEqual(profile['user']['verified'],0)
-        self.assertEqual(self.request('/api/register',{'name':'Registro prueba','email':'nuevo@ejemplo.cl','password':'NuevaPersona2026!','specialty':'Psicología'})[0],409)
+        self.assertEqual(self.request('/api/register',{'name':'Registro prueba','email':'nuevo@ejemplo.cl','password':'NuevaPersona2026!','password_confirmation':'NuevaPersona2026!','specialty':'Psicología'})[0],409)
         self.assertEqual(self.request('/')[0],200)
         self.assertEqual(self.request('/../../app.py')[0],404)
+
+    def test_registration_requires_matching_confirmation(self):
+        body={'name':'Confirmation Test','email':'confirmation@example.cl','password':'NewPassword2026!','specialty':'Psicología'}
+        self.assertEqual(self.request('/api/register',body)[0],400)
+        self.assertEqual(self.request('/api/register',dict(body,password_confirmation='WrongPassword2026!'))[0],400)
+        with self.store.connection() as c:
+            self.assertIsNone(c.execute('SELECT id FROM users WHERE email=?',(body['email'],)).fetchone())
+
+    def test_recovery_without_mail_service_fails_without_tokens(self):
+        self.assertEqual(self.request('/api/password-reset/request',{'email':'professional@test.cl'})[0],503)
+
+    def test_recovery_same_response_for_unknown_and_existing_and_no_token_leak(self):
+        from unittest.mock import Mock
+        delivery=Mock(configured=True)
+        self.server.email_delivery=delivery
+        try:
+            known=self.request('/api/password-reset/request',{'email':'professional@test.cl'})
+            unknown=self.request('/api/password-reset/request',{'email':'unknown-reset@test.cl'})
+            self.assertEqual(known[0],200)
+            self.assertEqual(known[:2],unknown[:2])
+            token=delivery.send_password_reset.call_args.args[1]
+            self.assertNotIn(token,json.dumps(known[1]))
+            self.assertNotIn('Set-Cookie',known[2])
+            blocked=self.request('/api/password-reset/request',{'email':'another-reset@test.cl'},origin='https://other.example')
+            self.assertEqual(blocked[0],403)
+        finally:
+            del self.server.email_delivery
 
 
 if __name__=='__main__':

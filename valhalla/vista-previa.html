@@ -36,6 +36,8 @@ let officeGallery = [];
 const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
 let disposeWelcomeCarousel = () => {};
 let toastTimer;
+let passwordResetToken = new URLSearchParams(window.location.search).get('reset_password');
+if(passwordResetToken){const clean=new URL(window.location.href);clean.searchParams.delete('reset_password');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
 let emailConfirmationToken = new URLSearchParams(window.location.search).get('verify_email');
 if(emailConfirmationToken){const clean=new URL(window.location.href);clean.searchParams.delete('verify_email');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
 const money = n => new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0}).format(n);
@@ -80,6 +82,7 @@ function previewSlot(body){
 async function api(path,body){
   const db=previewDB;
   if(path==='email-verification/resend')return {sent:false,available:false,message:'La confirmación de correo funciona en el sitio con servidor, después de configurar el servicio de envío.'};
+  if(path.startsWith('password-reset/'))throw Error('La recuperación requiere el sitio con servidor y el servicio de correo configurado.');
   if(path==='verify-email')throw Error('Confirma tu correo en el sitio publicado con servidor.');
   if(path==='gallery')return {groups:globalThis.VALHALLA_GALLERY||[]};
   if(path==='login'){
@@ -90,6 +93,7 @@ async function api(path,body){
     previewUser=user.id;return {ok:true};
   }
   if(path==='register'){
+    if(body.password!==body.password_confirmation)throw Error('Las contraseñas no coinciden.');
     const email=String(body.email).trim().toLowerCase();
     if(email==='santibanezf.carlos@gmail.com')throw Error('Este correo está reservado para administración.');
     if(db.users.some(u=>u.email===email))throw Error('Ya existe una cuenta con ese correo.');
@@ -218,17 +222,20 @@ function auth(register = false, administrator = false) {
     <section class="auth-form"><div class="auth-inner"><span class="demo-label">PROTOTIPO · SIN COBROS REALES</span><h2>${administrator ? 'Acceso administrador' : register ? 'Crea tu cuenta profesional' : 'Bienvenido a tu espacio'}</h2><p class="muted">${administrator ? 'Ingresa con tu correo autorizado y tu contraseña privada.' : register ? 'Regístrate y envía tu documentación para comenzar.' : 'Organiza tus atenciones, con todo en un solo lugar.'}</p>
     <form id="auth-form" class="form-stack">${register ? '<label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" placeholder="Ej. Psicología"></label>' : ''}
     <label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="200" placeholder="tu@correo.cl"></label><label>Contraseña<input name="password" type="password" autocomplete="${register?'new-password':'current-password'}" required minlength="${register?10:1}" maxlength="200" placeholder="${register?'Mínimo 10 caracteres':'Tu contraseña'}"></label>
+    ${register?'<label>Confirmar contraseña<input name="password_confirmation" type="password" autocomplete="new-password" required minlength="10" maxlength="200" placeholder="Repite tu contraseña"></label>':''}
     <p id="auth-error" class="error" role="alert"></p><button class="btn full" type="submit">${register?'Crear cuenta':'Iniciar sesión'} <span aria-hidden="true">→</span></button></form>
+    ${!register?'<button class="text-btn" id="forgot-password">Olvidé mi contraseña</button>':''}
     <div class="auth-switch">${administrator ? '¿Eres profesional?' : register?'¿Ya tienes una cuenta?':'¿Primera vez en Valhalla?'} <button class="text-btn" id="auth-switch">${administrator ? 'Volver al inicio' : register?'Inicia sesión':'Regístrate'}</button></div>
     <div class="demo-access"><strong>Elige tu acceso</strong><p class="muted">Vista previa local: regístrate para explorar. Los datos se reinician al recargar. La administración privada funciona en el sitio con servidor.</p><div class="row"><button class="btn secondary small" id="professional-access">Acceso profesional</button><button class="btn ghost small" id="administrator-access">Acceso administrador</button></div></div></div></section></div>${gallerySection()}`;
   bindGallery();
   bindWelcomeCarousel();
+  const forgot=document.querySelector('#forgot-password');if(forgot)forgot.onclick=()=>passwordRecovery(false,administrator);
   document.querySelector('#auth-switch').onclick = () => administrator ? auth() : auth(!register);
   document.querySelector('#professional-access').onclick = () => auth(true);
   document.querySelector('#administrator-access').onclick = () => auth(false, true);
   document.querySelector('#auth-form').onsubmit = async event => {
     event.preventDefault(); const form=event.currentTarget, button=form.querySelector('button[type=submit]');button.disabled=true;
-    try { const credentials=Object.fromEntries(new FormData(form)); credentials.portal=administrator?'admin':'professional'; const result=await api(register?'register':'login', credentials); activeProfile=administrator?'admin':'professional'; view=administrator?'admin':'overview'; await reload(); if(result.email_verification?.message)toast(result.email_verification.message); }
+    try { const credentials=Object.fromEntries(new FormData(form)); if(register&&credentials.password!==credentials.password_confirmation)throw new Error('Las contraseñas no coinciden.'); credentials.portal=administrator?'admin':'professional'; const result=await api(register?'register':'login', credentials); activeProfile=administrator?'admin':'professional'; view=administrator?'admin':'overview'; await reload(); if(result.email_verification?.message)toast(result.email_verification.message); }
     catch(e) { document.querySelector('#auth-error').textContent=e.message; }
     finally { button.disabled=false; }
   };
@@ -386,6 +393,25 @@ function bind() {
     showModal(title,`<p>${copy}</p>${identityReview?'<label class="identity-confirmation"><input type="checkbox" id="identity-confirmed">He revisado ambos lados del carnet y corresponden al titular de esta cuenta.</label>':''}${action==='document'?`<label class="review-label">Observación ${decision==='rejected'?'(obligatoria)':'(opcional)'}<textarea id="review-note" rows="3" maxlength="500"></textarea></label>`:''}`,'Confirmar',async()=>{await api('admin',{action,id:Number(b.dataset.id),decision,active,identity_confirmed:document.querySelector('#identity-confirmed')?.checked===true,note:document.querySelector('#review-note')?.value||''});toast('Operación registrada.');});
   });
 }
+function passwordRecovery(reset = false, administrator = false) {
+  disposeWelcomeCarousel();
+  root.innerHTML=`<main class="email-confirmation">${brand}<section class="card"><div class="eyebrow">ACCESO A TU CUENTA</div><h1>${reset?'Crea una nueva contraseña':'Recuperar contraseña'}</h1><p>${reset?'El enlace dura 30 minutos y se utiliza una sola vez. Al guardar, se cerrarán las sesiones anteriores.':administrator?'La contraseña administradora se configura en Render → tu servicio → Environment → VALHALLA_ADMIN_PASSWORD. Actualízala allí y guarda con un nuevo despliegue. Para una cuenta profesional, usa la recuperación por correo.':'Ingresa el correo con el que registraste tu cuenta profesional. Te enviaremos un enlace para elegir otra contraseña.'}</p>${administrator?'':`<form id="recovery-form" class="form-stack">${reset?'<label>Nueva contraseña<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="200"></label><label>Confirmar contraseña<input name="password_confirmation" type="password" autocomplete="new-password" required minlength="10" maxlength="200"></label>':'<label>Correo electrónico<input name="email" type="email" autocomplete="email" required maxlength="200"></label>'}<p id="recovery-error" class="error" role="alert"></p><p id="recovery-result" role="status"></p><button class="btn full" type="submit">${reset?'Guardar nueva contraseña':'Enviar enlace de recuperación'}</button></form>`}<button class="text-btn" id="back-to-login">Volver a iniciar sesión</button></section></main>`;
+  document.querySelector('#back-to-login').onclick=()=>{passwordResetToken=null;auth(false,administrator);};
+  const form=document.querySelector('#recovery-form');if(!form)return;
+  form.onsubmit=async event=>{
+    event.preventDefault();const button=form.querySelector('button[type=submit]');button.disabled=true;
+    document.querySelector('#recovery-error').textContent='';
+    try{
+      const body=Object.fromEntries(new FormData(form));
+      if(reset&&body.password!==body.password_confirmation)throw new Error('Las contraseñas no coinciden.');
+      if(reset)body.token=passwordResetToken;
+      const result=await api(reset?'password-reset/confirm':'password-reset/request',body);
+      document.querySelector('#recovery-result').textContent=reset?'Contraseña actualizada. Inicia sesión con tu nueva contraseña.':result.message;
+      if(reset){passwordResetToken=null;state=null;form.querySelectorAll('input').forEach(input=>{input.value='';input.disabled=true;});button.textContent='Contraseña actualizada';}
+      else button.disabled=false;
+    }catch(error){document.querySelector('#recovery-error').textContent=error.message;button.disabled=false;}
+  };
+}
 function emailConfirmation() {
   disposeWelcomeCarousel();
   root.innerHTML=`<main class="email-confirmation">${brand}<section class="card"><div class="eyebrow">CONFIRMACIÓN DE CUENTA</div><h1>Confirma tu correo</h1><p>Pulsa el botón para confirmar que este correo te pertenece. El enlace vence a las 24 horas y se usa una sola vez.</p><p class="error" id="email-confirmation-error" role="alert"></p><button class="btn full" id="confirm-email-button">Confirmar mi correo</button><button class="text-btn" id="back-to-account">Volver a mi cuenta</button></section></main>`;
@@ -397,6 +423,7 @@ function emailConfirmation() {
   };
 }
 async function startApp() {
+  if(passwordResetToken){passwordRecovery(true);return;}
   if(emailConfirmationToken){emailConfirmation();return;}
   try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
   try{const data=await api('me');state=data;selectedDate=data.today;if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}

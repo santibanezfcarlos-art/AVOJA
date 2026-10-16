@@ -19,6 +19,7 @@ def main():
         configured=True
         def __init__(self):self.tokens={}
         def send_verification(self,email,token):self.tokens[email]=token
+        def send_password_reset(self,email,token):self.tokens["reset:"+email]=token
     delivery=FakeDelivery()
     class Mailbox(BaseHTTPRequestHandler):
         def log_message(self,*args):pass

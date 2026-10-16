@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -133,6 +134,11 @@ class Store:
             CREATE TABLE IF NOT EXISTS email_verifications (
               token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               created_at REAL NOT NULL, expires REAL NOT NULL, consumed INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS password_resets (
+              token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+              created_at REAL NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS recovery_limits (
+              email_hash TEXT PRIMARY KEY, requested_at REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
@@ -296,6 +302,44 @@ class Store:
             c.execute('UPDATE email_verifications SET consumed=1 WHERE token_hash=?', (row['token_hash'],))
             c.execute('UPDATE users SET email_verified=1 WHERE id=?', (row['user_id'],))
             self.log(c, row['user_id'], 'email_verified', row['user_id'])
+
+    def issue_password_reset(self, email):
+        email = str(email).strip().lower()
+        if len(email) > 200:
+            return None
+        timestamp = time.time()
+        email_hash = hashlib.sha256(email.encode()).hexdigest()
+        with self.connection(True) as c:
+            previous = c.execute('SELECT requested_at FROM recovery_limits WHERE email_hash=?', (email_hash,)).fetchone()
+            if previous and timestamp - previous[0] < 60:
+                return None
+            c.execute('DELETE FROM recovery_limits WHERE requested_at<?', (timestamp-3600,))
+            c.execute('INSERT OR REPLACE INTO recovery_limits VALUES(?,?)', (email_hash, timestamp))
+            user = c.execute("SELECT id,email FROM users WHERE email=? AND active=1 AND role='professional'", (email,)).fetchone()
+            # The administrator password remains managed by the private Render setting.
+            if not user or email in LEGACY_DEMO_EMAILS:
+                return None
+            token = secrets.token_urlsafe(32)
+            c.execute('DELETE FROM password_resets WHERE user_id=? OR expires<=?', (user['id'], timestamp))
+            c.execute('INSERT INTO password_resets VALUES(?,?,?,?)', (hashlib.sha256(token.encode()).hexdigest(), user['id'], timestamp, timestamp+1800))
+            return token, user['email']
+
+    def reset_password(self, body):
+        token, password = body.get('token'), body.get('password')
+        if not isinstance(password, str) or not 10 <= len(password) <= 200:
+            raise Problem('La contraseña debe tener entre 10 y 200 caracteres.')
+        if password != body.get('password_confirmation'):
+            raise Problem('Las contraseñas no coinciden.')
+        if not isinstance(token, str) or not 20 <= len(token) <= 100:
+            raise Problem('El enlace de recuperación es inválido o venció.')
+        with self.connection(True) as c:
+            row = c.execute("SELECT r.user_id FROM password_resets r JOIN users u ON u.id=r.user_id WHERE r.token_hash=? AND r.expires>? AND u.active=1 AND u.role='professional'", (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
+            if not row:
+                raise Problem('El enlace de recuperación es inválido, ya se utilizó o venció.')
+            c.execute('UPDATE users SET password=? WHERE id=?', (password_hash(password), row['user_id']))
+            c.execute('DELETE FROM sessions WHERE user_id=?', (row['user_id'],))
+            c.execute('DELETE FROM password_resets WHERE user_id=?', (row['user_id'],))
+            self.log(c, row['user_id'], 'password_reset', row['user_id'])
 
     def document_metadata(self, c, row):
         document = dict(row)
@@ -538,6 +582,8 @@ class Store:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'ValhallaPrototype'
+    recovery_lock = threading.Lock()
+    recovery_clients = {}
 
     def log_request(self, code='-', size='-'):
         from urllib.parse import urlsplit
@@ -672,6 +718,31 @@ class Handler(BaseHTTPRequestHandler):
             if origin and origin not in ('http://' + self.headers.get('Host', ''), 'https://' + self.headers.get('Host', '')):
                 raise Problem('Origen no permitido.', 403)
             body = self.body()
+            if self.path == '/api/password-reset/request':
+                delivery = getattr(self.server, 'email_delivery', None)
+                if not delivery or not delivery.configured:
+                    raise Problem('La recuperación por correo todavía no está habilitada. Inténtalo cuando administración configure el servicio.', 503)
+                # Bound outbound mail per client as well as per email, without revealing account existence.
+                with self.recovery_lock:
+                    client = self.client_address[0]
+                    timestamp = time.time()
+                    Handler.recovery_clients = {key: entries for key, values in Handler.recovery_clients.items() if (entries := [t for t in values if timestamp-t < 3600])}
+                    entries = Handler.recovery_clients.setdefault(client, [])
+                    allowed = len(entries) < 10
+                    if allowed:
+                        entries.append(timestamp)
+                result = self.server.store.issue_password_reset(body.get('email', '')) if allowed else None
+                if result:
+                    try:
+                        delivery.send_password_reset(result[1], result[0])
+                    except RuntimeError:
+                        pass  # Same public response for unknown accounts and failed delivery.
+                self.respond({'ok': True, 'message': 'Si existe una cuenta profesional activa con ese correo, recibirás un enlace. Revisa también spam. Puedes solicitar otro después de un minuto.'})
+                return
+            if self.path == '/api/password-reset/confirm':
+                self.server.store.reset_password(body)
+                self.respond({'ok': True})
+                return
             if self.path == '/api/verify-email':
                 self.server.store.confirm_email(body.get('token'))
                 self.respond({'ok': True})
@@ -679,6 +750,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path in ('/api/login', '/api/register'):
                 delivery_result = None
                 if self.path == '/api/register':
+                    if body.get('password') != body.get('password_confirmation'):
+                        raise Problem('Las contraseñas no coinciden.')
                     uid = self.server.store.register(body)
                     delivery_result = self.send_email_verification(uid)
                 token = self.server.store.login(body)

@@ -25,7 +25,17 @@ class EmailDelivery:
         link = self.public_url + '/?verify_email=' + token
         text = ('Confirma tu correo para usar tu cuenta de Valhalla Office.\n\n' + link +
                 '\n\nEl enlace vence en 24 horas y se usa una sola vez. Si no creaste esta cuenta, ignora este mensaje.')
-        subject = 'Confirma tu correo · Valhalla Office'
+        self.send_message(email, 'Confirma tu correo · Valhalla Office', text)
+
+    def send_password_reset(self, email, token):
+        link = self.public_url + '/?reset_password=' + token
+        text = ('Solicitaste cambiar tu contraseña de Valhalla Office.\n\n' + link +
+                '\n\nEl enlace vence en 30 minutos y se usa una sola vez. Si no lo solicitaste, ignora este mensaje; tu contraseña no cambiará.')
+        self.send_message(email, 'Recupera tu contraseña · Valhalla Office', text)
+
+    def send_message(self, email, subject, text):
+        if not self.configured:
+            raise RuntimeError('El servicio de correo todavía no está configurado.')
         if self.provider == 'sendgrid':
             name, address = parseaddr(self.sender)
             endpoint = 'https://api.sendgrid.com/v3/mail/send'
