@@ -150,6 +150,10 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS booking_batches (
+              user_id INTEGER NOT NULL REFERENCES users(id), request_key TEXT NOT NULL,
+              fingerprint TEXT NOT NULL, booking_ids TEXT NOT NULL, created_at TEXT NOT NULL,
+              PRIMARY KEY(user_id,request_key));
             CREATE TABLE IF NOT EXISTS purchase_acceptances (
               package_id INTEGER PRIMARY KEY REFERENCES packages(id), user_id INTEGER NOT NULL REFERENCES users(id),
               version TEXT NOT NULL, rules_text TEXT NOT NULL, accepted_at TEXT NOT NULL);
@@ -647,27 +651,59 @@ class Store:
             self.log(c, uid, 'payment_requested_simulated', cur.lastrowid)
             return cur.lastrowid
 
+    def reserve_one(self, c, uid, box, start):
+        if c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
+            raise Problem('Ya tienes una reserva a esa hora.', 409)
+        package=c.execute("SELECT * FROM packages WHERE user_id=? AND status='paid' AND remaining>0 ORDER BY id LIMIT 1",(uid,)).fetchone()
+        if not package:
+            raise Problem('Necesitas saldo de un paquete con pago confirmado.',409)
+        bid=c.execute('INSERT INTO bookings(user_id,package_id,box,start,created_at) VALUES(?,?,?,?,?)',(uid,package['id'],box,start,stamp(now()))).lastrowid
+        c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?',(package['id'],))
+        self.log(c,uid,'reserved',bid)
+        self.queue_booking_receipt(c,uid,bid,'booking_confirmed')
+        return bid
+
     def reserve(self, uid, body):
-        start = self.parse_slot(body.get('start'))
-        box = body.get('box')
-        if type(box) is not int or box not in (1, 2, 3):
+        start=self.parse_slot(body.get('start')); box=body.get('box')
+        if type(box) is not int or box not in (1,2,3):
             raise Problem('Box inválido.')
         try:
             with self.connection(True) as c:
-                self.professional(c, uid)
-                if c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
-                    raise Problem('Ya tienes una reserva a esa hora.', 409)
-                package = c.execute("SELECT * FROM packages WHERE user_id=? AND status='paid' AND remaining>0 ORDER BY id LIMIT 1", (uid,)).fetchone()
-                if not package:
-                    raise Problem('Necesitas saldo de un paquete con pago confirmado.', 409)
-                cur = c.execute('INSERT INTO bookings(user_id,package_id,box,start,created_at) VALUES(?,?,?,?,?)',
-                                (uid, package['id'], box, start, stamp(now())))
-                c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?', (package['id'],))
-                self.log(c, uid, 'reserved', cur.lastrowid)
-                self.queue_booking_receipt(c,uid,cur.lastrowid,'booking_confirmed')
-                return cur.lastrowid
+                self.professional(c,uid)
+                return self.reserve_one(c,uid,box,start)
         except sqlite3.IntegrityError:
-            raise Problem('Ese box acaba de ser reservado. Elige otro horario.', 409)
+            raise Problem('Ese box acaba de ser reservado. Elige otro horario.',409)
+
+    def reserve_batch(self, uid, body):
+        selected=body.get('slots'); key=body.get('request_key')
+        if not isinstance(selected,list) or not 1<=len(selected)<=200 or not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
+            raise Problem('Selecciona entre 1 y 200 horas y vuelve a confirmar la selección.')
+        slots=[]
+        for item in selected:
+            if not isinstance(item,dict) or type(item.get('box')) is not int or item['box'] not in (1,2,3):
+                raise Problem('Box inválido en la selección.')
+            slots.append((self.parse_slot(item.get('start')),item['box']))
+        if len({start for start,box in slots})!=len(slots):
+            raise Problem('No puedes seleccionar dos boxes para la misma hora.',409)
+        slots.sort()
+        fingerprint=hashlib.sha256(json.dumps(slots).encode()).hexdigest()
+        try:
+            with self.connection(True) as c:
+                self.professional(c,uid)
+                previous=c.execute('SELECT * FROM booking_batches WHERE user_id=? AND request_key=?',(uid,key)).fetchone()
+                if previous:
+                    if previous['fingerprint']!=fingerprint:
+                        raise Problem('Esta confirmación corresponde a otra selección. Revisa la agenda.',409)
+                    remaining=c.execute("SELECT COALESCE(SUM(remaining),0) FROM packages WHERE user_id=? AND status='paid'",(uid,)).fetchone()[0]
+                    return {'ids':json.loads(previous['booking_ids']),'repeated':True,'remaining':remaining}
+                balance=c.execute("SELECT COALESCE(SUM(remaining),0) FROM packages WHERE user_id=? AND status='paid'",(uid,)).fetchone()[0]
+                if balance<len(slots):
+                    raise Problem('Tu saldo no alcanza para todas las horas seleccionadas. No se confirmó ninguna.',409)
+                ids=[self.reserve_one(c,uid,box,start) for start,box in slots]
+                c.execute('INSERT INTO booking_batches VALUES(?,?,?,?,?)',(uid,key,fingerprint,json.dumps(ids),stamp(now())))
+                return {'ids':ids,'repeated':False,'remaining':balance-len(slots)}
+        except sqlite3.IntegrityError:
+            raise Problem('Un horario seleccionado acaba de ocuparse. No se confirmó ninguna hora ni se descontó saldo; revisa la agenda.',409)
 
     def modify(self, uid, bid, body):
         start = self.parse_slot(body.get('start'))
@@ -1160,6 +1196,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not service or type(body.get('id')) is not int:
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id']))
+                return
+            elif self.path == '/api/bookings/batch':
+                self.respond(store.reserve_batch(user['id'],body))
                 return
             elif self.path == '/api/bookings':
                 result = store.reserve(user['id'], body)

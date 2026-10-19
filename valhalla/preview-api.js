@@ -1,7 +1,7 @@
 // In-memory adapter for the standalone ChatGPT preview. No network or real payments.
 const previewDB = {
   users: [],
-  packages:[],
+  batches:[], packages:[],
   documents:[], bookings:[], audit:[]
 };
 let previewUser = null;
@@ -66,6 +66,16 @@ async function api(path,body){
     if(user.role!=='professional')throw Error('Solo profesionales pueden solicitar paquetes.');
     const p=previewCatalog.find(p=>p.id===body.catalog_id);if(!p)throw Error('Paquete inválido.');
     const row={id:previewId(db.packages),user_id:user.id,hours:p.hours,remaining:p.hours,price:p.price,status:'pending',created_at:new Date().toISOString()};db.packages.push(row);previewRecord('payment_requested_simulated',row.id);return {ok:true,id:row.id};
+  }
+  if(path==='bookings/batch'){
+    if(!Array.isArray(body.slots)||!body.slots.length||body.slots.length>200||!body.request_key)throw Error('Selecciona las horas antes de confirmar.');
+    const fingerprint=JSON.stringify(body.slots.slice().sort((a,b)=>a.start.localeCompare(b.start)));
+    const previous=db.batches.find(batch=>batch.user_id===user.id&&batch.key===body.request_key);
+    if(previous){if(previous.fingerprint!==fingerprint)throw Error('La confirmación corresponde a otra selección.');return {ids:previous.ids,repeated:true};}
+    const before=previewClone({bookings:db.bookings,packages:db.packages,audit:db.audit});const ids=[];
+    try{for(const slot of body.slots){await api('bookings',slot);ids.push(db.bookings.at(-1).id);}}
+    catch(error){db.bookings=before.bookings;db.packages=before.packages;db.audit=before.audit;throw error;}
+    db.batches.push({user_id:user.id,key:body.request_key,fingerprint,ids});return {ids,repeated:false};
   }
   if(path==='bookings'||path.startsWith('bookings/')){
     if(user.role!=='professional'||!user.verified)throw Error('Necesitas documentación aprobada para reservar.');

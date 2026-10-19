@@ -219,3 +219,11 @@ La documentación usa `identity` para carnet y `degree` para certificado de tít
 El correo de reserva conserva profesional, espacio, fecha, horario, dirección, condiciones de modificación y enlace. La referencia permanece dentro de la plataforma, pero ya no figura en el correo; tampoco se muestran líneas de duración ni zona horaria. La fecha y hora siguen calculándose en America/Santiago.
 
 Las reglas de sobretiempo y sanciones se comunican en las normas; esta actualización no implementa cargos automáticos adicionales a una tarjeta ni deducciones nuevas de saldo por esos conceptos.
+
+## Selección de varias horas
+
+En Disponibilidad, «Seleccionar varias horas» permite combinar fechas y boxes antes de confirmar. El resumen conserva la selección al cambiar de día, limita las horas al saldo pagado y ofrece «Agendar las restantes más adelante» cuando solo se usa parte del saldo. La selección es temporal, no bloquea horarios ni descuenta saldo; se pierde al recargar la página o cerrar sesión.
+
+`POST /api/bookings/batch` recibe de 1 a 200 horarios y una clave de confirmación aleatoria. Requiere sesión, CSRF, correo y documentación aprobados (o validación migrada). Confirma todo en una transacción o nada ante saldo insuficiente o conflictos; usa primero los planes pagados más antiguos. La clave impide repetir reservas y descuentos al reintentar la misma confirmación. Rechaza una clave reutilizada con otra selección y horarios simultáneos del mismo profesional, incluso en distintos boxes. Cada hora conserva su reserva, comprobante y única modificación según las reglas vigentes.
+
+El saldo no utilizado permanece en los planes del titular para futuras reservas. No se crean reservas ficticias para las horas pendientes de elegir.
