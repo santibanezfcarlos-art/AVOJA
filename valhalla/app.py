@@ -1357,6 +1357,9 @@ def main():
                 pass  # Keep pending attempts for the next pass; never credit on database failure.
             stop_background.wait(30)
     threading.Thread(target=reconcile_payments, daemon=True).start()
+    # Daily TTLock integration is opt-in and OFF unless TTLOCK_ENABLED=true.
+    from ttlock_worker import start_worker
+    start_worker(args.db, stop_background)
     print(f'Valhalla Office · prototipo local · puerto {args.port}', flush=True)
     try:
         server.serve_forever()
