@@ -150,6 +150,12 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS manual_credits (
+              id INTEGER PRIMARY KEY, package_id INTEGER NOT NULL UNIQUE REFERENCES packages(id),
+              user_id INTEGER NOT NULL REFERENCES users(id), actor_id INTEGER NOT NULL REFERENCES users(id),
+              method TEXT NOT NULL, amount INTEGER NOT NULL, reference TEXT NOT NULL, note TEXT NOT NULL,
+              request_key TEXT NOT NULL, fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, received_on TEXT NOT NULL,
+              UNIQUE(actor_id,request_key), UNIQUE(method,reference));
             CREATE TABLE IF NOT EXISTS booking_batches (
               user_id INTEGER NOT NULL REFERENCES users(id), request_key TEXT NOT NULL,
               fingerprint TEXT NOT NULL, booking_ids TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -221,6 +227,10 @@ class Store:
               id INTEGER PRIMARY KEY, actor_id INTEGER REFERENCES users(id),
               action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL);
             ''')
+            if 'received_on' not in {row['name'] for row in c.execute('PRAGMA table_info(manual_credits)')}:
+                c.execute("ALTER TABLE manual_credits ADD COLUMN received_on TEXT NOT NULL DEFAULT ''")
+                for record in c.execute('SELECT id,created_at FROM manual_credits').fetchall():
+                    c.execute('UPDATE manual_credits SET received_on=? WHERE id=?',(datetime.fromisoformat(record['created_at']).astimezone(CHILE).date().isoformat(),record['id']))
             notification_columns = {row['name'] for row in c.execute('PRAGMA table_info(notification_outbox)')}
             if 'first_attempt' not in notification_columns:
                 c.execute('ALTER TABLE notification_outbox ADD COLUMN first_attempt REAL NOT NULL DEFAULT 0')
@@ -561,7 +571,7 @@ class Store:
             profile['degree_approved'] = bool(degree and degree['status']=='approved')
             profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
             return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
-                    'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
+                    'packages': [dict(r) for r in c.execute('SELECT p.*,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? ORDER BY p.id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'email_verification_delivery': next((row['status'] for row in c.execute("SELECT status FROM mail_events WHERE user_id=? AND kind='verification' ORDER BY id DESC LIMIT 1",(user['id'],))),None),
@@ -651,12 +661,68 @@ class Store:
             self.log(c, uid, 'payment_requested_simulated', cur.lastrowid)
             return cur.lastrowid
 
+    def manual_credit(self, actor, body):
+        uid, hours, amount=body.get('user_id'),body.get('hours'),body.get('amount')
+        method, reference, note, key=body.get('method'),body.get('reference'),body.get('note'),body.get('request_key')
+        if type(uid) is not int or type(hours) is not int or not 1<=hours<=200 or type(amount) is not int or not 0<=amount<=100000000:
+            raise Problem('Selecciona el profesional, entre 1 y 200 sesiones y un monto entero en pesos.')
+        if method not in ('cash','transfer','courtesy') or (method=='courtesy' and amount!=0) or (method in ('cash','transfer') and amount<=0):
+            raise Problem('Indica el medio y monto recibido. Las cortesías deben tener monto cero.')
+        if not isinstance(reference,str) or not 3<=len(reference.strip())<=120 or not isinstance(note,str) or not 5<=len(note.strip())<=500:
+            raise Problem('Incluye una referencia única y una observación de respaldo de al menos 5 caracteres.')
+        if body.get('confirmed') is not True or not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
+            raise Problem('Confirma que verificaste el pago o autorizaste la cortesía.')
+        received_on=body.get('received_on',now().astimezone(CHILE).date().isoformat())
+        try:
+            if not isinstance(received_on,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',received_on) or datetime.fromisoformat(received_on).date()>now().astimezone(CHILE).date():
+                raise ValueError()
+        except (ValueError,TypeError):
+            raise Problem('Indica una fecha de recepción válida, hasta hoy.')
+        reference,note=reference.strip(),note.strip()
+        fingerprint=hashlib.sha256(json.dumps([uid,hours,amount,method,reference,note,received_on]).encode()).hexdigest()
+        try:
+            with self.connection(True) as c:
+                administrator=c.execute('SELECT * FROM users WHERE id=?',(actor,)).fetchone()
+                if not administrator or administrator['role']!='admin' or administrator['email']!=ADMIN_EMAIL or not administrator['active']:
+                    raise Problem('Acceso exclusivo de administración.',403)
+                previous=c.execute('SELECT package_id,fingerprint FROM manual_credits WHERE actor_id=? AND request_key=?',(actor,key)).fetchone()
+                if previous:
+                    if previous['fingerprint']!=fingerprint:
+                        raise Problem('Esta confirmación corresponde a otra carga. Revisa los datos.',409)
+                    return {'package_id':previous['package_id'],'repeated':True}
+                recipient=c.execute('SELECT role,email,active FROM users WHERE id=?',(uid,)).fetchone()
+                if not recipient or not recipient['active'] or not supports_professional(recipient):
+                    raise Problem('Selecciona una cuenta profesional activa.',400)
+                if c.execute('SELECT 1 FROM manual_credits WHERE method=? AND reference=? COLLATE NOCASE',(method,reference)).fetchone():
+                    raise Problem('Esta referencia ya tiene una carga registrada. No se volvieron a acreditar horas.',409)
+                pid=c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at,source) VALUES(?,?,?,?,'paid',?,'manual_credit')",(uid,hours,hours,amount,stamp(now()))).lastrowid
+                cid=c.execute('INSERT INTO manual_credits(package_id,user_id,actor_id,method,amount,reference,note,request_key,fingerprint,created_at,received_on) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(pid,uid,actor,method,amount,reference,note,key,fingerprint,stamp(now()),received_on)).lastrowid
+                self.log(c,actor,'manual_hours_credited',cid)
+                return {'package_id':pid,'repeated':False}
+        except sqlite3.IntegrityError:
+            raise Problem('La carga ya está registrada o sus datos entraron en conflicto. Revisa el historial antes de volver a cargar.',409)
+
+    def accept_manual_rules(self, uid, body):
+        pid=body.get('package_id')
+        if type(pid) is not int or not validate_acceptance(body.get('rules_acceptance')):
+            raise Problem('Debes leer y aceptar las normas vigentes de este plan.')
+        with self.connection(True) as c:
+            plan=c.execute("SELECT id FROM packages WHERE id=? AND user_id=? AND source='manual_credit' AND status='paid'",(pid,uid)).fetchone()
+            if not plan:
+                raise Problem('Plan no encontrado.',404)
+            if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(pid,)).fetchone():
+                self.record_purchase_acceptance(c,uid,pid,body['rules_acceptance'])
+                self.log(c,uid,'manual_plan_rules_accepted',pid)
+        return {'ok':True}
+
     def reserve_one(self, c, uid, box, start):
         if c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
             raise Problem('Ya tienes una reserva a esa hora.', 409)
         package=c.execute("SELECT * FROM packages WHERE user_id=? AND status='paid' AND remaining>0 ORDER BY id LIMIT 1",(uid,)).fetchone()
         if not package:
             raise Problem('Necesitas saldo de un paquete con pago confirmado.',409)
+        if package['source']=='manual_credit' and not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(package['id'],)).fetchone():
+            raise Problem('Acepta las normas de tus horas cargadas por administración desde Paquetes antes de reservar.',403)
         bid=c.execute('INSERT INTO bookings(user_id,package_id,box,start,created_at) VALUES(?,?,?,?,?)',(uid,package['id'],box,start,stamp(now()))).lastrowid
         c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?',(package['id'],))
         self.log(c,uid,'reserved',bid)
@@ -774,13 +840,13 @@ class Store:
 
     def admin_state(self):
         with self.connection() as c:
-            return {'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+            return {'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
                     'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
-                    'packages': [dict(r) for r in c.execute('SELECT p.*,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id ORDER BY p.id DESC')],
+                    'packages': [dict(r) for r in c.execute('SELECT p.*,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
                     'audit': [dict(r) for r in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 30')]}
 
@@ -1196,6 +1262,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not service or type(body.get('id')) is not int:
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id']))
+                return
+            elif self.path == '/api/admin/manual-credits':
+                self.admin(user)
+                self.respond(store.manual_credit(user['id'],body))
+                return
+            elif self.path == '/api/packages/accept-rules':
+                self.respond(store.accept_manual_rules(user['id'],body))
                 return
             elif self.path == '/api/bookings/batch':
                 self.respond(store.reserve_batch(user['id'],body))
