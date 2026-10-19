@@ -262,3 +262,12 @@ class NewEndpointPermissions(unittest.TestCase):
         self.request('/api/webpay/return?token_ws='+checkout['token'],authenticated=False,csrf=False)
         with self.store.connection() as c:self.assertEqual(c.execute('SELECT remaining FROM packages').fetchone()[0],5)
         self.assertEqual(self.gateway.commit_calls,1)
+
+    def test_daily_contacts_is_exclusively_admin_and_rejects_invalid_dates(self):
+        path='/api/admin/daily-contacts?date=2026-10-22'
+        self.assertEqual(self.request(path,authenticated=False)[0],401)
+        self.assertEqual(self.request(path)[0],403)
+        self.session=self.store.login({'email':ADMIN_EMAIL,'password':'PrivateAdminPassword2026!'})
+        status,data,_=self.request(path)
+        self.assertEqual(status,200);self.assertEqual(data['emails'],[])
+        self.assertEqual(self.request('/api/admin/daily-contacts?date=bad')[0],400)

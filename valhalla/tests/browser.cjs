@@ -155,6 +155,28 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
     await admin.screenshot({path:'/tmp/valhalla-agenda-identificada-mobile.png',fullPage:true});
     await admin.setViewportSize({width:1440,height:1000});
     await admin.locator('[data-view="admin"]').click();
+    await admin.locator('[data-tab="daily_contacts"]').click();
+    await admin.locator('#daily-contacts-date').fill(tomorrow(current.today));
+    await admin.locator('#daily-contacts-date').dispatchEvent('change');
+    await admin.waitForFunction(value=>document.querySelector('#daily-email-list')?.value===value,email);
+    assert.equal(await admin.locator('#daily-email-list').inputValue(),email);
+    await admin.setViewportSize({width:390,height:844});
+    await admin.screenshot({path:'/tmp/valhalla-correos-dia-mobile.png',fullPage:true});
+    assert.equal(await admin.evaluate(()=>document.documentElement.scrollWidth),390);
+    await admin.setViewportSize({width:1440,height:1000});
+    const forbiddenContacts=await page.request.get(base+'/api/admin/daily-contacts?date='+tomorrow(current.today));
+    assert.equal(forbiddenContacts.status(),403);
+    const mailbox=async recipient=>(await(await page.request.get(process.env.VALHALLA_TEST_MAILBOX_URL+'/?email='+encodeURIComponent(recipient))).json()).notifications||[];
+    let messages=[];
+    for(let attempt=0;attempt<20;attempt++){
+      messages=await mailbox(email);
+      if(messages.some(message=>message.kind==='booking_modified'))break;
+      await page.waitForTimeout(100);
+    }
+    assert.ok(messages.some(message=>message.kind==='booking_modified'&&message.text.includes('Box 2')&&message.text.includes('09:00 a 09:55')));
+    const administratorMessages=await mailbox('santibanezf.carlos@gmail.com');
+    assert.ok(administratorMessages.some(message=>message.kind==='admin_signup'&&message.text.includes(email)));
+    assert.ok(administratorMessages.some(message=>message.kind==='admin_document'&&message.text.includes(email)));
     await admin.locator('[data-tab="bookings"]').click();
     await admin.locator(`[data-admin="cancel"][data-id="${booking.id}"]`).click();
     await confirm(admin);

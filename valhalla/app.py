@@ -21,6 +21,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from mailer import EmailDelivery, EmailDeliveryError
 from payments import PaymentService, WebpayGateway, PaymentError
+from notifications import NotificationDispatcher
 
 ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
@@ -191,10 +192,19 @@ class Store:
               id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), kind TEXT NOT NULL,
               provider TEXT NOT NULL, status TEXT NOT NULL, category TEXT NOT NULL DEFAULT '',
               http_status INTEGER, created_at TEXT NOT NULL, created_epoch REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS notification_outbox (
+              id INTEGER PRIMARY KEY, event_key TEXT NOT NULL UNIQUE, delivery_key TEXT NOT NULL UNIQUE,
+              user_id INTEGER NOT NULL REFERENCES users(id), recipient TEXT NOT NULL, kind TEXT NOT NULL,
+              entity_id INTEGER NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+              attempts INTEGER NOT NULL DEFAULT 0, first_attempt REAL NOT NULL DEFAULT 0, next_attempt REAL NOT NULL DEFAULT 0,
+              lease_until REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS audit (
               id INTEGER PRIMARY KEY, actor_id INTEGER REFERENCES users(id),
               action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL);
             ''')
+            notification_columns = {row['name'] for row in c.execute('PRAGMA table_info(notification_outbox)')}
+            if 'first_attempt' not in notification_columns:
+                c.execute('ALTER TABLE notification_outbox ADD COLUMN first_attempt REAL NOT NULL DEFAULT 0')
             columns = {row['name'] for row in c.execute('PRAGMA table_info(documents)')}
             user_columns = {row['name'] for row in c.execute('PRAGMA table_info(users)')}
             if 'email_verified' not in user_columns:
@@ -228,6 +238,41 @@ class Store:
     def log(self, c, actor, action, target):
         c.execute('INSERT INTO audit(actor_id,action,target,created_at) VALUES (?,?,?,?)',
                   (actor, action, str(target), stamp(now())))
+
+    def queue_notification(self, c, uid, kind, entity_id, recipient, payload):
+        event_key = f'{kind}:{entity_id}'
+        c.execute('INSERT OR IGNORE INTO notification_outbox(event_key,delivery_key,user_id,recipient,kind,entity_id,payload,created_at) VALUES(?,?,?,?,?,?,?,?)',
+                  (event_key,secrets.token_hex(24),uid,recipient,kind,entity_id,json.dumps(payload),stamp(now())))
+
+    def queue_booking_receipt(self, c, uid, bid, kind):
+        person = c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
+        booking = c.execute('SELECT id,box,start,status FROM bookings WHERE id=? AND user_id=?',(bid,uid)).fetchone()
+        c.execute("UPDATE notification_outbox SET status='superseded' WHERE entity_id=? AND kind IN ('booking_confirmed','booking_modified') AND status IN ('pending','retry','processing')",(bid,))
+        payload = dict(person);payload['booking'] = dict(booking)
+        self.queue_notification(c,uid,kind,bid,person['email'],payload)
+
+    def daily_contacts(self, date):
+        try:
+            day = datetime.strptime(date,'%Y-%m-%d').date()
+        except (ValueError,TypeError):
+            raise Problem('Selecciona una fecha válida.')
+        start = datetime(day.year,day.month,day.day,tzinfo=CHILE)
+        try:
+            next_day = day + timedelta(days=1)
+            end = datetime(next_day.year,next_day.month,next_day.day,tzinfo=CHILE)
+        except (ValueError,OverflowError):
+            raise Problem('Selecciona una fecha válida.')
+        with self.connection() as c:
+            rows = c.execute("""SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b
+                JOIN users u ON u.id=b.user_id WHERE b.status='confirmed' AND b.start>=? AND b.start<?
+                ORDER BY b.start,b.box,b.id""",(stamp(start),stamp(end))).fetchall()
+        contacts = {}
+        for row in rows:
+            person = contacts.setdefault(row['user_id'],{'user_id':row['user_id'],'name':row['name'],'email':row['email'],'bookings':[]})
+            person['bookings'].append(booking_details({'id':row['id'],'box':row['box'],'start':row['start']}))
+        people = sorted(contacts.values(),key=lambda person:(person['name'].casefold(),person['email']))
+        return {'date':date,'timezone':'America/Santiago','contacts':people,'emails':[person['email'] for person in people],
+                'total_professionals':len(people),'total_bookings':len(rows)}
 
     def mail_event(self, uid, kind, provider, status, category='', http_status=None):
         with self.connection(True) as c:
@@ -320,6 +365,7 @@ class Store:
                 self.log(c, cursor.lastrowid, 'registered', cursor.lastrowid)
                 uid = cursor.lastrowid
                 self.attach_legacy(c, uid, email)
+                self.queue_notification(c,uid,'admin_signup',uid,ADMIN_EMAIL,{'name':name,'email':email,'specialty':specialty})
         except sqlite3.IntegrityError:
             raise Problem('Ya existe una cuenta con ese correo.', 409)
         return uid
@@ -583,6 +629,7 @@ class Store:
                                 (uid, package['id'], box, start, stamp(now())))
                 c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?', (package['id'],))
                 self.log(c, uid, 'reserved', cur.lastrowid)
+                self.queue_booking_receipt(c,uid,cur.lastrowid,'booking_confirmed')
                 return cur.lastrowid
         except sqlite3.IntegrityError:
             raise Problem('Ese box acaba de ser reservado. Elige otro horario.', 409)
@@ -609,6 +656,7 @@ class Store:
                     raise Problem('Ya tienes una reserva a esa hora.', 409)
                 c.execute('UPDATE bookings SET box=?,start=?,modifications=modifications+1 WHERE id=?', (box, start, bid))
                 self.log(c, uid, 'modified', bid)
+                self.queue_booking_receipt(c,uid,bid,'booking_modified')
         except sqlite3.IntegrityError:
             raise Problem('Ese horario ya está ocupado. Tu reserva original sigue vigente.', 409)
 
@@ -649,10 +697,13 @@ class Store:
                 c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
             self.log(c, uid, 'document_uploaded', cursor.lastrowid)
+            person=c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
+            self.queue_notification(c,uid,'admin_document',cursor.lastrowid,ADMIN_EMAIL,dict(person)|{'document_id':cursor.lastrowid,'document_kind':kind,'file_count':len(prepared)})
 
     def admin_state(self):
         with self.connection() as c:
-            return {'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
+            return {'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+                    'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
                     'users': [dict(r) | {'verified':int(self.identity_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
@@ -710,6 +761,7 @@ class Store:
                     raise Problem('No se pueden cancelar reservas pasadas.', 409)
                 c.execute("UPDATE bookings SET status='cancelled' WHERE id=?", (target,))
                 c.execute('UPDATE packages SET remaining=remaining+1 WHERE id=?', (row['package_id'],))
+                self.queue_booking_receipt(c,row['user_id'],target,'booking_cancelled')
             else:
                 raise Problem('Acción inválida.')
             self.log(c, actor, 'admin_' + action + '_' + str(body.get('decision', '')), target)
@@ -859,6 +911,9 @@ class Handler(BaseHTTPRequestHandler):
                 data['webpay_mode'] = getattr(getattr(self.server, 'webpay', None), 'mode', 'disabled')
                 data['email_delivery_available'] = bool(getattr(self.server, 'email_delivery', None) and self.server.email_delivery.configured)
                 self.respond(data)
+            elif route.path == '/api/admin/daily-contacts':
+                self.admin(user)
+                self.respond(self.server.store.daily_contacts(parse_qs(route.query).get('date',[''])[0]))
             elif route.path == '/api/admin/availability':
                 self.admin(user)
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True))
@@ -1058,14 +1113,23 @@ def main():
         server.webpay = PaymentService(store, WebpayGateway())
     except ValueError as error:
         parser.error(str(error))
-    stop_payments = threading.Event()
+    stop_background = threading.Event()
+    notifier = NotificationDispatcher(store,server.email_delivery)
+    def send_notifications():
+        while not stop_background.is_set():
+            try:
+                notifier.dispatch_pending()
+            except sqlite3.Error:
+                pass  # Reservation and queue remain stored; expired leases can be retried.
+            stop_background.wait(1)
+    threading.Thread(target=send_notifications,daemon=True).start()
     def reconcile_payments():
-        while not stop_payments.is_set():
+        while not stop_background.is_set():
             try:
                 server.webpay.reconcile_pending()
             except sqlite3.Error:
                 pass  # Keep pending attempts for the next pass; never credit on database failure.
-            stop_payments.wait(30)
+            stop_background.wait(30)
     if server.webpay.mode == 'integration':
         threading.Thread(target=reconcile_payments, daemon=True).start()
     print(f'Valhalla Office · prototipo local · puerto {args.port}', flush=True)
@@ -1074,7 +1138,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        stop_payments.set()
+        stop_background.set()
         server.server_close()
 
 

@@ -53,7 +53,12 @@ class EmailDelivery:
                 '\n\nEl enlace vence en 30 minutos y se usa una sola vez. Si no lo solicitaste, ignora este mensaje; tu contraseña no cambiará.')
         self.send_message(email, 'Recupera tu contraseña · Valhalla Office', text)
 
-    def send_message(self, email, subject, text):
+    def send_notification(self, email, kind, payload, delivery_key):
+        from notifications import notification_message
+        subject, text = notification_message(kind,payload,self.public_url)
+        self.send_message(email,subject,text,idempotency_key='valhalla-'+delivery_key)
+
+    def send_message(self, email, subject, text, idempotency_key=None):
         if not self.configured:
             raise RuntimeError('El servicio de correo todavía no está configurado.')
         if self.provider == 'sendgrid':
@@ -68,6 +73,8 @@ class EmailDelivery:
         request = Request(endpoint, method='POST',
                           headers={'Authorization': 'Bearer ' + self.api_key, 'Content-Type': 'application/json', 'User-Agent':'ValhallaOffice/1.0 (transactional-email)'},
                           data=json.dumps(payload).encode())
+        if idempotency_key and self.provider=='resend':
+            request.add_header('Idempotency-Key',idempotency_key)
         try:
             with urlopen(request, timeout=10) as response:
                 if self.provider == 'sendgrid':

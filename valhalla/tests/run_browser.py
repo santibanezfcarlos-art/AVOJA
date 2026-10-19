@@ -17,7 +17,13 @@ def main():
     from app import Handler, Store
     class FakeDelivery:
         configured=True
-        def __init__(self):self.tokens={}
+        def __init__(self):self.tokens={};self.notifications=[];self.notification_keys=set()
+        def send_notification(self,email,kind,payload,key):
+            from notifications import notification_message
+            if key in self.notification_keys:return
+            self.notification_keys.add(key)
+            subject,text=notification_message(kind,payload,"https://valhallaoffice.cl")
+            self.notifications.append({"recipient":email,"kind":kind,"subject":subject,"text":text})
         def send_test(self,email):self.tokens["test:"+email]="accepted"
         def send_verification(self,email,token):self.tokens[email]=token
         def send_password_reset(self,email,token):self.tokens["reset:"+email]=token
@@ -27,8 +33,9 @@ def main():
         def do_GET(self):
             email=parse_qs(urlsplit(self.path).query).get('email',[''])[0]
             token=delivery.tokens.get(email)
-            raw=json.dumps({'token':token}).encode()
-            self.send_response(200 if token else 404)
+            notifications=[item for item in delivery.notifications if item['recipient']==email]
+            raw=json.dumps({'token':token,'notifications':notifications}).encode()
+            self.send_response(200 if token or notifications else 404)
             self.send_header('Content-Type','application/json')
             self.send_header('Content-Length',str(len(raw)))
             self.end_headers();self.wfile.write(raw)
@@ -45,13 +52,21 @@ def main():
             from payments import PaymentService
             server.webpay=PaymentService(store,FakeGateway())
         mailbox=ThreadingHTTPServer(('127.0.0.1',0),Mailbox)
+        from notifications import NotificationDispatcher
+        stop_notifications=threading.Event();notifier=NotificationDispatcher(store,delivery)
+        def notify():
+            while not stop_notifications.is_set():
+                notifier.dispatch_pending()
+                stop_notifications.wait(.05)
         threads=[threading.Thread(target=s.serve_forever,daemon=True) for s in (server,mailbox)]
+        threads.append(threading.Thread(target=notify,daemon=True))
         for thread in threads:thread.start()
         env=os.environ.copy();env['VALHALLA_TEST_ADMIN_PASSWORD']=private
         env['VALHALLA_TEST_URL']=f'http://127.0.0.1:{server.server_port}'
         env['VALHALLA_TEST_MAILBOX_URL']=f'http://127.0.0.1:{mailbox.server_port}'
         try:return subprocess.run(['node','tests/'+script],cwd=root,env=env).returncode
         finally:
+            stop_notifications.set()
             for s in (server,mailbox):s.shutdown();s.server_close()
             for thread in threads:thread.join()
 

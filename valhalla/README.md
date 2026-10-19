@@ -181,3 +181,27 @@ Los intentos recientes diferencian aceptación del proveedor, error y recuperaci
 Diagnósticos seguros: HTTP 401 indica que se rechazó la autenticación; HTTP 403 requiere revisar permisos/dominio o filtros; 422 indica remitente/payload; 429, límites del proveedor; los fallos de red se registran aparte. Solo se retienen categorías fijas, estado HTTP, tipo y cuenta asociada al evento; no cuerpos de respuesta, claves, contenido de correos ni tokens. Los fallos también dejan una línea segura en Render → Logs. Estos registros son privados de administración.
 
 El cliente identifica la aplicación mediante User-Agent y normaliza espacios exteriores de las variables. Esto mejora compatibilidad y elimina errores accidentales de pegado; no demuestra por sí solo que una clave sea válida. La confirmación requiere que Resend acepte una prueba real desde Render y que el destinatario la reciba. Primero prueba el envío administrador, después registra una cuenta profesional de prueba y comprueba confirmación y recuperación. Un nuevo despliegue todavía puede eliminar cuentas de prueba mientras no exista almacenamiento persistente.
+
+
+## Avisos automáticos y correos del día
+
+Sin cambiar las variables de correo ya configuradas, la aplicación encola estos nuevos avisos:
+
+| Evento | Destinatario | Contenido |
+| --- | --- | --- |
+| Nueva inscripción profesional | Administrador autorizado | Nombre, correo y especialidad; no implica identidad ni correo ya validados |
+| Envío de documentos | Administrador autorizado | Profesional, referencia del envío, tipo y cantidad de archivos; nunca se adjunta el carnet |
+| Reserva confirmada | Profesional titular | Referencia, box, fecha, inicio y término de 55 minutos en `America/Santiago`, dirección y acceso al sitio |
+| Modificación o cancelación de reserva | Profesional titular | Comprobante actualizado o cancelación con devolución de sesión |
+
+Los avisos nuevos se guardan en `notification_outbox` dentro de la misma transacción que registra la operación. Si una reserva falla por conflicto no se encola un comprobante. El envío ocurre después, fuera del bloqueo de la base, en un trabajador de fondo del servidor. Un fallo del proveedor no deshace una reserva válida ni descuenta otra sesión. No se generan avisos retrospectivos para registros anteriores a esta actualización.
+
+Se reintenta hasta cinco veces con espera creciente. Resend recibe una clave de idempotencia estable para evitar duplicados ante respuestas perdidas; los reintentos inciertos se detienen antes de superar 23 horas desde el primer intento, dentro de la ventana de idempotencia del proveedor. SendGrid no ofrece esa misma garantía en esta implementación. Un cambio/cancelación sustituye comprobantes anteriores que aún no se habían enviado; un mensaje que ya salió no se puede retirar.
+
+Administración → Correos muestra el estado de los avisos y el diagnóstico seguro de cada intento. Aceptado por el proveedor no significa entregado al buzón: revisa Resend y spam si corresponde. Los límites del plan de correo siguen aplicando. El trabajador necesita que el servicio esté ejecutándose y que la configuración de envío esté completa; si el servicio se suspende, el procesamiento se reanuda al volver a ejecutarse. La cola comparte las limitaciones de persistencia de la base local de Render: no reemplaza un disco persistente y un respaldo.
+
+**Administración → Correos del día** permite elegir una fecha, ver los nombres y direcciones únicas de profesionales con reservas confirmadas, consultar sus boxes/horarios y copiar todos los correos. Una persona con varias reservas aparece una sola vez. Se excluyen cancelaciones y otros días. Las modificaciones cambian el consolidado inmediatamente al actualizar. Los límites del día se calculan en Chile, no en UTC. Las reservas de una cuenta desactivada siguen incluidas si no fueron canceladas.
+
+El endpoint `/api/admin/daily-contacts?date=YYYY-MM-DD` comprueba sesión y permisos administrativos en cada consulta, no permite acceso profesional y responde sin caché. Los correos ajenos no se incorporan al calendario profesional. Este consolidado no envía mensajes masivos.
+
+Prueba manual: crea una cuenta de prueba y comprueba el aviso al administrador y la verificación al profesional; adjunta archivos ficticios y revisa el aviso sin adjuntos; confirma una reserva y revisa su comprobante, luego modifica/cancela para comprobar las actualizaciones. Para el consolidado, agenda varios profesionales, repite uno en otro horario y comprueba que el correo se repita solo una vez y que las cancelaciones desaparezcan. Usa datos ficticios hasta contar con almacenamiento persistente.
