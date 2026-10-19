@@ -4,7 +4,7 @@ Implementado para el **ambiente oficial de integración**, desactivado por defec
 
 ## Panel de administración
 
-**Administración → Transbank** permite guardar el código comercial de Webpay Plus directo (12 dígitos), consultar el estado y activar/desactivar únicamente el checkout de pruebas. No almacena ni solicita claves comerciales. El identificador utilizado por Skedu no sustituye las credenciales del contrato directo.
+**Administración → Transbank** permite guardar el código comercial de Webpay Plus directo (8 a 12 dígitos, conservado exactamente como lo entrega Transbank), consultar el estado y activar/desactivar únicamente el checkout de pruebas. No almacena ni solicita claves comerciales. El identificador utilizado por Skedu no sustituye las credenciales del contrato directo.
 
 El código se guarda como preparación y no se envía en operaciones de integración: estas utilizan las credenciales públicas oficiales de Transbank. Guardar el código no valida el contrato ni habilita cobros. La clave de producción y el almacenamiento persistente siguen pendientes para la activación real.
 

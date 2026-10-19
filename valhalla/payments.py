@@ -107,8 +107,8 @@ class PaymentService:
         if type(enabled) is not bool or not isinstance(code,str):
             raise PaymentError('Revisa el código de comercio y la selección de pruebas.',400)
         code=code.strip()
-        if code and not re.fullmatch(r'[0-9]{12}',code):
-            raise PaymentError('El código de Webpay Plus directo debe tener 12 dígitos. Un identificador de Skedu no reemplaza el código que entrega Transbank.',400)
+        if code and not re.fullmatch(r'[0-9]{8,12}',code):
+            raise PaymentError('Ingresa el código de comercio entregado por Transbank, de 8 a 12 dígitos, sin agregar ceros ni modificarlo.',400)
         if any(key in body for key in ('api_key','secret','production','mode')):
             raise PaymentError('Las credenciales privadas se configuran únicamente en Render. Este panel no activa cobros reales.',400)
         with self.configuration_lock:

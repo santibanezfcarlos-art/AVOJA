@@ -34,8 +34,13 @@ class WebpaySettings(unittest.TestCase):
         for extra in ({'api_key':'private'},{'production':True},{'mode':'production'},{'secret':'private'}):
             with self.assertRaises(PaymentError):self.service.configure(self.admin['id'],{'commerce_code':'','sandbox_enabled':True,**extra})
         self.assertEqual(self.service.mode,'disabled')
+    def test_eight_digit_code_saved_unchanged(self):
+        result=self.service.configure(self.admin['id'],{'commerce_code':'52122833','sandbox_enabled':False})
+        self.assertEqual(result['commerce_code'],'52122833')
+        self.assertEqual(self.service.configuration()['commerce_code'],'52122833')
+
     def test_invalid_code_and_nonboolean_switch_rejected(self):
-        for code in ('52122833','bad','1234567890123',True):
+        for code in ('1234567','bad','1234567890123',True):
             with self.assertRaises(PaymentError):self.service.configure(self.admin['id'],{'commerce_code':code,'sandbox_enabled':False})
         with self.assertRaises(PaymentError):self.service.configure(self.admin['id'],{'commerce_code':'','sandbox_enabled':'true'})
     def test_pending_payment_blocks_mode_change_but_allows_code_correction(self):
