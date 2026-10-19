@@ -145,7 +145,7 @@ class IdentityAndSchedule(unittest.TestCase):
         for hour, minute, expected in ((9,0,'in_session'), (9,54,'in_session'), (9,55,'buffer'), (9,59,'buffer'), (10,0,'finished')):
             self.clock = self.clock.replace(hour=hour, minute=minute)
             data = self.store.availability(self.clock.date().isoformat(), include_names=True)
-            booking = data['slots'][1]['boxes'][0]['booking']
+            booking = next(slot for slot in data['slots'] if slot['label']=='09:00')['boxes'][0]['booking']
             self.assertEqual(booking['timing'], expected)
             self.assertEqual(booking['name'], 'Profesional Agenda')
 
@@ -171,7 +171,7 @@ class IdentityAndSchedule(unittest.TestCase):
             self.assertNotIn('agenda@test.cl', json.dumps(public))
             status, admin = request('/api/admin/availability?date=' + date, self.admin_token)
             self.assertEqual(status, 200)
-            cell = admin['slots'][2]['boxes'][0]
+            cell = next(slot for slot in admin['slots'] if slot['label']=='10:00')['boxes'][0]
             self.assertEqual(cell['booking']['name'], 'Profesional Agenda')
             self.assertEqual(cell['booking']['user_id'], self.uid)
         finally:

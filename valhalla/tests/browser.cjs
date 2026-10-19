@@ -137,7 +137,7 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
     assert.equal(current.packages[0].remaining,4);
     const booking=current.bookings[0];
     await page.locator(`[data-modify="${booking.id}"]`).click();
-    await page.locator('[data-box="2"]:not(:disabled)').nth(1).click();
+    await page.locator('[data-box="2"]:not(:disabled)').nth(2).click();
     await confirm(page,'Confirmar cambio');
     await page.getByRole('heading',{name:'Tu agenda, en orden'}).waitFor();
     assert.equal(await page.locator('[data-modify]').count(),0);

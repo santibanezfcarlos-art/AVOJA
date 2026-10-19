@@ -197,8 +197,21 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.balance(),5)
         self.store.reserve(2,self.slot())
 
+    def test_opening_and_last_booking_leave_buffer_before_2300_closing(self):
+        first=self.store.reserve(1,self.slot(7))
+        last=self.store.reserve(1,self.slot(22,box=3))
+        with self.store.connection() as c:
+            for bid,hour in ((first,7),(last,22)):
+                row=c.execute('SELECT start FROM bookings WHERE id=?',(bid,)).fetchone()
+                start=datetime.fromisoformat(row['start']).astimezone(CHILE)
+                self.assertEqual(start.hour,hour)
+                self.assertEqual((start+timedelta(minutes=55)).strftime('%H:%M'),f'{hour:02d}:55')
+        slots=self.store.availability((self.clock+timedelta(days=1)).date().isoformat())['slots']
+        self.assertEqual([slot['label'] for slot in slots],[f'{hour:02d}:00' for hour in range(7,23)])
+        self.assertFalse(slots[-1]['boxes'][2]['available'])
+
     def test_invalid_past_partial_outside_or_distant_slots(self):
-        slots=[self.slot(7), self.slot(20), self.slot(8,day=0), self.slot(day=91)]
+        slots=[self.slot(6), self.slot(23), self.slot(8,day=0), self.slot(day=91)]
         slots.append({'box':1,'start':stamp((self.clock+timedelta(days=1)).replace(minute=30))})
         slots.append({'box':1,'start':'2026-10-16T10:00:00'})
         for slot in slots:
@@ -216,7 +229,7 @@ class Rules(unittest.TestCase):
         slot=self.slot()
         self.store.reserve(1,slot)
         data=self.store.availability((self.clock+timedelta(days=1)).date().isoformat())
-        self.assertEqual(len(data['slots']),12)
+        self.assertEqual(len(data['slots']),16)
         row=next(s for s in data['slots'] if s['start']==slot['start'])
         self.assertFalse(row['boxes'][0]['available'])
         self.assertTrue(row['boxes'][1]['available'])

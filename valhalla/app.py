@@ -29,6 +29,8 @@ ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
 CATALOG = {'1': (1, 5990), '5': (5, 28990), '10': (10, 54990), '30': (30, 144990), '60': (60, 254990), '100': (100, 364990), '200': (200, 599990)}
 SESSION_MINUTES = 55
+OPENING_HOUR = 7
+CLOSING_HOUR = 23
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_BODY = 14_100_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
@@ -585,13 +587,13 @@ class Store:
             if parsed.tzinfo is None:
                 raise ValueError()
             local = parsed.astimezone(CHILE)
-            if local.minute or local.second or local.microsecond or not 8 <= local.hour < 20:
+            if local.minute or local.second or local.microsecond or not OPENING_HOUR <= local.hour < CLOSING_HOUR:
                 raise ValueError()
             if parsed <= now() or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
         except (ValueError, TypeError):
-            raise Problem('Selecciona una hora futura entre 08:00 y 20:00, dentro de los próximos 90 días.')
+            raise Problem('Selecciona una hora futura con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
 
     def availability(self, date, include_names=False):
         try:
@@ -604,7 +606,7 @@ class Store:
         with self.connection() as c:
             occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
-        for hour in range(8, 20):
+        for hour in range(OPENING_HOUR, CLOSING_HOUR):
             start = datetime(day.year, day.month, day.day, hour, tzinfo=CHILE)
             boxes = []
             for box in range(1,4):

@@ -59,7 +59,7 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 
 ## Reglas y arquitectura
 
-- Tres boxes, sesiones de 55 minutos con inicios cada hora de 08:00 a 19:00 (última atención hasta 19:55), zona `America/Santiago`, hasta 90 días hacia adelante.
+- Tres boxes, sesiones de 55 minutos con inicios cada hora de 07:00 a 22:00 (última atención hasta 22:55, margen hasta el cierre a las 23:00), zona `America/Santiago`, hasta 90 días hacia adelante.
 - Sesión individual de $5.990 y planes personales mixtos de 5, 10, 30, 60, 100 y 200 horas, sin vencimiento en este prototipo. Cada hora contratada equivale a una sesión de 55 minutos. Se comparten entre boxes, no entre profesionales.
 - Solo el profesional activo, con correo confirmado, carnet y certificado de título aprobados o validación anterior por migración administrativa, reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
 - Una transacción crea la reserva y descuenta el saldo. Un índice único protege el box y horario; el profesional tampoco puede reservar dos boxes simultáneamente. Un trigger impide transferir el paquete.
