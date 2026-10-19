@@ -1,3 +1,4 @@
+from rules import RULES_VERSION
 import concurrent.futures
 import copy
 import json
@@ -45,7 +46,7 @@ class MigrationAndPayments(unittest.TestCase):
         token,_=self.store.issue_email_token(self.uid);self.store.confirm_email(token)
     def state(self):return self.store.state(self.store.session(self.store.login(self.client)))
     def create_payment(self):
-        self.verify();return self.payments.create(self.uid,'5','test-idempotency-key-001')
+        self.verify();return self.payments.create(self.uid,'5','test-idempotency-key-001', rules_acceptance={'accepted':True,'version':RULES_VERSION})
     def csv(self, second=''):
         return {'csv':'referencia,nombre,correo,especialidad,sesiones,observacion\nold001,Juanita Ejemplo,juanita@example.cl,Psicología,10,Saldo validado\n'+second,'identity_confirmed':True}
 
@@ -106,8 +107,8 @@ class MigrationAndPayments(unittest.TestCase):
     def test_create_catalog_price_and_retries_reuse_attempt(self):
         checkout=self.create_payment()
         for key in ('test-idempotency-key-001','test-idempotency-key-002'):
-            self.assertEqual(self.payments.create(self.uid,'5',key),checkout)
-        with self.assertRaises(PaymentError):self.payments.create(self.uid,'10','test-idempotency-key-003')
+            self.assertEqual(self.payments.create(self.uid,'5',key, rules_acceptance={'accepted':True,'version':RULES_VERSION}),checkout)
+        with self.assertRaises(PaymentError):self.payments.create(self.uid,'10','test-idempotency-key-003', rules_acceptance={'accepted':True,'version':RULES_VERSION})
         self.assertEqual(self.gateway.create_calls,1)
         self.assertEqual(self.state()['packages'][0]['remaining'],0);self.assertEqual(self.state()['packages'][0]['price'],28990)
         self.assertNotIn(checkout['token'],json.dumps(self.store.admin_state()))
@@ -150,7 +151,7 @@ class MigrationAndPayments(unittest.TestCase):
     def test_pending_network_error_does_not_credit_or_allow_new_payment(self):
         checkout=self.create_payment();self.gateway.status_error=True
         with self.assertRaises(PaymentError):self.payments.reconcile(checkout['payment_id'],uid=self.uid)
-        with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','another-idempotency-key')
+        with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','another-idempotency-key', rules_acceptance={'accepted':True,'version':RULES_VERSION})
         self.assertEqual(self.state()['packages'][0]['remaining'],0)
         self.gateway.status_error=False
         self.assertEqual(self.payments.reconcile(checkout['payment_id'],uid=self.uid)['state'],'ready')
@@ -158,7 +159,7 @@ class MigrationAndPayments(unittest.TestCase):
     def test_creation_timeout_does_not_automatically_retry(self):
         self.verify();self.gateway.create_error=True
         for _ in range(2):
-            with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','timeout-idempotency-key')
+            with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','timeout-idempotency-key', rules_acceptance={'accepted':True,'version':RULES_VERSION})
         self.assertEqual(self.gateway.create_calls,1);self.assertEqual(self.state()['packages'][0]['remaining'],0)
 
     def test_parallel_returns_do_not_double_credit(self):
@@ -186,7 +187,7 @@ class MigrationAndPayments(unittest.TestCase):
         self.assertEqual(self.state()['packages'][0]['remaining'],5)
 
     def test_unverified_email_cannot_start_payment(self):
-        with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','unverified-idempotency-key')
+        with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','unverified-idempotency-key', rules_acceptance={'accepted':True,'version':RULES_VERSION})
         self.assertEqual(self.gateway.create_calls,0)
 
 class GatewayProtocol(unittest.TestCase):
@@ -245,17 +246,17 @@ class NewEndpointPermissions(unittest.TestCase):
             self.assertEqual(self.request(path,{})[0],403)
         self.assertEqual(self.store.admin_state()['migrations'],[])
     def test_payment_permissions_server_price_and_no_manual_approval(self):
-        body={'catalog_id':'5','idempotency_key':'http-test-idempotency-key','amount':1,'hours':999,'user_id':999}
+        body={'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5','idempotency_key':'http-test-idempotency-key','amount':1,'hours':999,'user_id':999}
         self.assertEqual(self.request('/api/webpay/create',body,authenticated=False)[0],401)
         self.assertEqual(self.request('/api/webpay/create',body,csrf=False)[0],403)
         self.assertEqual(self.request('/api/webpay/create',body,origin='https://evil.example')[0],403)
         status,checkout,_=self.request('/api/webpay/create',body);self.assertEqual(status,200)
         self.assertEqual(self.gateway.transactions[checkout['token']]['amount'],28990)
-        self.assertEqual(self.request('/api/packages',{'catalog_id':'5'})[0],409)
+        self.assertEqual(self.request('/api/packages',{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5'})[0],409)
         self.assertEqual(self.request('/api/admin/webpay/reconcile',{'id':checkout['payment_id']})[0],403)
         self.assertEqual(self.request('/api/webpay/reconcile',{'id':999})[0],404)
     def test_cross_site_bank_return_does_not_need_session_or_csrf_and_credits_once(self):
-        _,checkout,_=self.request('/api/webpay/create',{'catalog_id':'5','idempotency_key':'http-bank-return-test'})
+        _,checkout,_=self.request('/api/webpay/create',{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5','idempotency_key':'http-bank-return-test'})
         result=self.request('/api/webpay/return',{'token_ws':checkout['token']},authenticated=False,csrf=False,form=True,origin='https://webpay3gint.transbank.cl')
         self.assertEqual(result[0],303);self.assertEqual(result[2]['Location'],'/?payment_result=approved')
         self.assertNotIn('Set-Cookie',result[2]);self.assertNotIn(checkout['token'],str(result))

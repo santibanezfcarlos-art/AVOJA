@@ -63,8 +63,10 @@ class NotificationsAndContacts(unittest.TestCase):
         bid=self.booking_only();job=self.queue('booking_confirmed')[0]
         self.assertEqual(job['recipient'],self.credentials['email'])
         subject,text=notification_message(job['kind'],json.loads(job['payload']),'https://valhallaoffice.cl')
-        for value in ('Reserva confirmada','Box 1','22/10/2026','10:00 a 10:55','America/Santiago',f'#{bid}'):
+        for value in ('Reserva confirmada','Box 1','22/10/2026','10:00 a 10:55'):
             self.assertIn(value,subject+' '+text)
+        for removed in ('Referencia:', 'Zona horaria:', 'Duración:'):
+            self.assertNotIn(removed,text)
         with self.assertRaises(Problem):self.store.reserve(self.uid,self.slot())
         self.assertEqual(len(self.queue('booking_confirmed')),1)
         self.assertNotIn('notification_outbox',str(self.store.state(self.store.session(self.store.login(self.credentials)))))

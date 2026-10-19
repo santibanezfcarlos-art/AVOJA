@@ -20,7 +20,7 @@ def notification_message(kind, payload, public_url):
         return ('Documentación recibida · Valhalla Office',
                 f"Un profesional envió documentación para revisar.\n\nProfesional: {person}\n"
                 f"Envío #{payload['document_id']} · {payload['file_count']} archivo(s)\n"
-                f"Tipo: {'Carnet de identidad' if payload['document_kind']=='identity' else 'Acreditación profesional'}\n\n"
+                f"Tipo: {'Carnet de identidad' if payload['document_kind']=='identity' else 'Certificado de título' if payload['document_kind']=='degree' else 'Acreditación profesional'}\n\n"
                 f"Los archivos no se adjuntan al correo. Revísalos únicamente en Administración → Documentos.\n{public_url}/")
     booking = payload['booking']
     start = datetime.fromisoformat(booking['start']).astimezone(CHILE)
@@ -28,9 +28,8 @@ def notification_message(kind, payload, public_url):
     titles = {'booking_confirmed':'Reserva confirmada', 'booking_modified':'Reserva modificada', 'booking_cancelled':'Reserva cancelada'}
     title = titles[kind]
     text = (f"{title} · Valhalla Office\n\nProfesional: {payload['name']}\n"
-            f"Referencia: #{booking['id']}\nEspacio: {ROOMS[booking['box']]}\n"
+            f"Espacio: {ROOMS[booking['box']]}\n"
             f"Fecha: {start:%d/%m/%Y}\nHorario: {start:%H:%M} a {end:%H:%M}\n"
-            f"Zona horaria: America/Santiago (Chile)\nDuración: 55 minutos\n"
             "Dirección: Colo Colo 222, oficina 710\n\n")
     if kind == 'booking_cancelled':
         text += 'La reserva fue cancelada por administración y se devolvió una sesión al paquete original.\n'

@@ -1,6 +1,7 @@
 """Build a self-contained HTML preview; the real server keeps its original API."""
 import json
 from app import gallery_items
+from rules import purchase_rules
 from pathlib import Path
 
 root = Path(__file__).resolve().parent
@@ -17,6 +18,7 @@ for group in groups:
         photo['image_url']='https://valhalla-office-demo.onrender.com'+photo['image_url']
 photos=[{'box':group['box'],'image_url':group['photos'][0]['image_url'],'photos':group['photos']}
         for group in sorted((g for g in groups if g['box']),key=lambda g:g['box'])]
+js='globalThis.VALHALLA_RULES='+json.dumps(purchase_rules(),ensure_ascii=False)+';\n'+js
 js='globalThis.VALHALLA_GALLERY='+json.dumps(groups,ensure_ascii=False)+';\n'+js
 js='globalThis.VALHALLA_ROOMS='+json.dumps(photos,ensure_ascii=False)+';\n'+js
 css = (root / 'static/style.css').read_text()

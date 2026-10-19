@@ -1,3 +1,4 @@
+from rules import RULES_VERSION
 import base64
 import json
 import tempfile
@@ -32,12 +33,15 @@ class IdentityAndSchedule(unittest.TestCase):
         self.uid = self.store.session(self.pro_token)['id']
         email_token,_ = self.store.issue_email_token(self.uid)
         self.store.confirm_email(email_token)
+        with self.store.connection(True) as c:
+            for uid in (self.uid,self.owner):
+                c.execute("INSERT INTO documents(user_id,filename,mime,content,status,created_at,kind) VALUES(?,'degree.pdf','application/pdf',?,'approved',?,'degree')",(uid,b'Degree fixture',stamp(self.clock)))
 
     def slot(self, hour=10, day=1):
         return {'box': 1, 'start': stamp((self.clock + timedelta(days=day)).replace(hour=hour, minute=0, second=0, microsecond=0))}
 
     def pay(self, uid=None, catalog='5'):
-        pid = self.store.buy(uid or self.uid, {'catalog_id': catalog})
+        pid = self.store.buy(uid or self.uid, {'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id': catalog})
         self.store.admin_action(self.owner, {'action': 'payment', 'id': pid, 'decision': 'paid'})
         return pid
 
@@ -118,7 +122,7 @@ class IdentityAndSchedule(unittest.TestCase):
     def test_catalog_matches_requested_prices(self):
         self.assertEqual(CATALOG, {'1': (1,5990), '5': (5,28990), '10': (10,54990), '30': (30,144990), '60': (60,254990), '100': (100,364990), '200': (200,599990)})
         for key, (hours, price) in CATALOG.items():
-            pid = self.store.buy(self.uid, {'catalog_id': key, 'price': 1, 'hours': 999})
+            pid = self.store.buy(self.uid, {'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id': key, 'price': 1, 'hours': 999})
             with self.store.connection() as c:
                 row = c.execute('SELECT * FROM packages WHERE id=?', (pid,)).fetchone()
                 self.assertEqual((row['hours'], row['price']), (hours, price))

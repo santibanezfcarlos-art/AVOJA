@@ -37,7 +37,7 @@ const base=process.env.VALHALLA_TEST_URL;
     const mail=await(await page.request.get(process.env.VALHALLA_TEST_MAILBOX_URL+'/?email='+encodeURIComponent(email))).json();
     await page.goto(base+'/?verify_email='+encodeURIComponent(mail.token));await page.getByRole('button',{name:'Confirmar mi correo',exact:true}).click();
     await page.getByRole('button',{name:'Correo confirmado',exact:true}).waitFor();await page.getByRole('button',{name:'Volver a mi cuenta',exact:true}).click();
-    await page.locator('[data-view="documents"]').click();await page.getByRole('heading',{name:'No necesitas reenviar el carnet',exact:true}).waitFor();assert.equal(await page.locator('#document-file').count(),0);
+    await page.locator('[data-view="documents"]').click();await page.getByRole('heading',{name:'No necesitas reenviar documentos',exact:true}).waitFor();assert.equal(await page.locator('#document-file').count(),0);
 
     await page.locator('[data-view="availability"]').click();
     state=await me();const tomorrow=new Date(new Date(state.today+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
@@ -52,6 +52,7 @@ const base=process.env.VALHALLA_TEST_URL;
       await route.fulfill({contentType:'text/html',body:`<html lang="es"><body><h1>Checkout ficticio de pruebas aisladas</h1><form method="post" action="${base}/api/webpay/return"><input type="hidden" name="token_ws" value="${token}"><button>Aprobar pago ficticio</button></form></body></html>`});
     });
     await page.locator('[data-view="packages"]').click();await page.locator('[data-buy="5"]').click();
+    assert.equal(await page.locator('#modal-confirm').isDisabled(),true);await page.locator('#purchase-rules-accepted').check();
     await page.getByRole('button',{name:'Ir a Webpay de pruebas',exact:true}).click();
     await page.getByRole('heading',{name:'Checkout ficticio de pruebas aisladas',exact:true}).waitFor();
     await page.getByRole('button',{name:'Aprobar pago ficticio',exact:true}).click();

@@ -1,3 +1,4 @@
+from rules import RULES_VERSION
 import json
 import tempfile
 import threading
@@ -27,7 +28,7 @@ class WebpaySettings(unittest.TestCase):
         self.assertEqual(restored.mode,'integration');self.assertEqual(restored.configuration()['commerce_code'],'597012345678')
         restored.configure(self.admin['id'],{'commerce_code':'597012345678','sandbox_enabled':False})
         self.assertEqual(restored.mode,'disabled')
-        with self.assertRaises(PaymentError):restored.create(self.uid,'5','idempotency-settings-123')
+        with self.assertRaises(PaymentError):restored.create(self.uid,'5','idempotency-settings-123', rules_acceptance={'accepted':True,'version':RULES_VERSION})
     def test_professional_cannot_configure_and_secret_or_production_rejected(self):
         with self.assertRaises(PaymentError) as error:self.service.configure(self.uid,{'commerce_code':'','sandbox_enabled':False})
         self.assertEqual(error.exception.status,403)
@@ -47,7 +48,7 @@ class WebpaySettings(unittest.TestCase):
         from test_migration_payments import FakeGateway
         self.service=PaymentService(self.store,FakeGateway())
         token,_=self.store.issue_email_token(self.uid);self.store.confirm_email(token)
-        self.service.create(self.uid,'5','settings-test-payment-123')
+        self.service.create(self.uid,'5','settings-test-payment-123', rules_acceptance={'accepted':True,'version':RULES_VERSION})
         with self.assertRaises(PaymentError) as error:self.service.configure(self.admin['id'],{'commerce_code':'','sandbox_enabled':False})
         self.assertEqual(error.exception.status,409);self.assertEqual(self.service.mode,'integration')
     def test_http_admin_csrf_and_private_metadata(self):

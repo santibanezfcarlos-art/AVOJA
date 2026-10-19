@@ -133,11 +133,14 @@ class PaymentService:
             raise PaymentError('Hay un pago pendiente de conciliación. Consulta su estado; no inicies otro cobro.', 409)
         return {'payment_id':row['id'], 'token':row['token'], 'url':row['checkout_url'], 'mode':self.mode}
 
-    def create(self, uid, catalog, key):
+    def create(self, uid, catalog, key, rules_acceptance=None):
         with self.configuration_lock:
-            return self._create(uid,catalog,key)
+            return self._create(uid,catalog,key,rules_acceptance)
 
-    def _create(self, uid, catalog, key):
+    def _create(self, uid, catalog, key, rules_acceptance):
+        from rules import validate_acceptance
+        if not validate_acceptance(rules_acceptance):
+            raise PaymentError('Debes leer y aceptar las normas vigentes antes de comprar.',400)
         if self.mode != 'integration':
             raise PaymentError('Webpay aún no está habilitado.', 409)
         if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}', key):
@@ -152,13 +155,19 @@ class PaymentService:
                 raise PaymentError('Necesitas una cuenta activa y el correo confirmado para comprar.', 403)
             previous = c.execute('SELECT * FROM payment_attempts WHERE user_id=? AND idempotency_key=?', (uid,key)).fetchone()
             if previous:
-                return self.checkout(previous)
+                checkout=self.checkout(previous)
+                if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(previous['package_id'],)).fetchone():
+                    self.store.record_purchase_acceptance(c,uid,previous['package_id'],rules_acceptance)
+                return checkout
             pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND state IN ('creating','ready','uncertain','review')", (uid,)).fetchone()
             if pending:
                 if pending['state']=='ready' and pending['hours']==hours:
+                    if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(pending['package_id'],)).fetchone():
+                        self.store.record_purchase_acceptance(c,uid,pending['package_id'],rules_acceptance)
                     return self.checkout(pending)
                 raise PaymentError('Ya tienes un pago pendiente. Retómalo o consulta su estado en Paquetes.', 409)
             pid = c.execute("INSERT INTO packages(user_id,hours,remaining,price,created_at,source) VALUES(?,?,0,?,?,'webpay_integration')", (uid,hours,price,stamp(now()))).lastrowid
+            self.store.record_purchase_acceptance(c,uid,pid,rules_acceptance)
             order, session = 'VH'+secrets.token_hex(10), secrets.token_hex(20)
             aid = c.execute("INSERT INTO payment_attempts(user_id,package_id,idempotency_key,buy_order,session_id,amount,hours,environment,state,created_at) VALUES(?,?,?,?,?,?,?,?, 'creating',?)", (uid,pid,key,order,session,price,hours,self.mode,stamp(now()))).lastrowid
             self.store.log(c,uid,'webpay_integration_created',aid)

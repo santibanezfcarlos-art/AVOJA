@@ -17,7 +17,7 @@ Plataforma de prueba para tres boxes. Interfaz adaptable a celulares, API Python
 
 Al iniciar sesión con `santibanezf.carlos@gmail.com`, el selector **Perfil activo** permite alternar entre **Administración** y **Perfil profesional**, también desde el celular, sin salir de la cuenta. El permiso administrativo se conserva al usar el perfil profesional; otros usuarios no pueden habilitarlo cambiando su perfil.
 
-En **Perfil profesional → Mi perfil** puedes completar nombre y especialidad. Esa misma cuenta tiene paquetes y reservas personales vinculados a su identificador, sin transferencias ni horas gratuitas. Solicita un paquete, vuelve a Administración para confirmar el pago simulado y regresa al perfil profesional para reservar. Se aplican las mismas restricciones de saldo, conflictos y modificaciones. El propietario también debe enviar su carnet y tenerlo aprobado para reservar. El acceso administrativo se mantiene aunque su identidad profesional esté pendiente; subir un carnet nuevo exige revisión otra vez.
+En **Perfil profesional → Mi perfil** puedes completar nombre y especialidad. Esa misma cuenta tiene paquetes y reservas personales vinculados a su identificador, sin transferencias ni horas gratuitas. Solicita un paquete, vuelve a Administración para confirmar el pago simulado y regresa al perfil profesional para reservar. Se aplican las mismas restricciones de saldo, conflictos y modificaciones. El propietario también debe tener carnet y certificado de título aprobados para reservar. El acceso administrativo se mantiene aunque su identidad profesional esté pendiente; subir un carnet nuevo exige revisión otra vez.
 
 No se crea otro usuario ni se cambia el correo o la contraseña al alternar. Al recargar la página la cuenta administradora abre Administración; puedes volver a elegir el perfil profesional. No necesitas otra variable en Render.
 
@@ -61,11 +61,11 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 
 - Tres boxes, sesiones de 55 minutos con inicios cada hora de 08:00 a 19:00 (última atención hasta 19:55), zona `America/Santiago`, hasta 90 días hacia adelante.
 - Sesión individual de $5.990 y planes personales mixtos de 5, 10, 30, 60, 100 y 200 horas, sin vencimiento en este prototipo. Cada hora contratada equivale a una sesión de 55 minutos. Se comparten entre boxes, no entre profesionales.
-- Solo el profesional activo, con correo confirmado e identidad validada por carnet o migración administrativa, reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
+- Solo el profesional activo, con correo confirmado, carnet y certificado de título aprobados o validación anterior por migración administrativa, reserva con saldo confirmado. Se consume el paquete confirmado más antiguo con saldo.
 - Una transacción crea la reserva y descuenta el saldo. Un índice único protege el box y horario; el profesional tampoco puede reservar dos boxes simultáneamente. Un trigger impide transferir el paquete.
 - Una modificación por reserva, al menos dos horas antes tanto del horario original como del nuevo. No consume otra hora; un intento fallido no gasta el cambio.
 - Administración revisa el último envío privado (hasta 5 archivos y 10 MB en total), aprueba o rechaza con observaciones, confirma pagos simulados, activa usuarios y cancela reservas futuras devolviendo la hora una sola vez.
-- Subir un carnet de identidad nuevo pausa la creación y modificación de reservas hasta su aprobación; conserva las reservas existentes.
+- Subir un carnet o certificado de título nuevo pausa la creación y modificación de reservas hasta su aprobación; conserva las reservas existentes.
 - Contraseñas con PBKDF2 y sal, sesiones HttpOnly/SameSite de ocho horas, protección CSRF, permisos comprobados en servidor y registro de operaciones. Los archivos se descargan como adjuntos solo por el titular o administrador.
 
 Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Los horarios se guardan en UTC. La API y la interfaz usan el mismo origen.
@@ -105,7 +105,7 @@ El carrusel pausa al situar el puntero o el foco sobre sus controles y cuando la
 
 ## Carnet obligatorio y agenda administrativa
 
-Los perfiles profesionales nuevos, incluido el propietario, necesitan el último carnet de identidad aprobado **y** saldo con pago confirmado. Los clientes anteriores pueden recibir una validación administrativa de migración, sin repetir el carnet, según [MIGRACION.md](MIGRACION.md); todos necesitan confirmar su correo y tener saldo para reservar. Para los nuevos perfiles, se requiere carnet aprobado para crear o modificar reservas. El carnet se envía en entre 1 y 5 archivos de cualquier formato, hasta 10 MB en total, que incluyan anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar su carnet pendiente de revisión. La revisión es manual, no una validación contra un registro oficial.
+Los perfiles profesionales nuevos, incluido el propietario, necesitan el último carnet y el último certificado de título aprobados por separado **y** saldo con pago confirmado. Los clientes anteriores pueden recibir una validación administrativa de migración, sin repetir el carnet, según [MIGRACION.md](MIGRACION.md); todos necesitan confirmar su correo y tener saldo para reservar. Para los nuevos perfiles, se requieren carnet y certificado de título aprobados para crear o modificar reservas. El carnet se envía en entre 1 y 5 archivos de cualquier formato, hasta 10 MB en total, que incluyan anverso y reverso. El administrador confirma explícitamente que revisó ambos lados y su correspondencia con el titular. Una acreditación profesional no sustituye el carnet, ni un flag antiguo de verificación permite reservar. Cambiar el nombre del perfil vuelve a dejar ambos documentos pendientes de revisión. La revisión es manual, no una validación contra un registro oficial.
 
 La migración añade `documents.kind` sin borrar archivos ni reservas. Los documentos anteriores se clasifican como acreditaciones, por lo que requieren enviar un carnet nuevo; los usuarios conservan sus cuentas, saldos y reservas. La identidad pendiente no bloquea el acceso administrativo del propietario. Hasta contar con almacenamiento persistente y protección de documentos adecuada para un piloto, usa carnets ficticios.
 
@@ -142,7 +142,7 @@ Para pruebas sin dominio propio puedes verificar una dirección Gmail como remit
 | `VALHALLA_SENDGRID_API_KEY` | La clave privada de SendGrid, solo en Render |
 | `VALHALLA_PUBLIC_URL` | `https://valhalla-office-demo.onrender.com` |
 
-Guarda y vuelve a desplegar con las variables. Crea una cuenta con un correo distinto, revisa entrada y spam, abre el enlace y pulsa Confirmar correo. Después inicia sesión normalmente. La aplicación exige también carnet aprobado y saldo confirmado para reservar. El envío del proveedor no garantiza recepción; el usuario puede solicitar otro enlace. Nunca pegues claves en el chat ni en GitHub.
+Guarda y vuelve a desplegar con las variables. Crea una cuenta con un correo distinto, revisa entrada y spam, abre el enlace y pulsa Confirmar correo. Después inicia sesión normalmente. La aplicación exige también carnet y certificado de título aprobados y saldo confirmado para reservar. El envío del proveedor no garantiza recepción; el usuario puede solicitar otro enlace. Nunca pegues claves en el chat ni en GitHub.
 
 Para producción conviene un dominio propio con autenticación del remitente. También se admite Resend configurando `VALHALLA_EMAIL_PROVIDER=resend`, `VALHALLA_RESEND_API_KEY` y un remitente autorizado por ese proveedor. No se ha realizado ningún envío real en las pruebas automatizadas: usan un buzón local aislado.
 
@@ -209,3 +209,13 @@ Prueba manual: crea una cuenta de prueba y comprueba el aviso al administrador y
 ## Iniciar sesión con Google
 
 El acceso profesional con Google se activa al configurar el cliente OAuth en Render. Sigue [GOOGLE.md](GOOGLE.md) para crear el cliente y vincular cuentas existentes. El administrador mantiene su contraseña privada.
+
+## Normas antes de comprar y dos documentos
+
+`rules.py` contiene las 12 normas del propietario y genera su versión a partir del texto. `/normas` es público y usa la misma fuente que el modal de compra. Cada solicitud simulada y cada inicio o reanudación de Webpay exige una aceptación explícita de la versión vigente. La casilla comienza desmarcada. El servidor rechaza solicitudes sin aceptación válida antes de crear planes o contactar al banco. `purchase_acceptances` conserva titular, plan, fecha, versión y copia del texto; la fecha es visible en Administración → Pagos. No se inventan aceptaciones para planes históricos.
+
+La documentación usa `identity` para carnet y `degree` para certificado de título; se envían y aprueban por separado. Se toma siempre la última revisión de cada tipo. Reemplazar cualquiera pausa nuevas reservas y modificaciones hasta su aprobación; las reservas anteriores permanecen. Los documentos antiguos `accreditation` no sustituyen ninguno de estos dos requisitos. Los clientes migrados con validación anterior reconocida conservan su exención de documentos.
+
+El correo de reserva conserva profesional, espacio, fecha, horario, dirección, condiciones de modificación y enlace. La referencia permanece dentro de la plataforma, pero ya no figura en el correo; tampoco se muestran líneas de duración ni zona horaria. La fecha y hora siguen calculándose en America/Santiago.
+
+Las reglas de sobretiempo y sanciones se comunican en las normas; esta actualización no implementa cargos automáticos adicionales a una tarjeta ni deducciones nuevas de saldo por esos conceptos.

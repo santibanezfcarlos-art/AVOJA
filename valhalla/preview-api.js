@@ -51,7 +51,8 @@ async function api(path,body){
   if(path==='logout'){previewUser=null;return {ok:true};}
   const user=db.users.find(u=>u.id===previewUser);
   if(!user||!user.active)throw Error('Inicia sesión para continuar.');
-  if(path==='me')return previewClone({rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
+  if(path==='me'){user.identity_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1)?.status==='approved';user.degree_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='degree').at(-1)?.status==='approved';}
+  if(path==='me')return previewClone({purchase_rules:globalThis.VALHALLA_RULES,rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
   if(path.startsWith('availability?')){
     const day=new URLSearchParams(path.split('?')[1]).get('date');
     return {date:day,slots:Array.from({length:12},(_,i)=>{
@@ -61,6 +62,7 @@ async function api(path,body){
   }
   if(path==='profile'){if(user.name!==String(body.name).trim()){const identity=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1);if(identity)identity.status='pending';user.verified=0;}user.name=String(body.name).trim();user.specialty=String(body.specialty).trim();return {ok:true};}
   if(path==='packages'){
+    if(body.rules_acceptance?.accepted!==true||body.rules_acceptance?.version!==globalThis.VALHALLA_RULES.version)throw Error('Debes aceptar las normas vigentes antes de comprar.');
     if(user.role!=='professional')throw Error('Solo profesionales pueden solicitar paquetes.');
     const p=previewCatalog.find(p=>p.id===body.catalog_id);if(!p)throw Error('Paquete inválido.');
     const row={id:previewId(db.packages),user_id:user.id,hours:p.hours,remaining:p.hours,price:p.price,status:'pending',created_at:new Date().toISOString()};db.packages.push(row);previewRecord('payment_requested_simulated',row.id);return {ok:true,id:row.id};
@@ -98,7 +100,7 @@ async function api(path,body){
       const d=db.documents.find(d=>d.id===body.id);if(!d)throw Error('Documento no encontrado.');
       if(db.documents.some(other=>other.user_id===d.user_id&&other.id>d.id))throw Error('Revisa el documento más reciente.');
       if(body.decision==='rejected'&&!body.note.trim())throw Error('Indica un motivo para rechazar.');
-      if(d.kind==='identity'&&body.decision==='approved'&&body.identity_confirmed!==true)throw Error('Confirma la revisión de ambos lados del carnet.');d.status=body.decision;d.note=body.note;if(d.kind==='identity')db.users.find(u=>u.id===d.user_id).verified=Number(body.decision==='approved');
+      if(d.kind==='identity'&&body.decision==='approved'&&body.identity_confirmed!==true)throw Error('Confirma la revisión de ambos lados del carnet.');d.status=body.decision;d.note=body.note;const latest=kind=>db.documents.filter(x=>x.user_id===d.user_id&&x.kind===kind).at(-1)?.status==='approved';db.users.find(u=>u.id===d.user_id).verified=Number(latest('identity')&&latest('degree'));
     }else if(body.action==='user'){
       const u=db.users.find(u=>u.id===body.id&&u.role==='professional');if(!u)throw Error('Usuario inválido.');u.active=Number(body.active);
     }else if(body.action==='cancel'){

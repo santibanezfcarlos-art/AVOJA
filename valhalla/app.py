@@ -23,6 +23,7 @@ from mailer import EmailDelivery, EmailDeliveryError
 from payments import PaymentService, WebpayGateway, PaymentError
 from notifications import NotificationDispatcher
 import google_auth
+from rules import purchase_rules, validate_acceptance, RULES_VERSION, RULES_TEXT
 
 ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
@@ -147,6 +148,9 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS purchase_acceptances (
+              package_id INTEGER PRIMARY KEY REFERENCES packages(id), user_id INTEGER NOT NULL REFERENCES users(id),
+              version TEXT NOT NULL, rules_text TEXT NOT NULL, accepted_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS webpay_settings (
               id INTEGER PRIMARY KEY CHECK(id=1), commerce_code TEXT NOT NULL DEFAULT '',
               sandbox_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
@@ -320,15 +324,26 @@ class Store:
                               ('Administración Valhalla', ADMIN_EMAIL, password_hash(admin_password)))
 
             c.execute("UPDATE users SET email_verified=1 WHERE email=? AND role='admin'", (ADMIN_EMAIL,))
-            # Old professional accreditation or a legacy flag is not an identity check.
-            c.execute("""UPDATE users SET verified=CASE WHEN EXISTS(SELECT 1 FROM legacy_imports WHERE user_id=users.id AND identity_valid=1) THEN 1 ELSE COALESCE((SELECT status='approved' FROM documents
-                         WHERE user_id=users.id AND kind='identity' ORDER BY id DESC LIMIT 1),0) END""")
+            # Cached flags never replace approval of both required documents.
+            for row in c.execute('SELECT id FROM users').fetchall():
+                c.execute('UPDATE users SET verified=? WHERE id=?',(int(self.professional_verified(c,row['id'])),row['id']))
 
     def identity_verified(self, c, uid):
         if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (uid,)).fetchone():
             return True
         row = c.execute("SELECT status FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
         return bool(row and row['status'] == 'approved')
+
+    def professional_verified(self, c, uid):
+        if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1',(uid,)).fetchone():
+            return True
+        degree=c.execute("SELECT status FROM documents WHERE user_id=? AND kind='degree' ORDER BY id DESC LIMIT 1",(uid,)).fetchone()
+        return self.identity_verified(c,uid) and bool(degree and degree['status']=='approved')
+
+    def record_purchase_acceptance(self, c, uid, pid, acceptance):
+        if not validate_acceptance(acceptance):
+            raise Problem('Debes leer y aceptar las normas vigentes antes de comprar.',400)
+        c.execute('INSERT INTO purchase_acceptances VALUES(?,?,?,?,?)',(pid,uid,RULES_VERSION,RULES_TEXT,stamp(now())))
 
     def session(self, token):
         with self.connection() as c:
@@ -534,9 +549,12 @@ class Store:
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
             profile['google_linked'] = bool(c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(user['id'],)).fetchone())
-            profile['verified'] = int(self.identity_verified(c, user['id']))
+            profile['verified'] = int(self.professional_verified(c, user['id']))
+            profile['identity_approved'] = self.identity_verified(c,user['id'])
+            degree=c.execute("SELECT status FROM documents WHERE user_id=? AND kind='degree' ORDER BY id DESC LIMIT 1",(user['id'],)).fetchone()
+            profile['degree_approved'] = bool(degree and degree['status']=='approved')
             profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
-            return {'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
+            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT * FROM packages WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
@@ -556,8 +574,8 @@ class Store:
             if previous and previous['name'] != name:
                 c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
                 c.execute("""UPDATE documents SET status='pending',reviewer_id=NULL,
-                             note='El nombre del perfil cambió; revisa nuevamente la identidad.'
-                             WHERE id=(SELECT id FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1)""", (uid,))
+                             note='El nombre del perfil cambió; revisa nuevamente el documento.'
+                             WHERE id IN (SELECT MAX(id) FROM documents WHERE user_id=? AND kind IN ('identity','degree') GROUP BY kind)""", (uid,))
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
             self.log(c, uid, 'profile_updated', uid)
 
@@ -603,14 +621,16 @@ class Store:
 
     def professional(self, c, uid):
         row = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-        if not row or not supports_professional(row) or not row['active'] or not self.identity_verified(c, uid):
-            raise Problem('Para reservar necesitas una cuenta activa, identidad validada por administración y saldo confirmado.', 403)
+        if not row or not supports_professional(row) or not row['active'] or not self.professional_verified(c, uid):
+            raise Problem('Para reservar necesitas una cuenta activa, carnet y certificado de título aprobados por administración, y saldo confirmado.', 403)
         if not row['email_verified']:
             raise Problem('Confirma tu correo electrónico antes de reservar.', 403)
         if not 2 <= len(row['specialty']) <= 100 and c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(uid,)).fetchone():
             raise Problem('Completa tu profesión o especialidad en Mi perfil antes de reservar.', 403)
 
     def buy(self, uid, body):
+        if not validate_acceptance(body.get('rules_acceptance')):
+            raise Problem('Debes leer y aceptar las normas vigentes antes de comprar.',400)
         key = str(body.get('catalog_id', ''))
         if key not in CATALOG:
             raise Problem('Paquete inválido.')
@@ -621,6 +641,7 @@ class Store:
                 raise Problem('Solo los profesionales activos pueden solicitar paquetes.', 403)
             cur = c.execute('INSERT INTO packages(user_id,hours,remaining,price,created_at) VALUES(?,?,?,?,?)',
                             (uid, hours, hours, price, stamp(now())))
+            self.record_purchase_acceptance(c,uid,cur.lastrowid,body['rules_acceptance'])
             self.log(c, uid, 'payment_requested_simulated', cur.lastrowid)
             return cur.lastrowid
 
@@ -674,7 +695,7 @@ class Store:
 
     def upload(self, uid, body):
         kind = body.get('kind', 'accreditation')
-        if kind not in ('identity', 'accreditation'):
+        if kind not in ('identity', 'degree', 'accreditation'):
             raise Problem('Tipo de documento inválido.')
         files = body.get('files', [body])
         if not isinstance(files, list) or not 1 <= len(files) <= 5:
@@ -708,6 +729,7 @@ class Store:
             if kind == 'identity':
                 c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
+            c.execute('UPDATE users SET verified=? WHERE id=?',(int(self.professional_verified(c,uid)),uid))
             self.log(c, uid, 'document_uploaded', cursor.lastrowid)
             person=c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
             self.queue_notification(c,uid,'admin_document',cursor.lastrowid,ADMIN_EMAIL,dict(person)|{'document_id':cursor.lastrowid,'document_kind':kind,'file_count':len(prepared)})
@@ -718,9 +740,9 @@ class Store:
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
-                    'users': [dict(r) | {'verified':int(self.identity_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
+                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
-                    'packages': [dict(r) for r in c.execute('SELECT p.*,u.name FROM packages p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
+                    'packages': [dict(r) for r in c.execute('SELECT p.*,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
                     'audit': [dict(r) for r in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 30')]}
 
@@ -755,7 +777,7 @@ class Store:
                 if row['kind'] == 'identity' and decision == 'approved' and body.get('identity_confirmed') is not True:
                     raise Problem('Confirma que revisaste ambos lados del carnet y que corresponden al titular.')
                 c.execute('UPDATE documents SET status=?,note=?,reviewer_id=? WHERE id=?', (decision, note, actor, target))
-                c.execute('UPDATE users SET verified=? WHERE id=?', (int(self.identity_verified(c, row['user_id'])), row['user_id']))
+                c.execute('UPDATE users SET verified=? WHERE id=?', (int(self.professional_verified(c, row['user_id'])), row['user_id']))
             elif action == 'user':
                 row = c.execute('SELECT * FROM users WHERE id=?', (target,)).fetchone()
                 if not row or row['role'] == 'admin':
@@ -944,6 +966,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise Problem('Retorno de pago inválido.')
                 self.webpay_return({key:values[0] for key,values in query.items()})
                 return
+            if route.path == '/normas':
+                from html import escape
+                content=''.join('<li><h2>'+escape(title)+'</h2><p>'+escape(text)+'</p></li>' for title,text in [(item['title'],item['text']) for item in purchase_rules()['items']])
+                raw=('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Normas de uso · Valhalla Office</title><link rel="stylesheet" href="/style.css"></head><body><header class="legal-header"><a href="/">VALHALLA OFFICE</a></header><main class="legal-content"><h1>Normas de uso</h1><p>Debes leer y aceptar estas normas antes de comprar un plan. Versión: '+RULES_VERSION+'</p><ol>'+content+'</ol><p><a href="/condiciones">Condiciones del servicio</a> · <a href="/privacidad">Privacidad</a></p></main></body></html>').encode()
+                self.send_response(200); self.headers_common(); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
+                return
             if not route.path.startswith('/api/'):
                 files = {'/privacidad': ('privacidad.html', 'text/html'), '/condiciones': ('condiciones.html', 'text/html'), '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
                 if route.path.startswith('/images/'):
@@ -1109,7 +1137,7 @@ class Handler(BaseHTTPRequestHandler):
                 service = getattr(self.server,'webpay',None)
                 if not service:
                     raise PaymentError('Webpay no está habilitado.',409)
-                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key')))
+                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key'),body.get('rules_acceptance')))
                 return
             elif self.path == '/api/webpay/reconcile':
                 service = getattr(self.server,'webpay',None)

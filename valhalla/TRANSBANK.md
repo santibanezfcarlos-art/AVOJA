@@ -14,7 +14,7 @@ En el plan gratuito de Render, la base puede perderse al desplegar; guardar una 
 
 ## Flujo implementado
 
-1. El profesional confirma su correo, elige un plan y continúa al checkout alojado por Transbank. No se ingresan tarjetas en Valhalla.
+1. El profesional confirma su correo, elige un plan, lee las 12 normas, acepta su versión vigente y continúa al checkout alojado por Transbank. No se ingresan tarjetas en Valhalla.
 2. El servidor calcula el precio usando el catálogo; ignora importes, saldos y titulares enviados por el navegador. Guarda una orden única y un paquete pendiente con cero sesiones disponibles.
 3. Crea el pago mediante la API REST oficial v1.2 y envía el token por formulario POST al checkout de integración. Solo se admite el host HTTPS oficial, sin redirecciones arbitrarias de la API.
 4. El retorno GET/POST se procesa sin depender de una sesión del navegador (Webpay vuelve desde otro origen). Se busca el intento guardado y se consulta/confirma directamente con Transbank.

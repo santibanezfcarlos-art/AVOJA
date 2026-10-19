@@ -1,3 +1,4 @@
+from rules import RULES_VERSION
 import base64
 import json
 import sqlite3
@@ -33,6 +34,7 @@ class Rules(unittest.TestCase):
                 c.execute('UPDATE users SET email_verified=1 WHERE id=?',(uid,))
                 if verified:
                     c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,?,'application/pdf',?,'approved',?,'identity')", (0 if uid==4 else -uid,uid,'fixture.pdf',b'%PDF-1.4\nTEST',stamp(self.clock)))
+                    c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,'degree.pdf','application/pdf',?,'approved',?,'degree')",(-100-uid,uid,b'Degree fixture',stamp(self.clock)))
                 if role == 'professional':
                     c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at) VALUES(?,5,5,45000,'paid',?)", (uid, stamp(self.clock)))
 
@@ -109,7 +111,7 @@ class Rules(unittest.TestCase):
     def test_pending_package_not_spendable(self):
         with self.store.connection(True) as c:
             c.execute('UPDATE packages SET remaining=0 WHERE user_id=1')
-        pid = self.store.buy(1, {'catalog_id':'5'})
+        pid = self.store.buy(1, {'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5'})
         with self.assertRaises(Problem):
             self.store.reserve(1, self.slot())
         self.store.admin_action(4, {'action':'payment','id':pid,'decision':'paid'})
@@ -120,7 +122,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.balance(), 4)
 
     def test_package_owner_cannot_be_chosen_by_client(self):
-        pid = self.store.buy(1, {'catalog_id':'10', 'user_id':2})
+        pid = self.store.buy(1, {'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'10', 'user_id':2})
         with self.store.connection() as c:
             package = c.execute('SELECT * FROM packages WHERE id=?',(pid,)).fetchone()
         self.assertEqual(package['user_id'],1)
@@ -221,6 +223,8 @@ class Rules(unittest.TestCase):
         self.assertNotIn('user_id',json.dumps(data))
 
     def test_document_review_and_reupload(self):
+        with self.store.connection(True) as c:
+            c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(-103,3,'degree.pdf','application/pdf',?,'approved',?,'degree')",(b'Degree fixture',stamp(self.clock)))
         pdf={'kind':'identity','filename':'demo.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()}
         self.store.upload(3,pdf)
         self.store.admin_action(4,{'action':'document','id':1,'decision':'approved','identity_confirmed':True})
@@ -282,9 +286,9 @@ class HTTPTests(unittest.TestCase):
         cookie,csrf=self.login()
         self.assertEqual(self.request('/api/admin',cookie=cookie)[0],403)
         self.assertEqual(self.request('/api/admin',{'action':'cancel','id':1},cookie,csrf)[0],403)
-        self.assertEqual(self.request('/api/packages',{'catalog_id':'5'},cookie)[0],403)
-        self.assertEqual(self.request('/api/packages',{'catalog_id':'5'},cookie,csrf,origin='https://evil.example')[0],403)
-        self.assertEqual(self.request('/api/packages',{'catalog_id':'5'},cookie,csrf)[0],200)
+        self.assertEqual(self.request('/api/packages',{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5'},cookie)[0],403)
+        self.assertEqual(self.request('/api/packages',{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5'},cookie,csrf,origin='https://evil.example')[0],403)
+        self.assertEqual(self.request('/api/packages',{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5'},cookie,csrf)[0],200)
         admin,admincsrf=self.login(True)
         status,data,_=self.request('/api/admin',cookie=admin)
         self.assertEqual(status,200)

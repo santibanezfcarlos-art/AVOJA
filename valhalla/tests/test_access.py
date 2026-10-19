@@ -1,3 +1,4 @@
+from rules import RULES_VERSION
 import tempfile
 import unittest
 from pathlib import Path
@@ -86,13 +87,17 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(self.store.session(token)['role'],'admin')
         start=(datetime.now(CHILE)+timedelta(days=1)).replace(hour=10,minute=0,second=0,microsecond=0).isoformat()
         with self.assertRaises(Problem):self.store.reserve(owner['id'],{'box':1,'start':start})
-        pid=self.store.buy(owner['id'],{'catalog_id':'5','user_id':999})
+        pid=self.store.buy(owner['id'],{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5','user_id':999})
         self.store.admin_action(owner['id'],{'action':'payment','id':pid,'decision':'paid'})
         import base64
         self.store.upload(owner['id'],{'kind':'identity','filename':'carnet.pdf','content':base64.b64encode(b'%PDF-1.4\nTEST').decode()})
         with self.store.connection() as c:
             did=c.execute("SELECT MAX(id) FROM documents WHERE user_id=?",(owner['id'],)).fetchone()[0]
         self.store.admin_action(owner['id'],{'action':'document','id':did,'decision':'approved','identity_confirmed':True})
+        self.store.upload(owner['id'],{'kind':'degree','filename':'degree.pdf','content':base64.b64encode(b'Test degree').decode()})
+        with self.store.connection() as c:
+            degree=c.execute("SELECT MAX(id) FROM documents WHERE user_id=? AND kind='degree'",(owner['id'],)).fetchone()[0]
+        self.store.admin_action(owner['id'],{'action':'document','id':degree,'decision':'approved'})
         bid=self.store.reserve(owner['id'],{'box':1,'start':start})
         with self.store.connection() as c:
             booking=c.execute('SELECT * FROM bookings WHERE id=?',(bid,)).fetchone()
