@@ -2,6 +2,16 @@
 
 Implementado para el **ambiente oficial de integración**, desactivado por defecto. Esta versión no admite modo producción ni credenciales comerciales: no puede realizar cargos reales. El propietario ya tiene un comercio habilitado; no necesita volver a contratarlo para preparar las pruebas.
 
+## Panel de administración
+
+**Administración → Transbank** permite guardar el código comercial de Webpay Plus directo (12 dígitos), consultar el estado y activar/desactivar únicamente el checkout de pruebas. No almacena ni solicita claves comerciales. El identificador utilizado por Skedu no sustituye las credenciales del contrato directo.
+
+El código se guarda como preparación y no se envía en operaciones de integración: estas utilizan las credenciales públicas oficiales de Transbank. Guardar el código no valida el contrato ni habilita cobros. La clave de producción y el almacenamiento persistente siguen pendientes para la activación real.
+
+La configuración se conserva en SQLite y se restaura al iniciar el servicio. Si existe una configuración guardada en el panel, prevalece sobre el modo inicial de `VALHALLA_WEBPAY_MODE`. El panel requiere administrador autorizado y CSRF. No permite cambiar de ambiente mientras existan intentos de pago sin conciliar; tampoco acepta claves ni un modo producción en su API. El conciliador sigue funcionando cuando se activan las pruebas sin reiniciar el servicio.
+
+En el plan gratuito de Render, la base puede perderse al desplegar; guardar una configuración en SQLite no reemplaza el disco persistente. Antes de ingresar clientes, saldos o cobros reales, configura y prueba la persistencia.
+
 ## Flujo implementado
 
 1. El profesional confirma su correo, elige un plan y continúa al checkout alojado por Transbank. No se ingresan tarjetas en Valhalla.

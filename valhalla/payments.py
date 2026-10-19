@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import time
+import threading
 from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -32,8 +33,8 @@ class WebpayGateway:
     commerce_code = '597055555532'
     api_key = '579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C'
 
-    def __init__(self):
-        self.mode = os.environ.get('VALHALLA_WEBPAY_MODE', 'disabled').lower()
+    def __init__(self, mode=None):
+        self.mode = (mode if mode is not None else os.environ.get('VALHALLA_WEBPAY_MODE', 'disabled')).lower()
         if self.mode not in ('disabled', 'integration'):
             raise ValueError('Solo se admite VALHALLA_WEBPAY_MODE=disabled o integration. Los cobros reales no están habilitados.')
         self.public_url = os.environ.get('VALHALLA_PUBLIC_URL', 'https://valhalla-office-demo.onrender.com').rstrip('/')
@@ -83,6 +84,45 @@ class WebpayGateway:
 class PaymentService:
     def __init__(self, store, gateway):
         self.store, self.gateway = store, gateway
+        self.configuration_lock = threading.RLock()
+
+    def configuration(self):
+        with self.store.connection() as c:
+            row = c.execute('SELECT * FROM webpay_settings WHERE id=1').fetchone()
+        return {'mode':self.mode, 'sandbox_enabled':self.mode=='integration',
+                'commerce_code':row['commerce_code'] if row else '',
+                'integration_commerce_code':WebpayGateway.commerce_code,
+                'production_available':False,
+                'return_url':getattr(self.gateway,'public_url',os.environ.get('VALHALLA_PUBLIC_URL','https://valhallaoffice.cl')) + '/api/webpay/return'}
+
+    def restore_configuration(self):
+        with self.store.connection() as c:
+            row = c.execute('SELECT sandbox_enabled FROM webpay_settings WHERE id=1').fetchone()
+        if row:
+            self.gateway = WebpayGateway('integration' if row['sandbox_enabled'] else 'disabled')
+
+    def configure(self, actor, body):
+        from app import ADMIN_EMAIL, stamp, now
+        enabled, code = body.get('sandbox_enabled'), body.get('commerce_code','')
+        if type(enabled) is not bool or not isinstance(code,str):
+            raise PaymentError('Revisa el código de comercio y la selección de pruebas.',400)
+        code=code.strip()
+        if code and not re.fullmatch(r'[0-9]{12}',code):
+            raise PaymentError('El código de Webpay Plus directo debe tener 12 dígitos. Un identificador de Skedu no reemplaza el código que entrega Transbank.',400)
+        if any(key in body for key in ('api_key','secret','production','mode')):
+            raise PaymentError('Las credenciales privadas se configuran únicamente en Render. Este panel no activa cobros reales.',400)
+        with self.configuration_lock:
+            gateway=WebpayGateway('integration' if enabled else 'disabled')
+            with self.store.connection(True) as c:
+                user=c.execute('SELECT role,email,active FROM users WHERE id=?',(actor,)).fetchone()
+                if not user or user['role']!='admin' or user['email']!=ADMIN_EMAIL or not user['active']:
+                    raise PaymentError('Acceso exclusivo de administración.',403)
+                if gateway.mode!=self.mode and c.execute("SELECT 1 FROM payment_attempts WHERE state NOT IN ('approved','rejected') LIMIT 1").fetchone():
+                    raise PaymentError('Primero concilia los pagos pendientes antes de cambiar el ambiente de Webpay.',409)
+                c.execute('INSERT INTO webpay_settings VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET commerce_code=excluded.commerce_code,sandbox_enabled=excluded.sandbox_enabled,updated_at=excluded.updated_at',(code,int(enabled),stamp(now())))
+                self.store.log(c,actor,'webpay_settings_updated',1)
+            self.gateway=gateway
+        return self.configuration()
 
     @property
     def mode(self):
@@ -94,6 +134,10 @@ class PaymentService:
         return {'payment_id':row['id'], 'token':row['token'], 'url':row['checkout_url'], 'mode':self.mode}
 
     def create(self, uid, catalog, key):
+        with self.configuration_lock:
+            return self._create(uid,catalog,key)
+
+    def _create(self, uid, catalog, key):
         if self.mode != 'integration':
             raise PaymentError('Webpay aún no está habilitado.', 409)
         if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}', key):

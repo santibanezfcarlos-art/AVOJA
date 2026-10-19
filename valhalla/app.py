@@ -147,6 +147,9 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS webpay_settings (
+              id INTEGER PRIMARY KEY CHECK(id=1), commerce_code TEXT NOT NULL DEFAULT '',
+              sandbox_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS google_accounts (
               subject TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id), email TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS google_auth_states (
@@ -983,6 +986,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.admin(user)
                 data=self.server.store.admin_state()
                 data['email_config']=self.email_diagnostics()
+                data['webpay_config']=self.server.webpay.configuration() if getattr(self.server,'webpay',None) else {'mode':'disabled','commerce_code':'','sandbox_enabled':False,'production_available':False}
                 self.respond(data)
             elif route.path.startswith('/api/documents/'):
                 match = re.fullmatch(r'/api/documents/(\d+)(?:/files/(\d+))?', route.path)
@@ -1113,6 +1117,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id'],uid=user['id']))
                 return
+            elif self.path == '/api/admin/webpay/settings':
+                self.admin(user)
+                service = getattr(self.server,'webpay',None)
+                if not service:
+                    raise PaymentError('La configuración de Webpay no está disponible.',503)
+                self.respond(service.configure(user['id'],body))
+                return
             elif self.path == '/api/admin/webpay/reconcile':
                 self.admin(user)
                 service = getattr(self.server,'webpay',None)
@@ -1178,6 +1189,7 @@ def main():
     server.google = google_auth.GoogleOAuth()
     try:
         server.webpay = PaymentService(store, WebpayGateway())
+        server.webpay.restore_configuration()
     except ValueError as error:
         parser.error(str(error))
     stop_background = threading.Event()
@@ -1197,8 +1209,7 @@ def main():
             except sqlite3.Error:
                 pass  # Keep pending attempts for the next pass; never credit on database failure.
             stop_background.wait(30)
-    if server.webpay.mode == 'integration':
-        threading.Thread(target=reconcile_payments, daemon=True).start()
+    threading.Thread(target=reconcile_payments, daemon=True).start()
     print(f'Valhalla Office · prototipo local · puerto {args.port}', flush=True)
     try:
         server.serve_forever()
