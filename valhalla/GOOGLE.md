@@ -5,7 +5,7 @@ La aplicación admite «Continuar con Google» para registro e inicio de sesión
 ## Configuración en Google Cloud
 
 1. Abre https://console.cloud.google.com/ y selecciona o crea un proyecto para Valhalla Office.
-2. En **Google Auth Platform**, configura **Branding** (nombre Valhalla Office, correo de soporte y contacto). Añade `valhallaoffice.cl` como dominio autorizado. Completa los enlaces de inicio, privacidad y condiciones que Google solicite con páginas públicas válidas del servicio.
+2. En **Google Auth Platform**, configura **Branding** (nombre Valhalla Office, correo de soporte y contacto). Añade `valhallaoffice.cl` como dominio autorizado. Completa los enlaces públicos: inicio `https://valhallaoffice.cl`, privacidad `https://valhallaoffice.cl/privacidad` y condiciones `https://valhallaoffice.cl/condiciones`. Estas páginas legales son accesibles sin sesión ni JavaScript y están enlazadas desde el inicio.
 3. En **Audience**, selecciona **External** para admitir clientes externos. Si la aplicación está en Testing, añade los correos que probarán el acceso como usuarios de prueba. Para abrirla al público, cambia el estado de publicación y completa cualquier revisión que Google exija.
 4. En **Clients → Create client**, elige **Web application**. Añade exactamente esta **Authorized redirect URI**:
 

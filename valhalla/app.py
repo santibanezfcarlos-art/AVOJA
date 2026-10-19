@@ -942,7 +942,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.webpay_return({key:values[0] for key,values in query.items()})
                 return
             if not route.path.startswith('/api/'):
-                files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+                files = {'/privacidad': ('privacidad.html', 'text/html'), '/condiciones': ('condiciones.html', 'text/html'), '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
                 if route.path.startswith('/images/'):
                     asset = image_asset(route.path.removeprefix('/images/'))
                     if asset:
