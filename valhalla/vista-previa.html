@@ -42,6 +42,14 @@ let state = null, adminData = null, view = 'overview', adminTab = 'payments', se
 let activeProfile = 'admin';
 let contactsDate='',dailyContacts=null;
 let officeGallery = [];
+let googleEnabled = false;
+const googleResult = new URLSearchParams(location.search).get('google_result');
+if(googleResult){const clean=new URL(location.href);clean.searchParams.delete('google_result');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
+async function continueWithGoogle(link=false){
+  const button=document.querySelector(link?'#link-google':'#google-access');if(button)button.disabled=true;
+  try{const result=await api(link?'google/link':'google/start',{});const target=new URL(result.authorization_url);if(target.origin!=='https://accounts.google.com')throw new Error('No se pudo abrir Google.');location.assign(target.href);}
+  catch(e){toast(e.message);if(button)button.disabled=false;}
+}
 const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
 let disposeWelcomeCarousel = () => {};
 let toastTimer;
@@ -231,6 +239,7 @@ function auth(register = false, administrator = false) {
   disposeWelcomeCarousel();
   root.innerHTML = `<div class="auth"><section class="auth-story">${brand}<div><div class="eyebrow">UN LUGAR PARA CRECER</div><h1>Tu vocación.<br><em>Su mejor espacio.</em></h1><p>Tres boxes para atender a tu ritmo, una recepción para tus pacientes y un espacio para hacer crecer tu práctica.</p><div class="welcome-benefits"><span>3 boxes profesionales</span><span>Paquetes de horas</span><span>Box infantil</span></div>${welcomeCarousel()}<a class="welcome-gallery-link" href="#office-gallery-title">Recorre todos nuestros espacios <span aria-hidden="true">↓</span></a></div><footer>COLO COLO 222 · OFICINA 710</footer></section>
     <section class="auth-form"><div class="auth-inner"><span class="demo-label">PROTOTIPO · SIN COBROS REALES</span><h2>${administrator ? 'Acceso administrador' : register ? 'Crea tu cuenta profesional' : 'Bienvenido a tu espacio'}</h2><p class="muted">${administrator ? 'Ingresa con tu correo autorizado y tu contraseña privada.' : register ? 'Regístrate y envía tu documentación para comenzar.' : 'Organiza tus atenciones, con todo en un solo lugar.'}</p>
+    ${googleEnabled&&!administrator?'<button type="button" class="btn secondary full" id="google-access">Continuar con Google</button><p class="muted">O continúa con tu correo y contraseña.</p>':''}
     <form id="auth-form" class="form-stack">${register ? '<label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" placeholder="Ej. Psicología"></label>' : ''}
     <label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="200" placeholder="tu@correo.cl"></label><label>Contraseña<input name="password" type="password" autocomplete="${register?'new-password':'current-password'}" required minlength="${register?10:1}" maxlength="200" placeholder="${register?'Mínimo 10 caracteres':'Tu contraseña'}"></label>
     ${register?'<label>Confirmar contraseña<input name="password_confirmation" type="password" autocomplete="new-password" required minlength="10" maxlength="200" placeholder="Repite tu contraseña"></label>':''}
@@ -240,6 +249,7 @@ function auth(register = false, administrator = false) {
     <div class="demo-access"><strong>Elige tu acceso</strong><p class="muted">Vista previa local: regístrate para explorar. Los datos se reinician al recargar. La administración privada funciona en el sitio con servidor.</p><div class="row"><button class="btn secondary small" id="professional-access">Acceso profesional</button><button class="btn ghost small" id="administrator-access">Acceso administrador</button></div></div></div></section></div>${gallerySection()}`;
   bindGallery();
   bindWelcomeCarousel();
+  const googleButton=document.querySelector('#google-access');if(googleButton)googleButton.onclick=()=>continueWithGoogle();
   const forgot=document.querySelector('#forgot-password');if(forgot)forgot.onclick=()=>passwordRecovery(false,administrator);
   document.querySelector('#auth-switch').onclick = () => administrator ? auth() : auth(!register);
   document.querySelector('#professional-access').onclick = () => auth(true);
@@ -326,7 +336,7 @@ function packages() {
 }
 function profile() {
   return head('Mi perfil profesional','Tu cuenta conserva el mismo correo, saldo y reservas al cambiar de perfil.')+
-    `<section class="card"><form id="profile-form" class="form-stack"><label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100" value="${escapeHTML(state.user.name)}"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" value="${escapeHTML(state.user.specialty)}" placeholder="Ej. Psicología"></label><label>Correo de la cuenta<input type="email" value="${escapeHTML(state.user.email)}" disabled></label><p class="data-note">Cambiar tu nombre requiere una nueva revisión del carnet. Tu correo y permisos se conservan.</p><p id="profile-error" class="error" role="alert"></p><button class="btn" type="submit">Guardar perfil</button></form></section>`;
+    `<section class="card"><form id="profile-form" class="form-stack"><label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100" value="${escapeHTML(state.user.name)}"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" value="${escapeHTML(state.user.specialty)}" placeholder="Ej. Psicología"></label><label>Correo de la cuenta<input type="email" value="${escapeHTML(state.user.email)}" disabled></label><p class="data-note">Cambiar tu nombre requiere una nueva revisión del carnet. Tu correo y permisos se conservan.</p>${googleEnabled&&state.user.role==='professional'?`<div class="notice"><strong>Acceso con Google</strong><p>${state.user.google_linked?'Tu cuenta está vinculada. Puedes iniciar sesión con Google.':'Vincula la cuenta de Google que utiliza este mismo correo. Conservarás tus reservas y saldo.'}</p>${state.user.google_linked?'':'<button class="btn secondary small" type="button" id="link-google">Vincular Google</button>'}</div>`:''}<p id="profile-error" class="error" role="alert"></p><button class="btn" type="submit">Guardar perfil</button></form></section>`;
 }
 function documentLinks(document) {
   const files=document.files||[{filename:document.filename,download_url:'/api/documents/'+document.id}];
@@ -452,7 +462,8 @@ function bind() {
   bindMigration();bindPayments();bindEmailAdmin();bindDailyContacts();
   const refreshAgenda=document.querySelector('#refresh-agenda');if(refreshAgenda)refreshAgenda.onclick=()=>render().catch(e=>toast(e.message));
   bindGallery();
-  const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{event.preventDefault();const button=profileForm.querySelector('button');button.disabled=true;try{await api('profile',Object.fromEntries(new FormData(profileForm)));await reload();toast('Perfil profesional actualizado.');}catch(e){document.querySelector('#profile-error').textContent=e.message;}finally{button.disabled=false;}};
+  const linkGoogle=document.querySelector('#link-google');if(linkGoogle)linkGoogle.onclick=()=>continueWithGoogle(true);
+  const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{event.preventDefault();const button=profileForm.querySelector('button[type=submit]');button.disabled=true;try{await api('profile',Object.fromEntries(new FormData(profileForm)));await reload();toast('Perfil profesional actualizado.');}catch(e){document.querySelector('#profile-error').textContent=e.message;}finally{button.disabled=false;}};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{view=b.dataset.go;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-modify]').forEach(b=>b.onclick=()=>{modifying=state.bookings.find(x=>x.id===Number(b.dataset.modify));selectedDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(modifying.start));view='availability';render().catch(e=>toast(e.message));});
   const abort=document.querySelector('#abort-change');if(abort)abort.onclick=()=>{modifying=null;view='bookings';render().catch(e=>toast(e.message));};
@@ -526,9 +537,12 @@ function emailConfirmation() {
 async function startApp() {
   if(passwordResetToken){passwordRecovery(true);return;}
   if(emailConfirmationToken){emailConfirmation();return;}
+  try{googleEnabled=Boolean((await api('google/config')).enabled);}catch{googleEnabled=false;}
   try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
-  try{const data=await api('me');state=data;selectedDate=data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Paquetes.');}if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}
-  catch{auth();}
+  try{const data=await api('me');state=data;selectedDate=data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Paquetes.');}if(googleResult==='profile_required')view='profile';if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}
+  catch{auth(false,googleResult==='admin_password');}
+  const googleMessages={success:'Ingresaste con Google.',profile_required:'Completa tu profesión o especialidad en Mi perfil. Para reservar también necesitas tu identidad validada y saldo.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Google. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Google. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Google está disponible para cuentas profesionales.',error:'No se pudo completar el acceso con Google. Vuelve a intentarlo desde el inicio.'};
+  if(googleResult&&googleMessages[googleResult])toast(googleMessages[googleResult]);
 }
 startApp();
 </script></body></html>

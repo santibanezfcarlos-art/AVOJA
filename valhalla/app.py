@@ -15,13 +15,14 @@ import threading
 import time
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
-from http.cookies import SimpleCookie
+from http.cookies import SimpleCookie, CookieError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from mailer import EmailDelivery, EmailDeliveryError
 from payments import PaymentService, WebpayGateway, PaymentError
 from notifications import NotificationDispatcher
+import google_auth
 
 ROOT = Path(__file__).resolve().parent
 CHILE = ZoneInfo('America/Santiago')
@@ -146,6 +147,11 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS google_accounts (
+              subject TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id), email TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS google_auth_states (
+              state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, verifier TEXT NOT NULL,
+              expires REAL NOT NULL, link_session TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS documents (
               id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               filename TEXT NOT NULL, mime TEXT NOT NULL, content BLOB NOT NULL,
@@ -524,6 +530,7 @@ class Store:
     def state(self, user):
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
+            profile['google_linked'] = bool(c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(user['id'],)).fetchone())
             profile['verified'] = int(self.identity_verified(c, user['id']))
             profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
             return {'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
@@ -597,6 +604,8 @@ class Store:
             raise Problem('Para reservar necesitas una cuenta activa, identidad validada por administración y saldo confirmado.', 403)
         if not row['email_verified']:
             raise Problem('Confirma tu correo electrónico antes de reservar.', 403)
+        if not 2 <= len(row['specialty']) <= 100 and c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(uid,)).fetchone():
+            raise Problem('Completa tu profesión o especialidad en Mi perfil antes de reservar.', 403)
 
     def buy(self, uid, body):
         key = str(body.get('catalog_id', ''))
@@ -871,10 +880,61 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', '0')
         self.end_headers()
 
+    def start_google(self, link_session=''):
+        gateway = getattr(self.server, 'google', None)
+        if not gateway or not gateway.configured:
+            raise Problem('El acceso con Google todavía no está habilitado.', 503)
+        if 'https://' + self.headers.get('Host', '') != gateway.origin:
+            raise Problem('Para continuar con Google, abre ' + gateway.origin + '.', 400)
+        try:
+            state, browser, verifier = google_auth.begin(self.server.store, link_session)
+        except google_auth.GoogleError:
+            raise Problem('No se pudo vincular esta cuenta con Google.', 403)
+        self.respond({'authorization_url':gateway.authorization_url(state, verifier)}, cookie=f'google_flow={browser}; HttpOnly; SameSite=Lax; Secure; Path=/api/google; Max-Age=600')
+
+    def google_callback(self, query):
+        from urllib.parse import parse_qs
+        token, result = None, 'error'
+        try:
+            gateway = getattr(self.server, 'google', None)
+            if not gateway or not gateway.configured or len(query)>8192:
+                raise google_auth.GoogleError()
+            fields = parse_qs(query, max_num_fields=10)
+            if any(len(v)!=1 for v in fields.values()):
+                raise google_auth.GoogleError()
+            cookies = SimpleCookie(self.headers.get('Cookie',''))
+            browser = cookies['google_flow'].value if 'google_flow' in cookies else ''
+            flow = google_auth.consume(self.server.store, fields.get('state',[''])[0], browser)
+            if 'error' in fields:
+                raise google_auth.GoogleError('cancelled')
+            code = fields.get('code',[''])[0]
+            if not code or len(code)>4096:
+                raise google_auth.GoogleError()
+            identity = gateway.exchange(code, flow['verifier'])
+            token, result = google_auth.authenticate(self.server.store, identity, flow['link_session'])
+        except google_auth.GoogleError as error:
+            result = error.result
+        except (ValueError, KeyError, CookieError, sqlite3.Error):
+            result = 'error'
+        self.send_response(303)
+        self.headers_common()
+        self.send_header('Location', '/?google_result=' + result)
+        self.send_header('Set-Cookie', 'google_flow=; HttpOnly; SameSite=Lax; Secure; Path=/api/google; Max-Age=0')
+        if token:
+            self.send_header('Set-Cookie', f'session={token}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=28800')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         route = urlparse(self.path)
         try:
+            if route.path == '/api/google/config':
+                self.respond({'enabled': bool(getattr(getattr(self.server, 'google', None), 'configured', False))})
+                return
+            if route.path == '/api/google/callback':
+                self.google_callback(route.query)
+                return
             if route.path == '/api/webpay/return':
                 query = parse_qs(route.query)
                 if len(route.query)>8192 or any(len(values)!=1 for values in query.values()):
@@ -975,6 +1035,9 @@ class Handler(BaseHTTPRequestHandler):
             if origin and origin not in ('http://' + self.headers.get('Host', ''), 'https://' + self.headers.get('Host', '')):
                 raise Problem('Origen no permitido.', 403)
             body = self.body()
+            if self.path == '/api/google/start':
+                self.start_google()
+                return
             if self.path == '/api/password-reset/request':
                 delivery = getattr(self.server, 'email_delivery', None)
                 if not delivery or not delivery.configured:
@@ -1020,6 +1083,9 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token', ''), user['csrf']):
                 raise Problem('Recarga la página antes de continuar.', 403)
             store = self.server.store
+            if self.path == '/api/google/link':
+                self.start_google(self.cookie())
+                return
             if self.path == '/api/logout':
                 with store.connection(True) as c:
                     c.execute('DELETE FROM sessions WHERE token=?', (self.cookie(),))
@@ -1109,6 +1175,7 @@ def main():
     server.store = store
     server.secure_cookie = args.secure_cookie
     server.email_delivery = EmailDelivery()
+    server.google = google_auth.GoogleOAuth()
     try:
         server.webpay = PaymentService(store, WebpayGateway())
     except ValueError as error:

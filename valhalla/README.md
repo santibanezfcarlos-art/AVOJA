@@ -205,3 +205,7 @@ Administración → Correos muestra el estado de los avisos y el diagnóstico se
 El endpoint `/api/admin/daily-contacts?date=YYYY-MM-DD` comprueba sesión y permisos administrativos en cada consulta, no permite acceso profesional y responde sin caché. Los correos ajenos no se incorporan al calendario profesional. Este consolidado no envía mensajes masivos.
 
 Prueba manual: crea una cuenta de prueba y comprueba el aviso al administrador y la verificación al profesional; adjunta archivos ficticios y revisa el aviso sin adjuntos; confirma una reserva y revisa su comprobante, luego modifica/cancela para comprobar las actualizaciones. Para el consolidado, agenda varios profesionales, repite uno en otro horario y comprueba que el correo se repita solo una vez y que las cancelaciones desaparezcan. Usa datos ficticios hasta contar con almacenamiento persistente.
+
+## Iniciar sesión con Google
+
+El acceso profesional con Google se activa al configurar el cliente OAuth en Render. Sigue [GOOGLE.md](GOOGLE.md) para crear el cliente y vincular cuentas existentes. El administrador mantiene su contraseña privada.
