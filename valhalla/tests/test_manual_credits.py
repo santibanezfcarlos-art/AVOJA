@@ -67,7 +67,7 @@ class ManualCredits(unittest.TestCase):
     def test_professional_accepts_own_rules_then_can_use_hours_after_validation(self):
         pid=self.credit()['package_id'];email_token,_=self.store.issue_email_token(self.uid);self.store.confirm_email(email_token)
         self.store.import_legacy(self.admin,{'name':self.credentials['name'],'email':self.credentials['email'],'specialty':'Psicología','sessions':0,'reference':'old-cash-001','note':'Cliente validado anteriormente','identity_confirmed':True})
-        slot={'box':1,'start':stamp((datetime.now(CHILE)+timedelta(days=1)).replace(hour=10,minute=0,second=0,microsecond=0))}
+        slot={'box':1,'start':stamp((datetime.now(CHILE)+timedelta(days=2)).replace(hour=10,minute=0,second=0,microsecond=0))}
         with self.assertRaises(Problem) as error:self.store.reserve(self.uid,slot)
         self.assertIn('normas',error.exception.message)
         with self.assertRaises(Problem):self.store.accept_manual_rules(self.admin,{'package_id':pid,'rules_acceptance':{'accepted':True,'version':RULES_VERSION}})

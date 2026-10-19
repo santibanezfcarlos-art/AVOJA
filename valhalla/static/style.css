@@ -50,3 +50,5 @@
 .user-detail-modal h3{margin:24px 0 12px}.user-detail-modal small{display:block}
 .user-balance-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin:20px 0}
 @media(max-width:700px){.user-balance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.user-detail-modal{padding:20px}.monthly-payments .stats{grid-template-columns:1fr}}
+
+.booking-confirmation{border:2px solid var(--green);margin-bottom:26px;background:#f5f9ef}.booking-confirmation h2{margin:10px 0 18px}.confirmation-reservation{padding:16px 0;border-top:1px solid var(--line)}.confirmation-reservation p{margin:6px 0}.booking-links{margin-top:12px}.booking-links .btn{white-space:normal;text-align:center;text-decoration:none}.confirmation-balance{margin-top:18px}.booking-item .booking-info{min-width:0}.booking-item .booking-links{max-width:600px}

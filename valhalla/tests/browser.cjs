@@ -25,7 +25,7 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
       await p.getByRole('button',{name:label,exact:true}).click();
       await p.locator('#modal').waitFor({state:'hidden'});
     };
-    const tomorrow = date => new Date(new Date(date+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
+    const tomorrow = date => new Date(new Date(date+'T12:00:00Z').getTime()+2*86400000).toISOString().slice(0,10);
 
     await page.goto(base);
     assert.equal(await page.getByLabel('Correo electrónico').inputValue(),'');

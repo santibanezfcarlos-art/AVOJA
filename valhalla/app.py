@@ -21,7 +21,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from mailer import EmailDelivery, EmailDeliveryError
 from payments import PaymentService, WebpayGateway, PaymentError
-from notifications import NotificationDispatcher
+from notifications import NotificationDispatcher, booking_links
 import google_auth
 from rules import purchase_rules, validate_acceptance, RULES_VERSION, RULES_TEXT
 
@@ -31,6 +31,7 @@ CATALOG = {'1': (1, 5990), '5': (5, 28990), '10': (10, 54990), '30': (30, 144990
 SESSION_MINUTES = 55
 OPENING_HOUR = 7
 CLOSING_HOUR = 23
+MIN_BOOKING_NOTICE = timedelta(hours=24)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_BODY = 14_100_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
@@ -114,6 +115,7 @@ def booking_details(row):
     result = dict(row)
     result['end'] = stamp(datetime.fromisoformat(result['start']) + timedelta(minutes=SESSION_MINUTES))
     result['duration_minutes'] = SESSION_MINUTES
+    result['links'] = booking_links(result)
     return result
 
 
@@ -273,11 +275,12 @@ class Store:
         c.execute('INSERT OR IGNORE INTO notification_outbox(event_key,delivery_key,user_id,recipient,kind,entity_id,payload,created_at) VALUES(?,?,?,?,?,?,?,?)',
                   (event_key,secrets.token_hex(24),uid,recipient,kind,entity_id,json.dumps(payload),stamp(now())))
 
-    def queue_booking_receipt(self, c, uid, bid, kind):
+    def queue_booking_receipt(self, c, uid, bid, kind, remaining=None):
         person = c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
         booking = c.execute('SELECT id,box,start,status FROM bookings WHERE id=? AND user_id=?',(bid,uid)).fetchone()
         c.execute("UPDATE notification_outbox SET status='superseded' WHERE entity_id=? AND kind IN ('booking_confirmed','booking_modified') AND status IN ('pending','retry','processing')",(bid,))
         payload = dict(person);payload['booking'] = dict(booking)
+        payload['remaining']=remaining if remaining is not None else c.execute("SELECT COALESCE(SUM(remaining),0) FROM packages WHERE user_id=? AND status='paid'",(uid,)).fetchone()[0]
         self.queue_notification(c,uid,kind,bid,person['email'],payload)
 
     def daily_contacts(self, date):
@@ -570,7 +573,7 @@ class Store:
             degree=c.execute("SELECT status FROM documents WHERE user_id=? AND kind='degree' ORDER BY id DESC LIMIT 1",(user['id'],)).fetchone()
             profile['degree_approved'] = bool(degree and degree['status']=='approved')
             profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
-            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(),
+            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':max(now().astimezone(CHILE).date()+timedelta(days=1),(now().astimezone(timezone.utc)+MIN_BOOKING_NOTICE).astimezone(CHILE).date()).isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT p.*,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? ORDER BY p.id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
@@ -603,11 +606,11 @@ class Store:
             local = parsed.astimezone(CHILE)
             if local.minute or local.second or local.microsecond or not OPENING_HOUR <= local.hour < CLOSING_HOUR:
                 raise ValueError()
-            if parsed <= now() or parsed > now() + timedelta(days=90):
+            if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + MIN_BOOKING_NOTICE or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
         except (ValueError, TypeError):
-            raise Problem('Selecciona una hora futura con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
+            raise Problem('Reserva con al menos 24 horas de anticipación, con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
 
     def availability(self, date, include_names=False):
         try:
@@ -625,7 +628,7 @@ class Store:
             boxes = []
             for box in range(1,4):
                 booking = occupied.get((box, stamp(start)))
-                cell = {'box': box, 'available': not booking and start > now()}
+                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= now().astimezone(timezone.utc) + MIN_BOOKING_NOTICE}
                 if include_names and booking:
                     end = start + timedelta(minutes=SESSION_MINUTES)
                     booking['end'] = stamp(end)
@@ -715,7 +718,8 @@ class Store:
                 self.log(c,uid,'manual_plan_rules_accepted',pid)
         return {'ok':True}
 
-    def reserve_one(self, c, uid, box, start):
+    def reserve_one(self, c, uid, box, start, receipt_balance=None):
+        self.parse_slot(start)
         if c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
             raise Problem('Ya tienes una reserva a esa hora.', 409)
         package=c.execute("SELECT * FROM packages WHERE user_id=? AND status='paid' AND remaining>0 ORDER BY id LIMIT 1",(uid,)).fetchone()
@@ -726,7 +730,7 @@ class Store:
         bid=c.execute('INSERT INTO bookings(user_id,package_id,box,start,created_at) VALUES(?,?,?,?,?)',(uid,package['id'],box,start,stamp(now()))).lastrowid
         c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?',(package['id'],))
         self.log(c,uid,'reserved',bid)
-        self.queue_booking_receipt(c,uid,bid,'booking_confirmed')
+        self.queue_booking_receipt(c,uid,bid,'booking_confirmed',remaining=receipt_balance)
         return bid
 
     def reserve(self, uid, body):
@@ -765,7 +769,7 @@ class Store:
                 balance=c.execute("SELECT COALESCE(SUM(remaining),0) FROM packages WHERE user_id=? AND status='paid'",(uid,)).fetchone()[0]
                 if balance<len(slots):
                     raise Problem('Tu saldo no alcanza para todas las horas seleccionadas. No se confirmó ninguna.',409)
-                ids=[self.reserve_one(c,uid,box,start) for start,box in slots]
+                ids=[self.reserve_one(c,uid,box,start,receipt_balance=balance-len(slots)) for start,box in slots]
                 c.execute('INSERT INTO booking_batches VALUES(?,?,?,?,?)',(uid,key,fingerprint,json.dumps(ids),stamp(now())))
                 return {'ids':ids,'repeated':False,'remaining':balance-len(slots)}
         except sqlite3.IntegrityError:
@@ -779,6 +783,7 @@ class Store:
         try:
             with self.connection(True) as c:
                 self.professional(c, uid)
+                self.parse_slot(start)
                 booking = c.execute('SELECT * FROM bookings WHERE id=? AND user_id=?', (bid, uid)).fetchone()
                 if not booking:
                     raise Problem('Reserva no encontrada.', 404)

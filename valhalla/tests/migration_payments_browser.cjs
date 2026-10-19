@@ -40,7 +40,7 @@ const base=process.env.VALHALLA_TEST_URL;
     await page.locator('[data-view="documents"]').click();await page.getByRole('heading',{name:'No necesitas reenviar documentos',exact:true}).waitFor();assert.equal(await page.locator('#document-file').count(),0);
 
     await page.locator('[data-view="availability"]').click();
-    state=await me();const tomorrow=new Date(new Date(state.today+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
+    state=await me();const tomorrow=new Date(new Date(state.today+'T12:00:00Z').getTime()+2*86400000).toISOString().slice(0,10);
     await page.locator('#schedule-date').fill(tomorrow);await page.locator('#schedule-date').dispatchEvent('change');
     await page.waitForFunction(date=>document.querySelector('[data-slot]')?.dataset.slot?.startsWith(date),tomorrow);
     await page.locator('[data-box="1"]:not(:disabled)').first().click();await page.getByRole('button',{name:'Confirmar reserva',exact:true}).click();await page.locator('#modal').waitFor({state:'hidden'});

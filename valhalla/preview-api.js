@@ -23,7 +23,7 @@ function previewStart(day,hour) {
 function previewRecord(action,target){previewDB.audit.unshift({id:previewId(previewDB.audit),actor_id:previewUser,name:previewDB.users.find(u=>u.id===previewUser)?.name,action,target:String(target),created_at:new Date().toISOString()});}
 function previewSlot(body){
   const t=new Date(body.start),h=hourText(body.start);
-  if(![1,2,3].includes(body.box)||!Number.isFinite(t.getTime())||t<=new Date()||t-Date.now()>90*86400000||!/^\d{2}:00$/.test(h)||Number(h.slice(0,2))<7||Number(h.slice(0,2))>=23)throw Error('Selecciona una hora futura válida con inicio entre 07:00 y 22:00 (cierre a las 23:00).');
+  if(![1,2,3].includes(body.box)||!Number.isFinite(t.getTime())||t-Date.now()<86400000||t-Date.now()>90*86400000||!/^\d{2}:00$/.test(h)||Number(h.slice(0,2))<7||Number(h.slice(0,2))>=23)throw Error('Selecciona una hora válida con al menos 24 horas de anticipación con inicio entre 07:00 y 22:00 (cierre a las 23:00).');
   return t.toISOString();
 }
 async function api(path,body){
@@ -52,12 +52,12 @@ async function api(path,body){
   const user=db.users.find(u=>u.id===previewUser);
   if(!user||!user.active)throw Error('Inicia sesión para continuar.');
   if(path==='me'){user.identity_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1)?.status==='approved';user.degree_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='degree').at(-1)?.status==='approved';}
-  if(path==='me')return previewClone({purchase_rules:globalThis.VALHALLA_RULES,rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
+  if(path==='me')return previewClone({purchase_rules:globalThis.VALHALLA_RULES,rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),earliest_booking_date:new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(Date.now()+86400000)),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
   if(path.startsWith('availability?')){
     const day=new URLSearchParams(path.split('?')[1]).get('date');
     return {date:day,slots:Array.from({length:16},(_,i)=>{
       const start=previewStart(day,7+i);
-      return {label:String(7+i).padStart(2,'0')+':00',start,boxes:[1,2,3].map(box=>({box,available:new Date(start)>new Date()&&!db.bookings.some(b=>b.box===box&&b.start===start&&b.status==='confirmed')}))};
+      return {label:String(7+i).padStart(2,'0')+':00',start,boxes:[1,2,3].map(box=>({box,available:new Date(start)-Date.now()>=86400000&&!db.bookings.some(b=>b.box===box&&b.start===start&&b.status==='confirmed')}))};
     })};
   }
   if(path==='profile'){if(user.name!==String(body.name).trim()){const identity=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1);if(identity)identity.status='pending';user.verified=0;}user.name=String(body.name).trim();user.specialty=String(body.specialty).trim();return {ok:true};}

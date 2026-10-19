@@ -237,3 +237,13 @@ El saldo no utilizado permanece en los planes del titular para futuras reservas.
 - En **Disponibilidad**, la agenda se presenta antes de las fotos de los boxes.
 
 Validación de estos recorridos: `python3 tests/run_browser.py manual_credits_browser.cjs`. Comprueba carga manual, aceptación de normas, reserva con saldo, ficha móvil/escritorio, separación mensual de un pago anterior, exclusión de pagos simulados y orden agenda/fotos. Las pruebas de servidor incluyen permisos, CSRF, privacidad, fechas inválidas, concurrencia y prevención de cargas duplicadas.
+
+## Confirmación de reservas y anticipación mínima
+
+Después de una reserva individual o múltiple se presenta la confirmación con box, fecha, horario de Chile, dirección y saldo restante. Cada reserva tiene accesos **Agregar a mi calendario** (Google Calendar, evento de 55 minutos), **Cómo llegar** (Google Maps) y **Mis reservas**. Los accesos también permanecen en las reservas confirmadas y se incluyen en sus correos. El saldo del correo es una fotografía al confirmar esa reserva; el saldo vigente se consulta en la cuenta. Agregar un evento requiere guardarlo en Google Calendar y no sincroniza posteriores modificaciones automáticamente.
+
+El enlace `/#mis-reservas` abre las reservas de la cuenta autenticada; si se requiere iniciar sesión, conserva ese destino. No incluye datos personales ni credenciales en la URL. Los enlaces de calendario usan instantes UTC y zona `America/Santiago` para conservar el horario de Chile.
+
+Toda nueva reserva exige **al menos 24 horas completas** de anticipación, también en lotes y al elegir un nuevo horario en una modificación. Por ejemplo, a las 19:55 de hoy se puede reservar desde las 20:00 de mañana. La agenda deshabilita las horas anteriores a ese límite y el servidor vuelve a validarlo dentro de la transacción. Se conserva la regla de una sola modificación y al menos dos horas antes del horario original. Las reservas ya existentes no se cancelan por esta actualización. El cálculo de 24 horas usa tiempo transcurrido real, incluso durante cambios de horario de verano.
+
+Prueba del recorrido: `python3 tests/run_browser.py confirmation_browser.cjs`. Incluye confirmación móvil, saldo, enlaces, acceso directo con/sin sesión y rechazos del servidor para reserva individual, lote y modificación con menos de 24 horas.

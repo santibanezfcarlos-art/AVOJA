@@ -162,6 +162,35 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.row(bid)['modifications'],0)
         self.assertEqual(self.balance(),4)
 
+    def test_24_hour_boundary_same_day_and_tomorrow_morning_are_blocked(self):
+        self.clock=self.clock.replace(hour=19,minute=55)
+        for slot in (self.slot(20,day=0),self.slot(7),self.slot(19)):
+            with self.subTest(slot=slot),self.assertRaises(Problem) as error:
+                self.store.reserve(1,slot)
+            self.assertIn('24 horas',error.exception.message)
+        self.assertEqual(self.balance(),5)
+        self.assertEqual(self.store.availability(self.clock.date().isoformat())['slots'][13]['boxes'][0]['available'],False)
+        tomorrow=self.store.availability((self.clock+timedelta(days=1)).date().isoformat())['slots']
+        self.assertFalse(tomorrow[12]['boxes'][0]['available'])
+        self.assertTrue(tomorrow[13]['boxes'][0]['available'])
+        self.store.reserve(1,self.slot(20));self.assertEqual(self.balance(),4)
+
+    def test_exact_24_hours_allowed_and_one_second_less_rejected(self):
+        self.clock=self.clock.replace(hour=10)
+        target=self.slot(10)
+        self.clock+=timedelta(seconds=1)
+        with self.assertRaises(Problem):self.store.reserve(1,target)
+        self.clock-=timedelta(seconds=1)
+        self.store.reserve(1,target)
+
+    def test_24_hours_means_elapsed_time_across_chilean_dst(self):
+        self.clock=datetime(2026,9,5,10,tzinfo=CHILE)
+        with self.assertRaises(Problem):self.store.parse_slot(self.slot(10)['start'])
+        self.store.parse_slot(self.slot(11)['start'])
+        self.clock=datetime(2026,4,4,10,tzinfo=CHILE)
+        with self.assertRaises(Problem):self.store.parse_slot(self.slot(8)['start'])
+        self.store.parse_slot(self.slot(9)['start'])
+
     def test_modify_noop_does_not_use_change(self):
         bid=self.store.reserve(1,self.slot())
         with self.assertRaises(Problem):
@@ -169,9 +198,10 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.row(bid)['modifications'],0)
 
     def test_modify_enforces_cutoff_original(self):
-        bid=self.store.reserve(1,self.slot(10,day=0))
+        bid=self.store.reserve(1,self.slot(10))
+        self.clock+=timedelta(days=1)
         with self.assertRaises(Problem):
-            self.store.modify(1,bid,self.slot(12,day=0))
+            self.store.modify(1,bid,self.slot(12,day=2))
 
     def test_modify_enforces_cutoff_target(self):
         bid=self.store.reserve(1,self.slot())
@@ -179,8 +209,9 @@ class Rules(unittest.TestCase):
             self.store.modify(1,bid,self.slot(10,day=0))
 
     def test_exact_two_hour_boundary_is_allowed(self):
-        bid=self.store.reserve(1,self.slot(11,day=0))
-        self.store.modify(1,bid,self.slot(12,day=0))
+        bid=self.store.reserve(1,self.slot(11))
+        self.clock+=timedelta(days=1)
+        self.store.modify(1,bid,self.slot(12,day=2))
         self.assertEqual(self.row(bid)['modifications'],1)
 
     def test_other_professional_cannot_modify(self):
@@ -198,15 +229,15 @@ class Rules(unittest.TestCase):
         self.store.reserve(2,self.slot())
 
     def test_opening_and_last_booking_leave_buffer_before_2300_closing(self):
-        first=self.store.reserve(1,self.slot(7))
-        last=self.store.reserve(1,self.slot(22,box=3))
+        first=self.store.reserve(1,self.slot(7,day=2))
+        last=self.store.reserve(1,self.slot(22,day=2,box=3))
         with self.store.connection() as c:
             for bid,hour in ((first,7),(last,22)):
                 row=c.execute('SELECT start FROM bookings WHERE id=?',(bid,)).fetchone()
                 start=datetime.fromisoformat(row['start']).astimezone(CHILE)
                 self.assertEqual(start.hour,hour)
                 self.assertEqual((start+timedelta(minutes=55)).strftime('%H:%M'),f'{hour:02d}:55')
-        slots=self.store.availability((self.clock+timedelta(days=1)).date().isoformat())['slots']
+        slots=self.store.availability((self.clock+timedelta(days=2)).date().isoformat())['slots']
         self.assertEqual([slot['label'] for slot in slots],[f'{hour:02d}:00' for hour in range(7,23)])
         self.assertFalse(slots[-1]['boxes'][2]['available'])
 

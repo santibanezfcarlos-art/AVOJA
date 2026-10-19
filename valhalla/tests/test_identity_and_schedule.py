@@ -141,7 +141,8 @@ class IdentityAndSchedule(unittest.TestCase):
 
     def test_admin_timing_distinguishes_session_and_five_minute_buffer(self):
         self.approve(self.upload()); self.pay()
-        self.store.reserve(self.uid, self.slot(9, day=0))
+        self.store.reserve(self.uid, self.slot(9, day=1))
+        self.clock+=timedelta(days=1)
         for hour, minute, expected in ((9,0,'in_session'), (9,54,'in_session'), (9,55,'buffer'), (9,59,'buffer'), (10,0,'finished')):
             self.clock = self.clock.replace(hour=hour, minute=minute)
             data = self.store.availability(self.clock.date().isoformat(), include_names=True)

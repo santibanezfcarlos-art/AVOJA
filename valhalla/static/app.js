@@ -4,6 +4,9 @@ let state = null, adminData = null, view = 'overview', adminTab = 'payments', se
 let activeProfile = 'admin';
 let multiBooking=false, selectedBookings=[];
 let menuScrollLeft=0;
+let confirmedBookingIds=[],confirmationModified=false;
+let bookingsDeepLink=location.hash==='#mis-reservas';
+try{if(bookingsDeepLink)sessionStorage.setItem('valhalla-bookings-link','1');else bookingsDeepLink=sessionStorage.getItem('valhalla-bookings-link')==='1';}catch{}
 const chosenSlot=(box,start)=>selectedBookings.some(slot=>slot.box===box&&slot.start===start);
 let contactsDate='',dailyContacts=null;
 let paymentsMonth='';
@@ -125,7 +128,8 @@ function auth(register = false, administrator = false) {
 }
 async function reload() {
   state = await api('me');
-  if (!selectedDate) selectedDate=state.today;
+  if (!selectedDate) selectedDate=state.earliest_booking_date||state.today;
+  applyBookingsDeepLink();
   if(adminMode()) { adminData=await api('admin');view='admin'; }
   else if(view==='admin') view='overview';
   await render();
@@ -169,8 +173,25 @@ function roomPhoto(box, large=false) {
   const photo=group?.photos[0];
   return photo ? `<button class="room-photo ${large?'room-photo-large':''}" data-gallery="${escapeHTML(group.id)}" data-photo-index="0" aria-label="Ver fotos de ${escapeHTML(group.title)}"><img src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}" loading="lazy" decoding="async"><span>${escapeHTML(group.title)} · ${group.photos.length} ${group.photos.length===1?'foto':'fotos'}</span></button>` : '';
 }
+function bookingLinks(b){
+  const links=b.links||{};
+  if(!links.calendar){
+    const compact=value=>new Date(value).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+    links.calendar='https://calendar.google.com/calendar/render?'+new URLSearchParams({action:'TEMPLATE',text:'Valhalla Office · '+rooms[b.box-1],dates:compact(b.start)+'/'+compact(new Date(new Date(b.start).getTime()+55*60000)),ctz:'America/Santiago',location:'Colo Colo 222, oficina 710',details:'Consulta tu reserva en https://valhallaoffice.cl/#mis-reservas'});
+    links.directions='https://www.google.com/maps/search/?'+new URLSearchParams({api:'1',query:'Valhalla Office, Colo Colo 222, oficina 710'});
+  }
+  return `<div class="row booking-links"><a class="btn ghost small" href="${escapeHTML(links.calendar)}" target="_blank" rel="noopener noreferrer">Agregar a mi calendario</a><a class="btn ghost small" href="${escapeHTML(links.directions)}" target="_blank" rel="noopener noreferrer">Cómo llegar</a><button class="btn ghost small" data-go="bookings">Mis reservas</button></div>`;
+}
+function bookingConfirmation(){
+  const bookings=state.bookings.filter(booking=>confirmedBookingIds.includes(booking.id)&&booking.status==='confirmed');if(!bookings.length)return '';
+  return `<section class="card booking-confirmation" role="region" aria-label="Confirmación de reserva"><span class="eyebrow">Tu espacio está listo</span><h2>${confirmationModified?'Reserva modificada':bookings.length===1?'Reserva confirmada':'Reservas confirmadas'}</h2>${bookings.map(booking=>`<div class="confirmation-reservation"><strong>${rooms[booking.box-1]}</strong><p>${dateText(booking.start)} · ${sessionRange(booking.start)} · Hora de Chile</p><p>Colo Colo 222, oficina 710</p>${bookingLinks(booking)}</div>`).join('')}<p class="confirmation-balance"><strong>Saldo restante: ${pendingBalance()} sesiones</strong></p><p class="data-note">Agregar al calendario abre Google Calendar para que guardes el evento. Si modificas una reserva, actualiza también tu calendario.</p></section>`;
+}
+function applyBookingsDeepLink(){
+  if(!bookingsDeepLink)return;bookingsDeepLink=false;try{sessionStorage.removeItem('valhalla-bookings-link');}catch{}activeProfile='professional';view='bookings';history.replaceState(null,'',location.pathname+location.search);
+}
+addEventListener('hashchange',()=>{if(location.hash==='#mis-reservas'){bookingsDeepLink=true;try{sessionStorage.setItem('valhalla-bookings-link','1');}catch{}if(state){applyBookingsDeepLink();render().catch(error=>toast(error.message));}}});
 function bookingItem(b, actions=true) {
-  return `<div class="booking-item"><div class="booking-info"><span class="box-avatar">0${b.box}</span><div><strong>${rooms[b.box-1]}</strong><p>${dateText(b.start)} · ${sessionRange(b.start)} · 55 min</p>${pill(b.status)} ${b.modifications?'<span class="pill neutral">Cambio utilizado</span>':''}</div></div>${actions&&canModify(b)?`<button class="btn ghost small" data-modify="${b.id}">Modificar</button>`:''}</div>`;
+  return `<div class="booking-item"><div class="booking-info"><span class="box-avatar">0${b.box}</span><div><strong>${rooms[b.box-1]}</strong><p>${dateText(b.start)} · ${sessionRange(b.start)} · 55 min</p>${pill(b.status)} ${b.modifications?'<span class="pill neutral">Cambio utilizado</span>':''}${b.status==='confirmed'?bookingLinks(b):''}</div></div>${actions&&canModify(b)?`<button class="btn ghost small" data-modify="${b.id}">Modificar</button>`:''}</div>`;
 }
 function stats() {
   return `<div class="grid stats"><div class="stat"><div class="stat-top"><span>Sesiones disponibles</span><span>◇</span></div><div class="value">${pendingBalance()} <small>ses.</small></div><small>Compartidas entre los 3 boxes</small></div><div class="stat"><div class="stat-top"><span>Próximas reservas</span><span>◷</span></div><div class="value">${upcoming().length}</div><small>Tu agenda en Valhalla</small></div><div class="stat"><div class="stat-top"><span>Tu cuenta</span><span>✓</span></div><div class="value account-value">${state.user.verified?'Verificada':'En revisión'}</div><small>${state.user.verified?(state.user.email_verified?'Identidad validada':'Falta confirmar tu correo'):'Revisa carnet y certificado de título'}</small></div></div>`;
@@ -197,22 +218,23 @@ function bindBatchBookings(){
     const request_key=crypto.randomUUID();
     showModal('Confirma tus horas',`<p>Se descontarán ${slots.length} sesiones de tu saldo confirmado. Cada hora dura 55 minutos.</p><ul class="batch-review">${slots.map(slot=>`<li>${rooms[slot.box-1]} · ${dateText(slot.start)} · ${sessionRange(slot.start)}</li>`).join('')}</ul>${remaining>0?`<label class="identity-confirmation"><input type="checkbox" id="book-rest-later" checked>Agendar las ${remaining} sesiones restantes más adelante.</label><p class="data-note">El saldo restante se conserva en tu cuenta, sin elegir fechas ahora.</p>`:'<p>Usarás todas tus sesiones disponibles.</p>'}<p>Se confirma la selección completa. Si algún horario deja de estar disponible, no se confirma ninguno ni se descuenta saldo. Cada reserva tendrá su propia modificación, según las normas.</p>`,'Confirmar horas seleccionadas',async()=>{
       if(remaining>0&&!document.querySelector('#book-rest-later').checked)throw new Error('Marca la opción de agendar el resto después o vuelve para seleccionar más horas.');
-      const result=await api('bookings/batch',{slots,request_key});selectedBookings=[];multiBooking=false;view='bookings';toast(`${result.ids.length} reservas confirmadas. ${result.remaining??remaining} sesiones quedan disponibles para después.`);
+      const result=await api('bookings/batch',{slots,request_key});selectedBookings=[];multiBooking=false;confirmedBookingIds=result.ids;confirmationModified=false;view='bookings';toast(`${result.ids.length} reservas confirmadas. ${result.remaining??remaining} sesiones quedan disponibles para después.`);
     });
     const later=document.querySelector('#book-rest-later');if(later)later.onchange=()=>document.querySelector('#modal-confirm').disabled=!later.checked;
   };
 }
 async function availability() {
+  if(!adminMode()&&selectedDate<(state.earliest_booking_date||state.today))selectedDate=state.earliest_booking_date||state.today;
   const data=await api((adminMode()?'admin/availability':'availability')+'?date='+selectedDate);
   return head(adminMode()?'Agenda y ocupación de los boxes':modifying?'Modifica tu reserva':'Encuentra tu próximo espacio',adminMode()?'Consulta quién reservó cada box, con nombre y horario de atención.':modifying?'Un único cambio, sin consumir sesiones adicionales.':'Sesiones de 55 minutos, con inicios cada hora.')+
   `${modifying?`<div class="notice info">Reserva #${modifying.id}: ${rooms[modifying.box-1]} · ${dateText(modifying.start)} · ${hourText(modifying.start)}. <button class="text-btn" id="abort-change">Salir sin modificar</button></div>`:''}
   ${!state.user.verified&&!adminMode()?'<div class="notice">Para reservar necesitas carnet y certificado de título aprobados, correo confirmado y saldo disponible.</div>':''}
   ${!adminMode()?manualRulesNotice():''}
   ${!adminMode()&&!modifying?batchBookingPanel():''}
-  <section class="card"><div class="calendar-toolbar"><label>Fecha de atención<input id="schedule-date" type="date" value="${selectedDate}" min="${state.today}" max="${new Date(new Date(state.today+'T12:00:00Z').getTime()+90*86400000).toISOString().slice(0,10)}"></label><div><button class="btn ghost small" id="refresh-agenda">Actualizar agenda</button><div class="legend"><span><i class="dot"></i>Disponible</span><span><i class="dot busy"></i>No disponible</span></div><p class="data-note">Hora de Chile · 55 min de atención + 5 min de margen</p></div></div><div class="table-wrap"><table class="availability"><thead><tr><th scope="col">Hora</th>${rooms.map((r,index)=>`<th scope="col"><span class="room-heading">${r}</span><span class="room-subtitle">${index===2?'Atención infantil':'Espacio profesional'}</span></th>`).join('')}</tr></thead><tbody>${data.slots.map(slot=>`<tr><td>${slot.label}</td>${slot.boxes.map(box=>`<td>${adminMode()&&box.booking?`<div class="admin-occupied ${box.booking.timing==='in_session'?'current':''}"><strong>${escapeHTML(box.booking.name)}</strong><small>${escapeHTML(box.booking.email)}</small><span>${sessionRange(box.booking.start)}</span><small>${timingLabels[box.booking.timing]}</small></div>`:`<button class="slot ${multiBooking&&!modifying&&chosenSlot(box.box,slot.start)?'selected-slot':''}" data-slot="${slot.start}" data-box="${box.box}" ${multiBooking&&!modifying&&!adminMode()?`aria-pressed="${chosenSlot(box.box,slot.start)}"`:""} ${box.available?'':'disabled'} aria-label="${rooms[box.box-1]}, ${slot.label}, ${box.available?'disponible':'no disponible'}">${multiBooking&&!modifying&&chosenSlot(box.box,slot.start)?'Seleccionada':box.available?'Disponible':'—'}</button>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section><p class="data-note">${adminMode()?'La agenda muestra reservas y su horario; no confirma presencia física en el centro. ':''}Las reservas se confirman con saldo y verificación vigentes. Un profesional no puede ocupar dos boxes a la misma hora.</p>${!adminMode()&&(state.rooms||[]).length?`<section class="room-gallery" aria-label="Fotos de los boxes">${state.rooms.map(room=>roomPhoto(room.box,true)).join('')}</section>`:''}`;
+  <section class="card"><div class="calendar-toolbar"><label>Fecha de atención<input id="schedule-date" type="date" value="${selectedDate}" min="${adminMode()?state.today:state.earliest_booking_date||state.today}" max="${new Date(new Date(state.today+'T12:00:00Z').getTime()+90*86400000).toISOString().slice(0,10)}"></label><div><button class="btn ghost small" id="refresh-agenda">Actualizar agenda</button><div class="legend"><span><i class="dot"></i>Disponible</span><span><i class="dot busy"></i>No disponible</span></div><p class="data-note">Hora de Chile · 55 min de atención + 5 min de margen · Reserva con al menos 24 horas de anticipación</p></div></div><div class="table-wrap"><table class="availability"><thead><tr><th scope="col">Hora</th>${rooms.map((r,index)=>`<th scope="col"><span class="room-heading">${r}</span><span class="room-subtitle">${index===2?'Atención infantil':'Espacio profesional'}</span></th>`).join('')}</tr></thead><tbody>${data.slots.map(slot=>`<tr><td>${slot.label}</td>${slot.boxes.map(box=>`<td>${adminMode()&&box.booking?`<div class="admin-occupied ${box.booking.timing==='in_session'?'current':''}"><strong>${escapeHTML(box.booking.name)}</strong><small>${escapeHTML(box.booking.email)}</small><span>${sessionRange(box.booking.start)}</span><small>${timingLabels[box.booking.timing]}</small></div>`:`<button class="slot ${multiBooking&&!modifying&&chosenSlot(box.box,slot.start)?'selected-slot':''}" data-slot="${slot.start}" data-box="${box.box}" ${multiBooking&&!modifying&&!adminMode()?`aria-pressed="${chosenSlot(box.box,slot.start)}"`:""} ${box.available?'':'disabled'} aria-label="${rooms[box.box-1]}, ${slot.label}, ${box.available?'disponible':'no disponible'}">${multiBooking&&!modifying&&chosenSlot(box.box,slot.start)?'Seleccionada':box.available?'Disponible':'—'}</button>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section><p class="data-note">${adminMode()?'La agenda muestra reservas y su horario; no confirma presencia física en el centro. ':''}Las reservas se confirman con saldo y verificación vigentes. Un profesional no puede ocupar dos boxes a la misma hora.</p>${!adminMode()&&(state.rooms||[]).length?`<section class="room-gallery" aria-label="Fotos de los boxes">${state.rooms.map(room=>roomPhoto(room.box,true)).join('')}</section>`:''}`;
 }
 function bookings() {
-  return head('Tu agenda, en orden','Una sola modificación por reserva, con al menos 2 horas de anticipación.','<button class="btn" data-go="availability">Nueva reserva →</button>')+
+  return bookingConfirmation()+head('Tu agenda, en orden','Una sola modificación por reserva, con al menos 2 horas de anticipación.','<button class="btn" data-go="availability">Nueva reserva →</button>')+
   `<section class="card"><div class="card-head"><h2>Próximas reservas</h2><span class="pill neutral">${upcoming().length} reservas</span></div>${upcoming().map(b=>bookingItem(b)).join('')||empty('No tienes reservas próximas.')}</section><section class="card spaced-card"><div class="card-head"><h2>Historial</h2></div>${state.bookings.filter(b=>!upcoming().some(u=>u.id===b.id)).map(b=>bookingItem(b,false)).join('')||empty('Aquí aparecerán tus reservas anteriores o canceladas.')}</section><p class="data-note">Para cancelar una reserva, contacta a administración. En este prototipo, el administrador puede cancelar reservas futuras y devolver la hora al paquete original.</p>`;
 }
 function packages() {
@@ -454,7 +476,7 @@ function bind() {
     }
 
     showModal(current?'Confirma tu único cambio':'Tu próxima atención',`<p>${current?'Se conservará el saldo y se utilizará tu única modificación.':'Se descontará 1 sesión de tu plan confirmado más antiguo con saldo.'}</p><div class="modal-detail"><strong>${rooms[box-1]}</strong><br>${dateText(start)} · ${sessionRange(start)}<br>Atención: 55 minutos · 5 minutos de margen</div><p>${current?'El horario original se libera solo si el cambio se confirma.':'La reserva y su saldo pertenecen exclusivamente a tu cuenta.'}</p>`,current?'Confirmar cambio':'Confirmar reserva',async()=>{
-      await api(current?'bookings/'+current.id:'bookings',{box,start});modifying=null;view='bookings';toast(current?'Reserva modificada. Has utilizado tu único cambio.':'Reserva confirmada. ¡Tu espacio te espera!');
+      const result=await api(current?'bookings/'+current.id:'bookings',{box,start});confirmedBookingIds=[current?current.id:result.id];confirmationModified=Boolean(current);modifying=null;view='bookings';toast(current?'Reserva modificada. Has utilizado tu único cambio.':'Reserva confirmada. ¡Tu espacio te espera!');
     });
   });
   document.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>purchaseModal(state.catalog.find(p=>p.id===button.dataset.buy)));
@@ -511,7 +533,7 @@ async function startApp() {
   if(emailConfirmationToken){emailConfirmation();return;}
   try{googleEnabled=Boolean((await api('google/config')).enabled);}catch{googleEnabled=false;}
   try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
-  try{const data=await api('me');state=data;selectedDate=data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Paquetes.');}if(googleResult==='profile_required')view='profile';if(data.user.role==='admin'){adminData=await api('admin');view='admin';}await render();}
+  try{const data=await api('me');state=data;selectedDate=data.earliest_booking_date||data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Paquetes.');}if(googleResult==='profile_required')view='profile';if(data.user.role==='admin'){adminData=await api('admin');view='admin';selectedDate=data.today;}applyBookingsDeepLink();await render();}
   catch{auth(false,googleResult==='admin_password');}
   const googleMessages={success:'Ingresaste con Google.',profile_required:'Completa tu profesión o especialidad en Mi perfil. Para reservar también necesitas tu identidad validada y saldo.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Google. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Google. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Google está disponible para cuentas profesionales.',error:'No se pudo completar el acceso con Google. Vuelve a intentarlo desde el inicio.'};
   if(googleResult&&googleMessages[googleResult])toast(googleMessages[googleResult]);

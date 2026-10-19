@@ -85,7 +85,7 @@ class AccessTests(unittest.TestCase):
         owner=self.store.session(token)
         self.store.update_profile(owner['id'], {'name':'Carlos Santibáñez','specialty':'Psicología','role':'professional','verified':0})
         self.assertEqual(self.store.session(token)['role'],'admin')
-        start=(datetime.now(CHILE)+timedelta(days=1)).replace(hour=10,minute=0,second=0,microsecond=0).isoformat()
+        start=(datetime.now(CHILE)+timedelta(days=2)).replace(hour=10,minute=0,second=0,microsecond=0).isoformat()
         with self.assertRaises(Problem):self.store.reserve(owner['id'],{'box':1,'start':start})
         pid=self.store.buy(owner['id'],{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5','user_id':999})
         self.store.admin_action(owner['id'],{'action':'payment','id':pid,'decision':'paid'})

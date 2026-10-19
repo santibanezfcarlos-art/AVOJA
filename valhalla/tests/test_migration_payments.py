@@ -54,7 +54,7 @@ class MigrationAndPayments(unittest.TestCase):
         self.store.import_legacy(self.admin,self.legacy)
         with self.store.connection() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM documents').fetchone()[0],0)
         self.assertEqual(self.state()['user']['identity_source'],'legacy')
-        start=stamp((now().astimezone(CHILE)+timedelta(days=1)).replace(hour=10,minute=0,second=0,microsecond=0))
+        start=stamp((now().astimezone(CHILE)+timedelta(days=2)).replace(hour=10,minute=0,second=0,microsecond=0))
         with self.assertRaises(Problem):self.store.reserve(self.uid,{'box':1,'start':start})
         self.verify();self.store.reserve(self.uid,{'box':1,'start':start})
         self.assertEqual(self.state()['packages'][0]['remaining'],9)

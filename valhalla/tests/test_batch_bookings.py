@@ -31,16 +31,26 @@ class BatchBookings(unittest.TestCase):
         self.assertEqual(len(result['ids']),5);self.assertEqual(self.balance(),0)
         self.assertEqual(self.count('notification_outbox',"WHERE kind='booking_confirmed'"),5)
         with self.store.connection() as c:self.assertEqual(c.execute('SELECT SUM(modifications) FROM bookings').fetchone()[0],0)
+    def test_one_slot_under_24_hours_rejects_entire_batch_without_balance_or_receipts(self):
+        before=self.count('notification_outbox')
+        with self.assertRaises(Problem) as error:self.batch([self.slot(12,day=2),self.slot(7,day=1)])
+        self.assertIn('24 horas',error.exception.message)
+        self.assertEqual(self.balance(),5);self.assertEqual(self.count('bookings'),0)
+        self.assertEqual(self.count('notification_outbox'),before)
+
     def test_partial_booking_leaves_remaining_for_later(self):
         self.batch([self.slot(10),self.slot(11)])
         self.assertEqual(self.balance(),3)
+        with self.store.connection() as c:
+            balances=[json.loads(row['payload'])['remaining'] for row in c.execute("SELECT payload FROM notification_outbox WHERE kind='booking_confirmed'")]
+        self.assertEqual(balances,[3,3])
         self.batch([self.slot(22,box=3,day=5)],key='second-batch-key-123456789')
         self.assertEqual(self.balance(),2)
     def test_batch_uses_oldest_paid_plan_then_next_without_touching_other_users(self):
         with self.store.connection(True) as c:
             first=c.execute('SELECT id FROM packages WHERE user_id=?',(self.user,)).fetchone()[0]
             second=c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at) VALUES(?,2,2,100,'paid',?)",(self.user,stamp(self.clock))).lastrowid
-        self.batch([self.slot(hour) for hour in range(7,13)])
+        self.batch([self.slot(hour,day=2) for hour in range(7,13)])
         self.assertEqual(self.balance(),1)
         with self.store.connection() as c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM bookings WHERE package_id=?',(first,)).fetchone()[0],5)
@@ -53,7 +63,7 @@ class BatchBookings(unittest.TestCase):
         self.assertEqual(self.balance(),5);self.assertEqual(self.count('bookings'),1)
         self.assertEqual(self.count('notification_outbox'),before);self.assertEqual(self.count('booking_batches'),0)
     def test_invalid_excess_balance_duplicate_times_and_out_of_hours_make_no_changes(self):
-        for slots in ([],[self.slot(hour) for hour in range(7,13)],[self.slot(10),self.slot(10,box=2)],[self.slot(10),self.slot(23)],[self.slot(10),dict(self.slot(11),box=True)]):
+        for slots in ([],[self.slot(hour,day=2) for hour in range(7,13)],[self.slot(10),self.slot(10,box=2)],[self.slot(10),self.slot(23)],[self.slot(10),dict(self.slot(11),box=True)]):
             with self.assertRaises(Problem):self.batch(slots)
         self.assertEqual(self.balance(),5);self.assertEqual(self.count('bookings'),0)
     def test_idempotent_retry_does_not_charge_or_send_again_and_changed_selection_rejected(self):

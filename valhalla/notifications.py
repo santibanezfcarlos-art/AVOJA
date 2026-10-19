@@ -1,12 +1,29 @@
 """Transactional notifications. Jobs are queued with the operation, sent outside its DB lock."""
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 from mailer import EmailDeliveryError
 
 CHILE = ZoneInfo('America/Santiago')
 ROOMS = {1:'Box 1',2:'Box 2',3:'Box infantil'}
+
+
+OFFICE_ADDRESS = 'Colo Colo 222, oficina 710'
+
+
+def booking_links(booking, public_url='https://valhallaoffice.cl'):
+    start=datetime.fromisoformat(booking['start']).astimezone(timezone.utc)
+    end=start+timedelta(minutes=55)
+    reservations=public_url.rstrip('/')+'/#mis-reservas'
+    calendar='https://calendar.google.com/calendar/render?'+urlencode({
+        'action':'TEMPLATE','text':'Valhalla Office · '+ROOMS[booking['box']],
+        'dates':start.strftime('%Y%m%dT%H%M%SZ')+'/'+end.strftime('%Y%m%dT%H%M%SZ'),
+        'ctz':'America/Santiago','location':OFFICE_ADDRESS,
+        'details':'Reserva personal de 55 minutos. Consulta su estado y modificaciones en '+reservations})
+    maps='https://www.google.com/maps/search/?'+urlencode({'api':'1','query':'Valhalla Office, '+OFFICE_ADDRESS})
+    return {'calendar':calendar,'directions':maps,'bookings':reservations}
 
 
 def notification_message(kind, payload, public_url):
@@ -35,7 +52,12 @@ def notification_message(kind, payload, public_url):
         text += 'La reserva fue cancelada por administración y se devolvió una sesión al paquete original.\n'
     else:
         text += ('La reserva pertenece exclusivamente a tu cuenta. '
-                 'Consulta el estado actualizado en Mis reservas; se permite una sola modificación, con al menos dos horas de anticipación.\n')
+                 'Consulta el estado actualizado en Mis reservas; se permite una sola modificación, con al menos dos horas de anticipación. El nuevo horario debe reservarse con al menos 24 horas de anticipación.\n')
+    if kind != 'booking_cancelled':
+        if 'remaining' in payload:
+            text += f"Saldo disponible al confirmar: {payload['remaining']} sesiones.\n"
+        links=booking_links(booking,public_url)
+        text += f"\nAgregar a mi calendario: {links['calendar']}\nCómo llegar: {links['directions']}\nMis reservas: {links['bookings']}\n"
     return title + ' · Valhalla Office', text + '\n' + public_url + '/'
 
 

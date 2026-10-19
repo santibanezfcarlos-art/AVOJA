@@ -8,7 +8,8 @@ from pathlib import Path
 from unittest.mock import patch,MagicMock
 from app import Store,Problem,ADMIN_EMAIL,CHILE,stamp
 from mailer import EmailDelivery,EmailDeliveryError
-from notifications import NotificationDispatcher,notification_message
+from notifications import NotificationDispatcher,notification_message,booking_links
+from urllib.parse import urlparse,parse_qs
 
 class FakeNotifications:
     configured=True
@@ -70,6 +71,21 @@ class NotificationsAndContacts(unittest.TestCase):
         with self.assertRaises(Problem):self.store.reserve(self.uid,self.slot())
         self.assertEqual(len(self.queue('booking_confirmed')),1)
         self.assertNotIn('notification_outbox',str(self.store.state(self.store.session(self.store.login(self.credentials)))))
+
+    def test_confirmation_links_have_correct_utc_times_address_no_personal_data_and_balance(self):
+        self.booking_only();payload=json.loads(self.queue('booking_confirmed')[0]['payload'])
+        links=booking_links(payload['booking'],'https://valhallaoffice.cl')
+        calendar=parse_qs(urlparse(links['calendar']).query)
+        self.assertEqual(calendar['dates'],['20261022T130000Z/20261022T135500Z'])
+        self.assertEqual(calendar['ctz'],['America/Santiago'])
+        self.assertEqual(calendar['location'],['Colo Colo 222, oficina 710'])
+        self.assertNotIn(self.credentials['email'],links['calendar'])
+        self.assertEqual(links['bookings'],'https://valhallaoffice.cl/#mis-reservas')
+        self.assertEqual(parse_qs(urlparse(links['directions']).query)['query'],['Valhalla Office, Colo Colo 222, oficina 710'])
+        _,text=notification_message('booking_confirmed',payload,'https://valhallaoffice.cl')
+        for link in links.values():self.assertIn(link,text)
+        self.assertIn('Saldo disponible al confirmar: 9 sesiones.',text)
+        self.assertEqual(booking_links(payload['booking'])['calendar'],links['calendar'])
 
     def test_failed_conflict_never_queues_receipt_for_losing_client(self):
         self.store.reserve(self.uid,self.slot())
