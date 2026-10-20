@@ -36,7 +36,7 @@ const sessionRange = start => `${hourText(start)}–${hourText(new Date(new Date
 const timingLabels={in_session:'En horario de atención',buffer:'Margen entre atenciones',upcoming:'Próxima reserva',finished:'Atención finalizada'};
 const labels = {pending:'Pendiente',paid:'Confirmado',rejected:'Rechazado',approved:'Aprobado',confirmed:'Confirmada',cancelled:'Cancelada'};
 const pill = status => `<span class="pill ${escapeHTML(status)}">${labels[status] || escapeHTML(status)}</span>`;
-const brand = `<div class="brand"><span class="mark" aria-hidden="true">V</span><div>VALHALLA<small>OFFICE & WELLBEING</small></div></div>`;
+const brand = `<div class="brand"><img src="/images/valhalla-logo.png" alt="Valhalla Office · logo oficial" width="210" height="210" decoding="async"></div>`;
 const rooms = ['Box 1','Box 2','Box infantil'];
 
 async function api(path, body) {

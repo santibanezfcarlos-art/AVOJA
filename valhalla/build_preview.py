@@ -5,7 +5,7 @@ from rules import purchase_rules
 from pathlib import Path
 
 root = Path(__file__).resolve().parent
-js = (root / 'static/app.js').read_text()
+js = (root / 'static/app.js').read_text().replace('src="/images/valhalla-logo.png"','src="https://valhallaoffice.cl/images/valhalla-logo.png"')
 start = js.index('async function api(')
 end = js.index('function toast(', start)
 js = js[:start] + (root / 'preview-api.js').read_text() + '\n' + js[end:]
