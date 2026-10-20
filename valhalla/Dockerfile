@@ -3,7 +3,7 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 # zoneinfo uses this pinned package if the image has no system timezone database.
-RUN python -m pip install --no-cache-dir tzdata==2025.2 \
+RUN python -m pip install --no-cache-dir tzdata==2025.2 cryptography==46.0.2 \
     && useradd --create-home --uid 10001 valhalla \
     && mkdir -p /app/data \
     && chown valhalla:valhalla /app/data
