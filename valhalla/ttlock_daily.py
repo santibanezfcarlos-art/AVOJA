@@ -4,6 +4,10 @@ No network requests occur on import. No scheduled task is installed.
 Keep all credentials in Render private environment variables.
 """
 import json
+import base64
+import hashlib
+import hmac
+import secrets
 import os
 import re
 import sqlite3
@@ -141,7 +145,11 @@ class AttemptLedger:
             db.execute("""CREATE TABLE IF NOT EXISTS ttlock_attempts (
                 local_day TEXT PRIMARY KEY, status TEXT NOT NULL,
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                passcode_id INTEGER, error_category TEXT)""")
+                passcode_id INTEGER, error_category TEXT,
+                encrypted_code TEXT)""")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(ttlock_attempts)")}
+            if "encrypted_code" not in columns:
+                db.execute("ALTER TABLE ttlock_attempts ADD COLUMN encrypted_code TEXT")
 
     def claim(self, local_day):
         stamp = datetime.now(timezone.utc).isoformat()
@@ -161,6 +169,53 @@ class AttemptLedger:
                 passcode_id=COALESCE(?,passcode_id),error_category=?
                 WHERE local_day=?""", (status, datetime.now(timezone.utc).isoformat(),
                                       code_id, error_category, str(local_day)))
+
+
+    def save_created(self, local_day, code_id, encrypted_code):
+        if not encrypted_code:
+            raise ValueError("Missing encrypted code")
+        with sqlite3.connect(self.path) as db:
+            cur = db.execute("""UPDATE ttlock_attempts
+              SET status='created', passcode_id=?, encrypted_code=?,
+                  error_category=NULL, updated_at=?
+              WHERE local_day=? AND status='generating'""",
+              (code_id, encrypted_code, datetime.now(timezone.utc).isoformat(), str(local_day)))
+            if cur.rowcount != 1:
+                raise RuntimeError("Attempt not in generating state")
+
+    def get_existing(self, local_day):
+        with sqlite3.connect(self.path) as db:
+            db.row_factory = sqlite3.Row
+            record = db.execute("""SELECT status, encrypted_code, passcode_id
+                FROM ttlock_attempts WHERE local_day=?""", (str(local_day),)).fetchone()
+            return dict(record) if record else None
+
+
+def _encryption_key():
+    """AES-GCM key (32 random bytes, urlsafe-base64 encoded) from private env."""
+    raw = os.environ.get("TTLOCK_ENCRYPTION_KEY", "")
+    try:
+        key = base64.urlsafe_b64decode(raw.encode("ascii"))
+    except (ValueError, UnicodeError):
+        key = b""
+    if len(key) != 32:
+        raise ValueError("TTLOCK_ENCRYPTION_KEY must be urlsafe-base64 of 32 random bytes")
+    return key
+
+
+def encrypt_code(code):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    nonce = secrets.token_bytes(12)
+    payload = AESGCM(_encryption_key()).encrypt(nonce, str(code).encode("ascii"), b"ttlock-code-v1")
+    return base64.urlsafe_b64encode(nonce + payload).decode("ascii")
+
+
+def decrypt_code(encrypted_code):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    raw = base64.urlsafe_b64decode(encrypted_code.encode("ascii"))
+    if len(raw) < 29:
+        raise ValueError("Invalid encrypted code")
+    return AESGCM(_encryption_key()).decrypt(raw[:12], raw[12:], b"ttlock-code-v1").decode("ascii")
 
 
 def prepare_no_network(run_at=None):
