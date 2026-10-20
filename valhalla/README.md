@@ -254,4 +254,4 @@ Las confirmaciones y modificaciones usan la alternativa de bienvenida cercana: s
 
 Resend recibe `html` y `text`; SendGrid recibe partes `text/plain` y `text/html`. La plantilla usa tablas, estilos en línea, texto alternativo y datos escapados. Se conserva la clave de idempotencia en los reintentos. Recuperación, confirmación de correo y avisos administrativos mantienen su formato anterior.
 
-La vista de ejemplo está en `vista-previa-correo.html`. El logo exacto queda pendiente de recibir como archivo descargable. Cuando esté disponible, se alojará en `static/images/valhalla-logo.png`, ruta pública permitida; la plantilla lo detecta y usa una URL absoluta. Mientras ese archivo no exista se muestra el nombre Valhalla en texto, sin imágenes rotas ni una recreación del logo.
+La vista de ejemplo está en `vista-previa-correo.html`. El logo original entregado por el propietario está en `static/images/valhalla-logo.png`, conservado sin modificaciones. La plantilla lo muestra a 200 píxeles de ancho con proporciones originales y una URL pública absoluta. Los clientes que bloquean imágenes muestran el texto alternativo Valhalla.
