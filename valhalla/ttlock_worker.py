@@ -114,16 +114,19 @@ def start_worker(db_path, stop_event=None):
         return None
 
     def loop():
+        # A deployment/restart after 22:00 must not generate a second code.
+        # Run only in a short window beginning at local 22:00.
         last_observed_day = None
         while not stop_event.is_set():
             now = datetime.now(timezone.utc)
             start, _ = validity_window(now)
-            if now >= start.astimezone(timezone.utc):
+            seconds_since_start = (now - start.astimezone(timezone.utc)).total_seconds()
+            if 0 <= seconds_since_start < 90:
                 day = start.date().isoformat()
                 if day != last_observed_day:
                     last_observed_day = day
                     run_daily_once(db_path, now=now)
-            stop_event.wait(30)
+            stop_event.wait(10)
 
     thread = threading.Thread(target=loop, daemon=True, name="ttlock-daily")
     thread.start()
