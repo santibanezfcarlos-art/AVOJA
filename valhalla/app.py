@@ -59,6 +59,7 @@ IMAGE_TYPES = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'w
 
 def image_asset(filename):
     allowed = {filename for _, _, _, names in GALLERY_GROUPS for filename in names}
+    allowed.add('valhalla-logo.png')
     allowed.update(f'box-{box}.{extension}' for box in (1, 2, 3) for extension in IMAGE_TYPES)
     if filename not in allowed:
         return None

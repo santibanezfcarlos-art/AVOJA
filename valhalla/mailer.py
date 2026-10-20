@@ -54,11 +54,11 @@ class EmailDelivery:
         self.send_message(email, 'Recupera tu contraseña · Valhalla Office', text)
 
     def send_notification(self, email, kind, payload, delivery_key):
-        from notifications import notification_message
+        from notifications import notification_message, notification_html
         subject, text = notification_message(kind,payload,self.public_url)
-        self.send_message(email,subject,text,idempotency_key='valhalla-'+delivery_key)
+        self.send_message(email,subject,text,idempotency_key='valhalla-'+delivery_key,html=notification_html(kind,payload,self.public_url))
 
-    def send_message(self, email, subject, text, idempotency_key=None):
+    def send_message(self, email, subject, text, idempotency_key=None, html=None):
         if not self.configured:
             raise RuntimeError('El servicio de correo todavía no está configurado.')
         if self.provider == 'sendgrid':
@@ -70,6 +70,11 @@ class EmailDelivery:
         else:
             endpoint = 'https://api.resend.com/emails'
             payload = {'from': self.sender, 'to': [email], 'subject': subject, 'text': text}
+        if html:
+            if self.provider=='sendgrid':
+                payload['content'].append({'type':'text/html','value':html})
+            else:
+                payload['html']=html
         request = Request(endpoint, method='POST',
                           headers={'Authorization': 'Bearer ' + self.api_key, 'Content-Type': 'application/json', 'User-Agent':'ValhallaOffice/1.0 (transactional-email)'},
                           data=json.dumps(payload).encode())

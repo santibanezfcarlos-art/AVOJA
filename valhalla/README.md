@@ -247,3 +247,11 @@ El enlace `/#mis-reservas` abre las reservas de la cuenta autenticada; si se req
 Toda nueva reserva exige **al menos 24 horas completas** de anticipación, también en lotes y al elegir un nuevo horario en una modificación. Por ejemplo, a las 19:55 de hoy se puede reservar desde las 20:00 de mañana. La agenda deshabilita las horas anteriores a ese límite y el servidor vuelve a validarlo dentro de la transacción. Se conserva la regla de una sola modificación y al menos dos horas antes del horario original. Las reservas ya existentes no se cancelan por esta actualización. El cálculo de 24 horas usa tiempo transcurrido real, incluso durante cambios de horario de verano.
 
 Prueba del recorrido: `python3 tests/run_browser.py confirmation_browser.cjs`. Incluye confirmación móvil, saldo, enlaces, acceso directo con/sin sesión y rechazos del servidor para reserva individual, lote y modificación con menos de 24 horas.
+
+## Diseño de los correos de reserva
+
+Las confirmaciones y modificaciones usan la alternativa de bienvenida cercana: saludo, tarjeta con fecha/horario/box, dirección, información en viñetas y tres botones verticales al final, en orden **Mis reservas → Agregar al calendario → Cómo llegar**. La cancelación tiene su propio texto y no invita a guardar un evento cancelado.
+
+Resend recibe `html` y `text`; SendGrid recibe partes `text/plain` y `text/html`. La plantilla usa tablas, estilos en línea, texto alternativo y datos escapados. Se conserva la clave de idempotencia en los reintentos. Recuperación, confirmación de correo y avisos administrativos mantienen su formato anterior.
+
+La vista de ejemplo está en `vista-previa-correo.html`. El logo exacto queda pendiente de recibir como archivo descargable. Cuando esté disponible, se alojará en `static/images/valhalla-logo.png`, ruta pública permitida; la plantilla lo detecta y usa una URL absoluta. Mientras ese archivo no exista se muestra el nombre Valhalla en texto, sin imágenes rotas ni una recreación del logo.
