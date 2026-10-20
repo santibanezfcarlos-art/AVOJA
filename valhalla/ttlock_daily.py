@@ -195,7 +195,7 @@ def _encryption_key():
     """AES-GCM key (32 random bytes, urlsafe-base64 encoded) from private env."""
     raw = os.environ.get("TTLOCK_ENCRYPTION_KEY", "")
     try:
-        key = base64.urlsafe_b64decode(raw.encode("ascii"))
+        key = base64.urlsafe_b64decode((raw + "=" * (-len(raw) % 4)).encode("ascii"))
     except (ValueError, UnicodeError):
         key = b""
     if len(key) != 32:
