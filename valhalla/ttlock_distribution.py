@@ -52,19 +52,21 @@ def _send_one(db_path, issue_day, booking_day, recipient, subject, message, mail
     return status
 
 
-def distribute(db_path, issue_day, transport=None, *, mailer=None):
+def distribute_saved(db_path, issue_key, issued_at, encrypted_code, *, mailer=None):
+    """Send a previously saved code without generating a new TTLock passcode."""
+    from datetime import timezone, timedelta
     if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED","").lower() != "true":
         return "disabled"
-    record = AttemptLedger(db_path).get_existing(issue_day)
-    if not record or record["status"] != "emailed" or not record["encrypted_code"]:
-        return "code_not_ready"
-    issued_at = datetime.fromisoformat(issue_day+"T22:00:00").replace(
-        tzinfo=ZoneInfo("America/Santiago"))
-    booking_day, booked = recipients_for_tomorrow(db_path,issued_at)
+    if issued_at.tzinfo is None:
+        return "invalid_date"
+    end_day = issued_at.astimezone(ZoneInfo("America/Santiago")).date() + timedelta(days=1)
+    end = datetime(end_day.year,end_day.month,end_day.day,22,tzinfo=ZoneInfo("America/Santiago"))
+    if datetime.now(timezone.utc) >= end:
+        return "expired"
+    booking_day, booked = recipients_for_tomorrow(db_path, issued_at)
     main = os.environ.get("TTLOCK_DISTRIBUTION_TO","contacto@valhallaoffice.cl").strip()
     if not main or "@" not in main:
         return "recipient_not_configured"
-    # Original TTLock email continues unchanged. It is not resent here.
     original = os.environ["TTLOCK_EMAIL_TO"].strip().casefold()
     recipients = []
     seen = set()
@@ -80,10 +82,10 @@ def distribute(db_path, issue_day, transport=None, *, mailer=None):
     delivery = mailer or EmailDelivery()
     if not delivery.configured:
         return "email_not_configured"
-    subject,message = email_content(decrypt_code(record["encrypted_code"]),issued_at)
+    subject,message = email_content(decrypt_code(encrypted_code),issued_at)
     _initialize(db_path)
     statuses = [
-        _send_one(db_path,issue_day,booking_day.isoformat(),email,subject,message,delivery)
+        _send_one(db_path,issue_key,booking_day.isoformat(),email,subject,message,delivery)
         for email in recipients
     ]
     if "uncertain" in statuses:
@@ -91,3 +93,14 @@ def distribute(db_path, issue_day, transport=None, *, mailer=None):
     if all(s=="already_attempted" for s in statuses):
         return "already_attempted"
     return "accepted"
+
+
+def distribute(db_path, issue_day, transport=None, *, mailer=None):
+    if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED","").lower() != "true":
+        return "disabled"
+    record = AttemptLedger(db_path).get_existing(issue_day)
+    if not record or record["status"] != "emailed" or not record["encrypted_code"]:
+        return "code_not_ready"
+    issued_at = datetime.fromisoformat(issue_day+"T22:00:00").replace(
+        tzinfo=ZoneInfo("America/Santiago"))
+    return distribute_saved(db_path, issue_day, issued_at, record["encrypted_code"], mailer=mailer)
