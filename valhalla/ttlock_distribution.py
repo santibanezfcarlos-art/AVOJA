@@ -62,7 +62,7 @@ def distribute_saved(db_path, issue_key, issued_at, encrypted_code, *, mailer=No
     if issued_at.tzinfo is None:
         return "invalid_date"
     end_day = issued_at.astimezone(ZoneInfo("America/Santiago")).date() + timedelta(days=1)
-    end = datetime(end_day.year,end_day.month,end_day.day,22,tzinfo=ZoneInfo("America/Santiago"))
+    end = datetime(end_day.year,end_day.month,end_day.day,issued_at.astimezone(ZoneInfo("America/Santiago")).hour,tzinfo=ZoneInfo("America/Santiago"))
     if datetime.now(timezone.utc) >= end:
         return "expired"
     booking_day, booked = recipients_for_tomorrow(db_path, issued_at)

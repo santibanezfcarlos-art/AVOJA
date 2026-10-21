@@ -2,7 +2,7 @@ name: TTLock offline tests
 
 on:
   push:
-    branches: [ttlock-integration, ttlock-nextday-distribution, valhalla-demo, ttlock-individual-delivery, ttlock-manual-distribution, ttlock-branded-email]
+    branches: [ttlock-integration, ttlock-nextday-distribution, valhalla-demo, ttlock-individual-delivery, ttlock-manual-distribution, ttlock-branded-email, ttlock-manual-23h-test]
   workflow_dispatch:
 
 permissions:

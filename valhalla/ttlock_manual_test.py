@@ -7,7 +7,7 @@ import os
 import sys
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from ttlock_daily import (TTLockClient, AttemptLedger, _encryption_key,
@@ -33,6 +33,9 @@ def main():
         raise RuntimeError("Email provider not configured")
     email_to = os.environ["TTLOCK_EMAIL_TO"]
     start, end = validity_window()
+    if "--start-23" in sys.argv:
+        start = start.replace(hour=23)
+        end = end.replace(hour=23)
     if datetime.now(timezone.utc) >= end.astimezone(timezone.utc):
         raise RuntimeError("Invalid validity window")
 
@@ -123,7 +126,7 @@ def distribute_latest():
 if __name__ == "__main__":
     if len(sys.argv)==2 and sys.argv[1]=="--distribute-latest":
         distribute_latest()
-    elif len(sys.argv)==1:
+    elif len(sys.argv)==1 or (len(sys.argv)==2 and sys.argv[1]=="--start-23"):
         main()
     else:
-        raise SystemExit("Uso: python ttlock_manual_test.py [--distribute-latest]")
+        raise SystemExit("Uso: python ttlock_manual_test.py [--start-23 | --distribute-latest]")
