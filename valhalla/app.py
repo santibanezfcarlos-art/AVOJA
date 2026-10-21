@@ -271,8 +271,8 @@ class Store:
         c.execute('INSERT INTO audit(actor_id,action,target,created_at) VALUES (?,?,?,?)',
                   (actor, action, str(target), stamp(now())))
 
-    def queue_notification(self, c, uid, kind, entity_id, recipient, payload):
-        event_key = f'{kind}:{entity_id}'
+    def queue_notification(self, c, uid, kind, entity_id, recipient, payload, event_key=None):
+        event_key = event_key or f'{kind}:{entity_id}'
         c.execute('INSERT OR IGNORE INTO notification_outbox(event_key,delivery_key,user_id,recipient,kind,entity_id,payload,created_at) VALUES(?,?,?,?,?,?,?,?)',
                   (event_key,secrets.token_hex(24),uid,recipient,kind,entity_id,json.dumps(payload),stamp(now())))
 
@@ -597,6 +597,7 @@ class Store:
                              note='El nombre del perfil cambió; revisa nuevamente el documento.'
                              WHERE id IN (SELECT MAX(id) FROM documents WHERE user_id=? AND kind IN ('identity','degree') GROUP BY kind)""", (uid,))
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
+                c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND user_id=? AND status IN ('pending','retry','processing')",(uid,))
             self.log(c, uid, 'profile_updated', uid)
 
     def parse_slot(self, value):
@@ -832,6 +833,7 @@ class Store:
             role = c.execute('SELECT role,email FROM users WHERE id=?', (uid,)).fetchone()
             if not supports_professional(role):
                 raise Problem('Solo profesionales pueden adjuntar documentos.', 403)
+            c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND user_id=? AND entity_id IN (SELECT id FROM documents WHERE user_id=? AND kind=?) AND status IN ('pending','retry','processing')",(uid,uid,kind))
             filename, raw = prepared[0]
             cursor = c.execute("INSERT INTO documents(user_id,filename,mime,content,created_at,kind) VALUES(?,?,'application/octet-stream',?,?,?)", (uid, filename, raw, stamp(now()), kind))
             for position, (filename, raw) in enumerate(prepared[1:], 2):
@@ -888,6 +890,11 @@ class Store:
                     raise Problem('Confirma que revisaste ambos lados del carnet y que corresponden al titular.')
                 c.execute('UPDATE documents SET status=?,note=?,reviewer_id=? WHERE id=?', (decision, note, actor, target))
                 c.execute('UPDATE users SET verified=? WHERE id=?', (int(self.professional_verified(c, row['user_id'])), row['user_id']))
+                if decision=='approved' and row['status']!='approved' and row['kind'] in ('identity','degree'):
+                    person=c.execute('SELECT name,email FROM users WHERE id=?',(row['user_id'],)).fetchone()
+                    self.queue_notification(c,row['user_id'],'document_approved',target,person['email'],dict(person)|{'document_kind':row['kind']},event_key=f'document_approved:{target}:'+secrets.token_hex(12))
+                elif decision=='rejected':
+                    c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND entity_id=? AND status IN ('pending','retry','processing')",(target,))
             elif action == 'user':
                 row = c.execute('SELECT * FROM users WHERE id=?', (target,)).fetchone()
                 if not row or row['role'] == 'admin':

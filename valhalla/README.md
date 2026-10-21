@@ -255,3 +255,15 @@ Las confirmaciones y modificaciones usan la alternativa de bienvenida cercana: s
 Resend recibe `html` y `text`; SendGrid recibe partes `text/plain` y `text/html`. La plantilla usa tablas, estilos en línea, texto alternativo y datos escapados. Se conserva la clave de idempotencia en los reintentos. Recuperación, confirmación de correo y avisos administrativos mantienen su formato anterior.
 
 La vista de ejemplo está en `vista-previa-correo.html`. El logo original entregado por el propietario está en `static/images/valhalla-logo.png`, conservado sin modificaciones. La plantilla lo muestra a 200 píxeles de ancho con proporciones originales y una URL pública absoluta. Los clientes que bloquean imágenes muestran el texto alternativo Valhalla.
+
+## Avisos de aprobación y actualización automática
+
+Al aprobar un carnet o certificado de título se encola un correo personal al titular, dentro de la misma transacción. Cada aviso identifica el documento aprobado, incluye el logo oficial y un botón para ir a la cuenta, y recuerda los requisitos para reservar sin afirmar que una aprobación aislada habilita todas las reservas. Se envían versiones HTML y texto.
+
+Repetir la misma aprobación no duplica el mensaje; una nueva revisión después de un rechazo tiene su propio aviso. Los errores del proveedor conservan la aprobación y usan el reintento existente con la misma clave de entrega. Una sustitución del documento, un cambio de nombre o un rechazo invalida avisos anteriores que aún no se enviaron. Los documentos que ya estaban aprobados antes de esta versión no generan envíos retroactivos.
+
+La cuenta consulta novedades cada **30 segundos**, solo mientras la pestaña está visible, y al volver a ella. Administración muestra nuevas cuentas, documentos, pagos y reservas; el profesional ve las aprobaciones y su saldo actualizados. La agenda también renueva disponibilidad cuando no hay una selección o modificación en curso. Se conservan la pestaña, filtros y posición de desplazamiento.
+
+La actualización visual se pausa si hay un formulario con cambios, un campo enfocado, una operación de formulario deshabilitada o un diálogo abierto. Una respuesta que llega durante la edición no reemplaza el formulario; se conserva la actualización pendiente para cuando pueda mostrarse. Fallos temporales de conexión no interrumpen la pantalla y se vuelven a consultar en el siguiente ciclo.
+
+Pruebas específicas: `python3 -m unittest discover -s tests -p test_approval_notifications.py` y `python3 tests/run_browser.py live_updates_browser.cjs`. El navegador acelera únicamente el temporizador de pruebas, verificando que producción solicita intervalos de 30 segundos, y cubre nuevas cuentas sin F5, formularios, revisiones, respuestas tardías y los dos avisos de aprobación.

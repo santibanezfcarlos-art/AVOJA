@@ -30,6 +30,13 @@ def booking_links(booking, public_url='https://valhallaoffice.cl'):
 
 def notification_message(kind, payload, public_url):
     person = payload['name'] + ' (' + payload['email'] + ')'
+    if kind == 'document_approved':
+        document='carnet de identidad' if payload['document_kind']=='identity' else 'certificado de título'
+        return (f'Tu {document} fue aprobado · Valhalla Office',
+                f"¡Estás más cerca de tu reserva!\n\nHola, {payload['name']}.\nAcabamos de aprobar tu {document}.\n\n"
+                "• Revisa el estado de tus documentos en tu cuenta.\n"
+                "• Para reservar necesitas tu carnet y certificado de título aprobados, correo confirmado y saldo disponible.\n\n"
+                f"Ir a mi cuenta: {public_url}/\n")
     if kind == 'admin_signup':
         return ('Nuevo registro profesional · Valhalla Office',
                 f"Se inscribió una nueva cuenta profesional.\n\nNombre y correo: {person}\n"
@@ -67,8 +74,18 @@ def notification_message(kind, payload, public_url):
     return title + ' · Valhalla Office', text + '\n' + public_url + '/'
 
 
+def document_approval_html(payload,public_url):
+    document='carnet de identidad' if payload['document_kind']=='identity' else 'certificado de título'
+    if (Path(__file__).parent/'static/images/valhalla-logo.png').is_file():
+        logo=f'<img src="{escape(public_url.rstrip("/"),quote=True)}/images/valhalla-logo.png" width="180" alt="Valhalla" style="display:block;width:180px;height:auto;margin:auto;border:0;">'
+    else:logo='<strong style="letter-spacing:3px;">VALHALLA OFFICE</strong>'
+    return f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Documento aprobado · Valhalla Office</title></head><body style="margin:0;background:#f4f6ef;font-family:Arial,sans-serif;color:#193e37;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:580px;background:#fff;border:1px solid #dce4d7;border-radius:16px;"><tr><td align="center" style="padding:16px 24px;">{logo}</td></tr><tr><td style="padding:8px 26px 28px;"><h1 style="font-size:26px;line-height:34px;margin:0 0 20px;">¡Estás más cerca de tu reserva!</h1><p style="font-size:16px;line-height:26px;">Hola, {escape(payload['name'])}.</p><p style="font-size:16px;line-height:26px;">Acabamos de aprobar tu <strong>{document}</strong>.</p><ul style="font-size:15px;line-height:25px;padding-left:22px;"><li style="margin-bottom:12px;">Revisa el estado de tus documentos en tu cuenta.</li><li>Para reservar necesitas tu carnet y certificado de título aprobados, correo confirmado y saldo disponible.</li></ul><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:26px;"><tr><td align="center" bgcolor="#245e50" style="border-radius:9px;"><a href="{escape(public_url.rstrip('/')+'/',quote=True)}" style="display:block;padding:16px;color:#fff;font-size:16px;font-weight:bold;text-decoration:none;">Ir a mi cuenta</a></td></tr></table><p style="font-size:12px;color:#66786e;text-align:center;margin:24px 0 0;">Valhalla Office · Un espacio para tu práctica profesional.</p></td></tr></table></td></tr></table></body></html>'''
+
+
 def notification_html(kind, payload, public_url, logo_url=None):
     """Table layout and inline styles work without scripts, fonts, or client CSS."""
+    if kind=='document_approved':
+        return document_approval_html(payload,public_url)
     if kind not in ('booking_confirmed','booking_modified','booking_cancelled'):
         return None
     booking=payload['booking'];start=datetime.fromisoformat(booking['start']).astimezone(CHILE)
