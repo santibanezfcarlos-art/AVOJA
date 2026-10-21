@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 CHILE = ZoneInfo("America/Santiago")
 API = "https://api.sciener.com"
 PASSWORD_MD5 = re.compile(r"^[a-fA-F0-9]{32}$")
+MONTHS_ES = ("enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre")
 
 
 class TTLockError(RuntimeError):
