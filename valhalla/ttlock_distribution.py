@@ -91,3 +91,54 @@ def distribute(db_path, issue_day, transport=None, *, mailer=None):
     if all(s=="already_attempted" for s in statuses):
         return "already_attempted"
     return "accepted"
+
+
+def distribute_manual_test(db_path, test_id, *, mailer=None):
+    """Send an already-created MANUAL test code to next-day bookers.
+
+    A distinct audit key isolates these sends from the 22:00 daily ledger.
+    Does not generate another code. Never silently retry a recipient.
+    """
+    if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED", "").lower() != "true":
+        return "disabled"
+    with sqlite3.connect(db_path, timeout=10) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute("""SELECT encrypted_code, status, created_at
+            FROM ttlock_manual_tests WHERE test_id=?""", (test_id,)).fetchone()
+    if not row or row["status"] != "emailed" or not row["encrypted_code"]:
+        return "code_not_ready"
+    issued_at = datetime.fromisoformat(row["created_at"]).astimezone(
+        ZoneInfo("America/Santiago"))
+    code_start = issued_at.replace(hour=22, minute=0, second=0, microsecond=0)
+    booking_day, booked = recipients_for_tomorrow(db_path, code_start)
+    main = os.environ.get("TTLOCK_DISTRIBUTION_TO", "contacto@valhallaoffice.cl").strip()
+    if not main or "@" not in main:
+        return "recipient_not_configured"
+    original = os.environ["TTLOCK_EMAIL_TO"].strip().casefold()
+    recipients = []
+    seen = set()
+    for address in [main] + booked:
+        address = address.strip()
+        identity = address.casefold()
+        if not address or identity in seen or (identity == original and identity != main.casefold()):
+            continue
+        seen.add(identity)
+        recipients.append(address)
+    if len(recipients) > 41:
+        return "recipient_limit"
+    delivery = mailer or EmailDelivery()
+    if not delivery.configured:
+        return "email_not_configured"
+    subject, body = email_content(decrypt_code(row["encrypted_code"]), code_start)
+    _initialize(db_path)
+    audit_key = "manual-" + test_id
+    outcomes = [
+        _send_one(db_path, audit_key, booking_day.isoformat(), address,
+                  subject, body, delivery)
+        for address in recipients
+    ]
+    if "uncertain" in outcomes:
+        return "partial_or_uncertain"
+    if all(item == "already_attempted" for item in outcomes):
+        return "already_attempted"
+    return "accepted"
