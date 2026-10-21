@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from ttlock_daily import AttemptLedger, TTLockClient, TTLockError, validity_window, email_content, encrypt_code, decrypt_code, _encryption_key
 from mailer import EmailDelivery, EmailDeliveryError
+from ttlock_email_html import access_email_html
 
 LOG = logging.getLogger("valhalla.ttlock")
 
