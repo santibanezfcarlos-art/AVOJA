@@ -24,7 +24,7 @@ js='globalThis.VALHALLA_ROOMS='+json.dumps(photos,ensure_ascii=False)+';\n'+js
 css = (root / 'static/style.css').read_text()
 html = f'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Valhalla Office — Vista previa interactiva</title><style>{css}</style></head>
+<title>Valhalla Office — Vista previa interactiva</title><link rel="icon" type="image/png" href="https://valhallaoffice.cl/images/valhalla-logo.png"><style>{css}</style></head>
 <body><div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="root"></div><dialog id="modal" aria-labelledby="modal-title"></dialog>
 <script>{js}</script></body></html>'''
