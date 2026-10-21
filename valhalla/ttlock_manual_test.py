@@ -13,6 +13,7 @@ from pathlib import Path
 from ttlock_daily import (TTLockClient, AttemptLedger, _encryption_key,
                           encrypt_code, email_content, validity_window)
 from mailer import EmailDelivery
+from ttlock_email_html import access_email_html
 
 
 def record(db_path, test_id, status, *, encrypted_code=None, passcode_id=None):
