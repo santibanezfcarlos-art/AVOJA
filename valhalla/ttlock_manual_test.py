@@ -4,6 +4,7 @@ Never runs on import or as a background job. A manual test issues a *new* workin
 passcode and sends email. Preserves separate audit records for every attempt.
 """
 import os
+import sys
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -85,7 +86,42 @@ def main():
 
     record(db_path, test_id, "emailed")
     print("RESULTADO: emailed. Revisa tu bandeja de entrada.")
+    _distribute_manual(db_path, test_id, start, encrypt_code(code))
+
+
+def _distribute_manual(db_path, test_id, start, encrypted_code):
+    from ttlock_distribution import distribute_saved
+    status = distribute_saved(db_path, "manual-" + test_id, start, encrypted_code)
+    print("DISTRIBUCION:", status)
+
+
+def distribute_latest():
+    """Explicit resend-free distribution using the latest successfully emailed manual code."""
+    db_path = os.environ["VALHALLA_DB_PATH"]
+    with sqlite3.connect(db_path,timeout=10) as db:
+        db.row_factory=sqlite3.Row
+        try:
+            row=db.execute("""SELECT test_id, created_at, encrypted_code
+                FROM ttlock_manual_tests
+                WHERE status='emailed' AND encrypted_code IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1""").fetchone()
+        except sqlite3.OperationalError:
+            row=None
+    if not row:
+        print("NO HAY CODIGO MANUAL GUARDADO PARA DISTRIBUIR")
+        return
+    stamp=datetime.fromisoformat(row["created_at"])
+    start, end=validity_window(stamp)
+    if datetime.now(timezone.utc)>=end.astimezone(timezone.utc):
+        print("CODIGO MANUAL VENCIDO; NO SE ENVIO")
+        return
+    _distribute_manual(db_path,row["test_id"],start,row["encrypted_code"])
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv)==2 and sys.argv[1]=="--distribute-latest":
+        distribute_latest()
+    elif len(sys.argv)==1:
+        main()
+    else:
+        raise SystemExit("Uso: python ttlock_manual_test.py [--distribute-latest]")
