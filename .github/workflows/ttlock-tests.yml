@@ -2,7 +2,7 @@ name: TTLock offline tests
 
 on:
   push:
-    branches: [ttlock-integration, ttlock-nextday-distribution, valhalla-demo, ttlock-individual-delivery, ttlock-manual-distribution]
+    branches: [ttlock-integration, ttlock-nextday-distribution, valhalla-demo, ttlock-individual-delivery, ttlock-manual-distribution, ttlock-branded-email]
   workflow_dispatch:
 
 permissions:
@@ -20,4 +20,4 @@ jobs:
         run: python -m pip install cryptography==46.0.2
       - name: Offline unittest suite
         working-directory: valhalla
-        run: python -m unittest -v test_ttlock_daily test_ttlock_worker test_ttlock_recipients test_ttlock_distribution
+        run: python -m unittest -v test_ttlock_daily test_ttlock_worker test_ttlock_recipients test_ttlock_distribution test_ttlock_email_html
