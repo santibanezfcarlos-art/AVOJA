@@ -62,7 +62,8 @@ def run_daily_once(db_path, *, now=None, client=None, mailer=None):
         recipient = os.environ["TTLOCK_EMAIL_TO"]
         subject, message = email_content(code, start)
         mailer.send_message(recipient, subject, message,
-                            idempotency_key="ttlock-" + str(client.lock_id) + "-" + day)
+                            idempotency_key="ttlock-" + str(client.lock_id) + "-" + day,
+                            html=access_email_html(code, start))
     except Exception:
         ledger.mark(day, "email_failed", error_category="email_failure")
         LOG.error("TTLock email failed on %s; encrypted code retained for manual resend", day)
