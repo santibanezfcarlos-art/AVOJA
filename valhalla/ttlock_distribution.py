@@ -61,11 +61,15 @@ def distribute_saved(db_path, issue_key, issued_at, encrypted_code, *, mailer=No
         return "disabled"
     if issued_at.tzinfo is None:
         return "invalid_date"
-    end_day = issued_at.astimezone(ZoneInfo("America/Santiago")).date() + timedelta(days=1)
-    end = datetime(end_day.year,end_day.month,end_day.day,issued_at.astimezone(ZoneInfo("America/Santiago")).hour,tzinfo=ZoneInfo("America/Santiago"))
+    local_issue = issued_at.astimezone(ZoneInfo("America/Santiago"))
+    # A new code starts at 05:00 on booking day; older 22/23h tests
+    # use their issue date and target the following booking day.
+    booking_date = local_issue.date() if local_issue.hour == 5 else local_issue.date() + timedelta(days=1)
+    end = datetime(booking_date.year,booking_date.month,booking_date.day,23,tzinfo=ZoneInfo("America/Santiago"))
     if datetime.now(timezone.utc) >= end:
         return "expired"
-    booking_day, booked = recipients_for_tomorrow(db_path, issued_at)
+    from ttlock_recipients import recipients_for_day
+    booking_day, booked = booking_date, recipients_for_day(db_path, booking_date)
     main = os.environ.get("TTLOCK_DISTRIBUTION_TO","contacto@valhallaoffice.cl").strip()
     if not main or "@" not in main:
         return "recipient_not_configured"

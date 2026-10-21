@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 CHILE = ZoneInfo("America/Santiago")
 API = "https://api.sciener.com"
 PASSWORD_MD5 = re.compile(r"^[a-fA-F0-9]{32}$")
+MONTHS_ES = ("enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre")
 
 
 class TTLockError(RuntimeError):
@@ -28,14 +29,11 @@ class TTLockError(RuntimeError):
 
 
 def validity_window(run_at=None):
-    """Today's 22:00 through tomorrow's 22:00, in Chile local civil time.
-
-    The UTC duration can be 23/24/25 hours at DST changes.
-    """
+    """Validity tomorrow from 05:00 through 23:00, Chile local time."""
     current = (run_at or datetime.now(timezone.utc)).astimezone(CHILE)
-    start = datetime(current.year, current.month, current.day, 22, tzinfo=CHILE)
     tomorrow = current.date() + timedelta(days=1)
-    end = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 22, tzinfo=CHILE)
+    start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 5, tzinfo=CHILE)
+    end = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, tzinfo=CHILE)
     return start, end
 
 
@@ -46,7 +44,7 @@ def timestamp_ms(value):
 def email_content(code, start):
     if not re.fullmatch(r"[0-9]{4,12}", str(code)):
         raise TTLockError("Invalid passcode format")
-    next_day = start.date() + timedelta(days=1)
+    next_day = start.astimezone(CHILE).date() if start.astimezone(CHILE).hour == 5 else start.astimezone(CHILE).date() + timedelta(days=1)
     months = ("enero", "febrero", "marzo", "abril", "mayo", "junio",
               "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
     subject = f"Código de acceso {next_day.day} de {months[next_day.month - 1]}"
@@ -120,7 +118,7 @@ class TTLockClient:
         response = _post_form("/v3/keyboardPwd/get", {
             "clientId": self.client_id, "accessToken": access_token,
             "lockId": self.lock_id,
-            "keyboardPwdName": "Daily " + start.date().isoformat(),
+            "keyboardPwdName": (lambda d: f"{d.day} de {MONTHS_ES[d.month - 1]}")(start.astimezone(CHILE).date() if start.astimezone(CHILE).hour == 5 else start.astimezone(CHILE).date() + timedelta(days=1)),
             "keyboardPwdType": 3,
             "startDate": timestamp_ms(start), "endDate": timestamp_ms(end),
             "keyboardPwdVersion": version,

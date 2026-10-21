@@ -34,8 +34,10 @@ def main():
     email_to = os.environ["TTLOCK_EMAIL_TO"]
     start, end = validity_window()
     if "--start-23" in sys.argv:
-        start = start.replace(hour=23)
-        end = end.replace(hour=23)
+        today = datetime.now(start.tzinfo).date()
+        start = datetime(today.year,today.month,today.day,23,tzinfo=start.tzinfo)
+        tomorrow = today + timedelta(days=1)
+        end = datetime(tomorrow.year,tomorrow.month,tomorrow.day,23,tzinfo=start.tzinfo)
     if datetime.now(timezone.utc) >= end.astimezone(timezone.utc):
         raise RuntimeError("Invalid validity window")
 

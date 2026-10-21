@@ -20,11 +20,9 @@ def run_daily_once(db_path, *, now=None, client=None, mailer=None):
     now = now or datetime.now(timezone.utc)
     start, end = validity_window(now)
     local_now = now.astimezone(start.tzinfo)
-    if local_now < start:
+    scheduled_at = local_now.replace(hour=22, minute=0, second=0, microsecond=0)
+    if local_now < scheduled_at:
         return "before_schedule"
-    # Limit late catch-up to the evening of the scheduled local date.
-    if local_now.date() != start.date():
-        return "outside_window"
 
     # Fail closed BEFORE contacting the lock if encryption is unavailable.
     try:
@@ -35,7 +33,7 @@ def run_daily_once(db_path, *, now=None, client=None, mailer=None):
 
     ledger = AttemptLedger(db_path)
     ledger.initialize()
-    day = start.date().isoformat()
+    day = local_now.date().isoformat()
     if not ledger.claim(day):
         return "already_claimed"
 
@@ -94,9 +92,8 @@ def resend_existing(db_path, local_day, *, mailer=None):
         return "not_resendable"
     try:
         code = decrypt_code(record["encrypted_code"])
-        start = datetime.fromisoformat(str(local_day) + "T22:00:00").replace(
-            tzinfo=__import__("zoneinfo").ZoneInfo("America/Santiago"))
-        end = start + __import__("datetime").timedelta(days=1)
+        start, end = validity_window(datetime.fromisoformat(str(local_day) + "T22:00:00").replace(
+            tzinfo=__import__("zoneinfo").ZoneInfo("America/Santiago")))
         if datetime.now(timezone.utc) >= end:
             return "expired"
         subject, message = email_content(code, start)
@@ -129,10 +126,11 @@ def start_worker(db_path, stop_event=None):
         last_observed_day = None
         while not stop_event.is_set():
             now = datetime.now(timezone.utc)
-            start, _ = validity_window(now)
-            seconds_since_start = (now - start.astimezone(timezone.utc)).total_seconds()
+            local = now.astimezone(__import__("zoneinfo").ZoneInfo("America/Santiago"))
+            scheduled_at = local.replace(hour=22, minute=0, second=0, microsecond=0)
+            seconds_since_start = (now - scheduled_at.astimezone(timezone.utc)).total_seconds()
             if 0 <= seconds_since_start < 90:
-                day = start.date().isoformat()
+                day = local.date().isoformat()
                 if day != last_observed_day:
                     last_observed_day = day
                     run_daily_once(db_path, now=now)
