@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime,timedelta
 from unittest.mock import patch
 from app import Store,Problem,ADMIN_EMAIL,CHILE,stamp
+from rules import RULES_VERSION
 
 class BatchBookings(unittest.TestCase):
     def setUp(self):
@@ -130,7 +131,7 @@ class BatchBookings(unittest.TestCase):
         token=self.store.login({'email':'one@example.cl','password':'BatchProTest2026!'});csrf=self.store.session(token)['csrf']
         def request(token='',csrf=''):
             conn=http.client.HTTPConnection('127.0.0.1',server.server_port)
-            conn.request('POST','/api/bookings/batch',json.dumps({'slots':[self.slot(10),self.slot(11)],'request_key':'http-batch-key-123456789','user_id':self.admin}),{'Content-Type':'application/json','Cookie':'session='+token,'X-CSRF-Token':csrf})
+            conn.request('POST','/api/bookings/batch',json.dumps({'slots':[self.slot(10),self.slot(11)],'request_key':'http-batch-key-123456789','user_id':self.admin,'rules_acceptance':{'accepted':True,'version':RULES_VERSION}}),{'Content-Type':'application/json','Cookie':'session='+token,'X-CSRF-Token':csrf})
             response=conn.getresponse();result=(response.status,json.loads(response.read()));conn.close();return result
         try:
             self.assertEqual(request()[0],401);self.assertEqual(request(token)[0],403)

@@ -80,16 +80,18 @@ async function api(path,body){
     const row={discount_code:quote.code,discount_percent:quote.percent,original_price:quote.original_price,id:previewId(db.packages),user_id:user.id,hours:p.hours,remaining:p.hours,price:quote.price,status:'pending',created_at:new Date().toISOString()};db.packages.push(row);previewRecord('payment_requested_simulated',row.id);return {ok:true,id:row.id};
   }
   if(path==='bookings/batch'){
+    if(body.rules_acceptance?.accepted!==true||body.rules_acceptance.version!==globalThis.VALHALLA_RULES.version)throw Error('Debes aceptar las normas antes de reservar.');
     if(!Array.isArray(body.slots)||!body.slots.length||body.slots.length>200||!body.request_key)throw Error('Selecciona las horas antes de confirmar.');
     const fingerprint=JSON.stringify(body.slots.slice().sort((a,b)=>a.start.localeCompare(b.start)));
     const previous=db.batches.find(batch=>batch.user_id===user.id&&batch.key===body.request_key);
     if(previous){if(previous.fingerprint!==fingerprint)throw Error('La confirmación corresponde a otra selección.');return {ids:previous.ids,repeated:true};}
     const before=previewClone({bookings:db.bookings,packages:db.packages,audit:db.audit});const ids=[];
-    try{for(const slot of body.slots){await api('bookings',slot);ids.push(db.bookings.at(-1).id);}}
+    try{for(const slot of body.slots){await api('bookings',{...slot,rules_acceptance:body.rules_acceptance});ids.push(db.bookings.at(-1).id);}}
     catch(error){db.bookings=before.bookings;db.packages=before.packages;db.audit=before.audit;throw error;}
     db.batches.push({user_id:user.id,key:body.request_key,fingerprint,ids});return {ids,repeated:false};
   }
   if(path==='bookings'||path.startsWith('bookings/')){
+    if(body.rules_acceptance?.accepted!==true||body.rules_acceptance.version!==globalThis.VALHALLA_RULES.version)throw Error('Debes aceptar las normas antes de reservar.');
     if(user.role!=='professional'||!user.verified)throw Error('Necesitas documentación aprobada para reservar.');
     const start=previewSlot(body),id=path.includes('/')?Number(path.split('/')[1]):null;
     const existing=id?db.bookings.find(b=>b.id===id&&b.user_id===user.id):null;

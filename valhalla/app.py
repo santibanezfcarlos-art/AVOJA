@@ -189,6 +189,10 @@ class Store:
               user_id INTEGER NOT NULL REFERENCES users(id), request_key TEXT NOT NULL,
               fingerprint TEXT NOT NULL, booking_ids TEXT NOT NULL, created_at TEXT NOT NULL,
               PRIMARY KEY(user_id,request_key));
+            CREATE TABLE IF NOT EXISTS booking_rule_acceptances (
+                id INTEGER PRIMARY KEY, booking_id INTEGER NOT NULL REFERENCES bookings(id),
+                user_id INTEGER NOT NULL REFERENCES users(id), version TEXT NOT NULL,
+                rules_text TEXT NOT NULL, accepted_at TEXT NOT NULL, is_modification INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS purchase_acceptances (
               package_id INTEGER PRIMARY KEY REFERENCES packages(id), user_id INTEGER NOT NULL REFERENCES users(id),
               version TEXT NOT NULL, rules_text TEXT NOT NULL, accepted_at TEXT NOT NULL);
@@ -845,7 +849,10 @@ class Store:
         user=c.execute('SELECT role,email,active FROM users WHERE id=?',(uid,)).fetchone()
         return bool(user and user['role']=='admin' and user['email']==ADMIN_EMAIL and user['active'])
 
-    def reserve_one(self, c, uid, box, start, receipt_balance=None):
+    def record_booking_rules(self,c,uid,bid,modification=False):
+        c.execute('INSERT INTO booking_rule_acceptances(booking_id,user_id,version,rules_text,accepted_at,is_modification) VALUES(?,?,?,?,?,?)',(bid,uid,RULES_VERSION,RULES_TEXT,stamp(now()),int(modification)))
+
+    def reserve_one(self, c, uid, box, start, receipt_balance=None, rules_acceptance=None):
         self.parse_slot(start)
         if not self.can_book_parallel(c,uid) and c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
             raise Problem('Ya tienes una reserva a esa hora.', 409)
@@ -853,25 +860,29 @@ class Store:
         if not package:
             raise Problem('Necesitas saldo de un paquete con pago confirmado.',409)
         if package['source']=='manual_credit' and not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(package['id'],)).fetchone():
-            raise Problem('Acepta las normas de tus horas cargadas por administración desde Comprar horas antes de reservar.',403)
+            if not validate_acceptance(rules_acceptance):raise Problem('Debes aceptar las normas antes de confirmar la reserva.',403)
+            self.record_purchase_acceptance(c,uid,package['id'],rules_acceptance)
         bid=c.execute('INSERT INTO bookings(user_id,package_id,box,start,created_at) VALUES(?,?,?,?,?)',(uid,package['id'],box,start,stamp(now()))).lastrowid
+        if validate_acceptance(rules_acceptance):self.record_booking_rules(c,uid,bid)
         c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?',(package['id'],))
         self.log(c,uid,'reserved',bid)
         self.queue_booking_receipt(c,uid,bid,'booking_confirmed',remaining=receipt_balance)
         return bid
 
     def reserve(self, uid, body):
+        if 'rules_acceptance' in body and not validate_acceptance(body['rules_acceptance']):raise Problem('Debes aceptar las normas vigentes antes de reservar.',400)
         start=self.parse_slot(body.get('start')); box=body.get('box')
         if type(box) is not int or box not in (1,2,3):
             raise Problem('Box inválido.')
         try:
             with self.connection(True) as c:
                 self.professional(c,uid)
-                return self.reserve_one(c,uid,box,start)
+                return self.reserve_one(c,uid,box,start,rules_acceptance=body.get('rules_acceptance'))
         except sqlite3.IntegrityError:
             raise Problem('Ese box acaba de ser reservado. Elige otro horario.',409)
 
     def reserve_batch(self, uid, body):
+        if 'rules_acceptance' in body and not validate_acceptance(body['rules_acceptance']):raise Problem('Debes aceptar las normas vigentes antes de reservar.',400)
         selected=body.get('slots'); key=body.get('request_key')
         if not isinstance(selected,list) or not 1<=len(selected)<=200 or not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
             raise Problem('Selecciona entre 1 y 200 horas y vuelve a confirmar la selección.')
@@ -898,13 +909,14 @@ class Store:
                 balance=c.execute("SELECT COALESCE(SUM(remaining),0) FROM packages WHERE user_id=? AND status='paid'",(uid,)).fetchone()[0]
                 if balance<len(slots):
                     raise Problem('Tu saldo no alcanza para todas las horas seleccionadas. No se confirmó ninguna.',409)
-                ids=[self.reserve_one(c,uid,box,start,receipt_balance=balance-len(slots)) for start,box in slots]
+                ids=[self.reserve_one(c,uid,box,start,receipt_balance=balance-len(slots),rules_acceptance=body.get('rules_acceptance')) for start,box in slots]
                 c.execute('INSERT INTO booking_batches VALUES(?,?,?,?,?)',(uid,key,fingerprint,json.dumps(ids),stamp(now())))
                 return {'ids':ids,'repeated':False,'remaining':balance-len(slots)}
         except sqlite3.IntegrityError:
             raise Problem('Un horario seleccionado acaba de ocuparse. No se confirmó ninguna hora ni se descontó saldo; revisa la agenda.',409)
 
     def modify(self, uid, bid, body):
+        if 'rules_acceptance' in body and not validate_acceptance(body['rules_acceptance']):raise Problem('Debes aceptar las normas vigentes antes de reservar.',400)
         start = self.parse_slot(body.get('start'))
         box = body.get('box')
         if type(box) is not int or box not in (1, 2, 3):
@@ -926,6 +938,7 @@ class Store:
                 if not self.can_book_parallel(c,uid) and c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed' AND id<>?", (uid, start, bid)).fetchone():
                     raise Problem('Ya tienes una reserva a esa hora.', 409)
                 c.execute('UPDATE bookings SET box=?,start=?,modifications=modifications+1 WHERE id=?', (box, start, bid))
+                if validate_acceptance(body.get('rules_acceptance')):self.record_booking_rules(c,uid,bid,True)
                 self.log(c, uid, 'modified', bid)
                 self.queue_booking_receipt(c,uid,bid,'booking_modified')
         except sqlite3.IntegrityError:
@@ -1441,11 +1454,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(store.accept_manual_rules(user['id'],body))
                 return
             elif self.path == '/api/bookings/batch':
+                if not validate_acceptance(body.get('rules_acceptance')):raise Problem('Debes leer y aceptar las normas vigentes antes de reservar.',400)
                 self.respond(store.reserve_batch(user['id'],body))
                 return
             elif self.path == '/api/bookings':
+                if not validate_acceptance(body.get('rules_acceptance')):raise Problem('Debes leer y aceptar las normas vigentes antes de reservar.',400)
                 result = store.reserve(user['id'], body)
             elif self.path.startswith('/api/bookings/'):
+                if not validate_acceptance(body.get('rules_acceptance')):raise Problem('Debes leer y aceptar las normas vigentes antes de reservar.',400)
                 try:
                     bid = int(self.path.rsplit('/', 1)[-1])
                 except ValueError:

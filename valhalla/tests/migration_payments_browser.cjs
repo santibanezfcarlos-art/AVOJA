@@ -1,3 +1,4 @@
+const {acceptBookingRules}=require('./browser_rules.cjs');
 // All bank approvals here use an isolated FakeGateway; no external payment is made.
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
@@ -43,7 +44,7 @@ const base=process.env.VALHALLA_TEST_URL;
     state=await me();const tomorrow=new Date(new Date(state.today+'T12:00:00Z').getTime()+2*86400000).toISOString().slice(0,10);
     await page.locator('#schedule-date').fill(tomorrow);await page.locator('#schedule-date').dispatchEvent('change');
     await page.waitForFunction(date=>document.querySelector('[data-slot]')?.dataset.slot?.startsWith(date),tomorrow);
-    await page.locator('[data-box="1"]:not(:disabled)').first().click();await page.getByRole('button',{name:'Confirmar reserva',exact:true}).click();await page.locator('#modal').waitFor({state:'hidden'});
+    await page.locator('[data-box="1"]:not(:disabled)').first().click();await acceptBookingRules(page);await page.getByRole('button',{name:'Confirmar reserva',exact:true}).click();await page.locator('#modal').waitFor({state:'hidden'});
     assert.equal((await me()).packages[0].remaining,9);
 
     // Intercept the hosted checkout in this browser only, leaving the app's real form navigation intact.
@@ -56,7 +57,7 @@ const base=process.env.VALHALLA_TEST_URL;
     await page.getByRole('button',{name:'Ir a Webpay de pruebas',exact:true}).click();
     await page.getByRole('heading',{name:'Checkout ficticio de pruebas aisladas',exact:true}).waitFor();
     await page.getByRole('button',{name:'Aprobar pago ficticio',exact:true}).click();
-    await page.getByRole('heading',{name:'Planes mixtos · todos los boxes',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Comprar horas',exact:true}).waitFor();
     state=await me();assert.equal(state.payments[0].state,'approved');assert.equal(state.packages.reduce((n,p)=>n+(p.status==='paid'?p.remaining:0),0),14);
     const response=await page.request.post(base+'/api/webpay/reconcile',{headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},data:{id:state.payments[0].id}});assert.equal(response.status(),200);
     await page.reload();await page.getByRole('heading',{name:/Hola, Juanita/}).waitFor();

@@ -1,6 +1,7 @@
 // Full browser flow against an isolated test instance with a private admin password.
 const {chromium} = require('playwright');
 const assert = require('node:assert/strict');
+const {acceptBookingRules}=require('./browser_rules.cjs');
 const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
 
 (async () => {
@@ -21,6 +22,7 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
       await p.locator('#content h1').waitFor();
     };
     const confirm = async(p,label='Confirmar') => {
+      await acceptBookingRules(p);
       if(await p.locator('#purchase-rules-accepted').count()){assert.equal(await p.locator('#modal-confirm').isDisabled(),true);assert.equal(await p.locator('.purchase-rules li').count(),12);await p.locator('#purchase-rules-accepted').check();}
       await p.getByRole('button',{name:label,exact:true}).click();
       await p.locator('#modal').waitFor({state:'hidden'});
@@ -147,7 +149,7 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
 
     // A second change is rejected by the API, even if the interface is bypassed.
     const secondChange=await page.evaluate(async({id,start,csrf})=>{
-      const r=await fetch('/api/bookings/'+id,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({box:3,start})});return r.status;
+      const r=await fetch('/api/bookings/'+id,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({box:3,start,rules_acceptance:{accepted:true,version:(await (await fetch('/api/me')).json()).purchase_rules.version}})});return r.status;
     },{id:booking.id,start:original,csrf:current.csrf});
     assert.equal(secondChange,409);
 
