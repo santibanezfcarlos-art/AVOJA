@@ -67,3 +67,5 @@
 .auth-story p{margin-left:auto;margin-right:auto}
 .auth-story .welcome-benefits{justify-content:center}
 .auth-story .welcome-carousel{margin-left:auto;margin-right:auto}
+
+.btn.google-signin{background:#fff;color:#3c4043;border:1px solid #dadce0;gap:12px}.google-icon{display:block;flex-shrink:0}
