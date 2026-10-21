@@ -92,9 +92,8 @@ def resend_existing(db_path, local_day, *, mailer=None):
         return "not_resendable"
     try:
         code = decrypt_code(record["encrypted_code"])
-        start = datetime.fromisoformat(str(local_day) + "T22:00:00").replace(
-            tzinfo=__import__("zoneinfo").ZoneInfo("America/Santiago"))
-        end = start + __import__("datetime").timedelta(days=1)
+        start, end = validity_window(datetime.fromisoformat(str(local_day) + "T22:00:00").replace(
+            tzinfo=__import__("zoneinfo").ZoneInfo("America/Santiago")))
         if datetime.now(timezone.utc) >= end:
             return "expired"
         subject, message = email_content(code, start)
