@@ -70,7 +70,7 @@ Se crea `data/valhalla.sqlite3`, ignorado por Git. Puedes elegir otra base con `
 
 Entidades: `users`, `sessions`, `documents`, `packages`, `bookings` y `audit`. Los horarios se guardan en UTC. La API y la interfaz usan el mismo origen.
 
-Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación de cuentas, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del carnet no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Webpay está implementado únicamente en integración, desactivado por defecto; ningún cobro real está habilitado.
+Para producción: PostgreSQL, almacenamiento privado de documentos, migraciones, límites de intentos, recuperación de cuentas, MFA administrativo, análisis de archivos, copias de seguridad y monitoreo. La revisión manual del carnet no certifica su autenticidad oficial. Los precios son los indicados por el propietario; feriados, vencimientos y política definitiva de cancelación siguen siendo decisiones de producto. Webpay está desactivado por defecto y admite integración o producción explícita; producción requiere credenciales privadas en Render y validación de $50 antes de activar ventas.
 
 ## Pruebas
 
@@ -148,7 +148,7 @@ Para producción conviene un dominio propio con autenticación del remitente. Ta
 
 Los adjuntos se descargan como binarios privados, nunca se ejecutan ni muestran incrustados. Admitir cualquier extensión no demuestra que el documento sea legible o auténtico: administración debe revisar ambos lados. En Render gratuito la base local puede perderse al desplegar o reiniciar; antes de usar carnets reales o pagos, se requiere almacenamiento persistente y protegido.
 
-La conexión de pagos de prueba está en [TRANSBANK.md](TRANSBANK.md). Los cobros reales siguen deshabilitados.
+La conexión de pagos de prueba está en [TRANSBANK.md](TRANSBANK.md). El paso a producción y la validación real de $50 se describen en ese documento.
 
 
 ## Confirmación y recuperación de contraseña
@@ -286,7 +286,7 @@ Los motivos, observaciones y comentarios administrativos son opcionales, tambié
 
 Administración → Descuentos permite crear códigos personalizados (3–40 letras, números o guiones), elegir un porcentaje entero de 1 a 99, editarlos y activarlos/desactivarlos. Se normalizan a mayúsculas y pueden reutilizarse en cualquier plan, sin acumulación de códigos en una compra. No tienen vencimiento ni límite de usos en esta versión.
 
-Después de aceptar las normas, el cliente puede aplicar un código y revisar precio original, ahorro y total en CLP antes de pagar. El servidor calcula y valida el precio; se guardan el código y porcentaje históricos en el plan. El monto descontado se envía a Webpay y se verifica al aprobar, acreditando las mismas sesiones una sola vez. Los pagos ya iniciados conservan su precio, aunque luego se edite o desactive el código. Si existe un pago pendiente con otro código o precio, se debe retomar o resolver antes de crear otro. Las promociones no habilitan cobros de producción ni reemplazan la aceptación de normas.
+Después de aceptar las normas, el cliente puede aplicar un código y revisar precio original, ahorro y total en CLP antes de pagar. El servidor calcula y valida el precio; se guardan el código y porcentaje históricos en el plan. El monto descontado se envía a Webpay y se verifica al aprobar, acreditando las mismas sesiones una sola vez. Los pagos ya iniciados conservan su precio, aunque luego se edite o desactive el código. Si existe un pago pendiente con otro código o precio, se debe retomar o resolver antes de crear otro. Las promociones se calculan en servidor en ambos ambientes y no reemplazan la aceptación de normas.
 
 La cuenta propietaria administradora puede reservar varios boxes disponibles en el mismo horario desde su perfil profesional, de forma individual o mediante selección múltiple. Cada box consume una sesión. También puede modificar una reserva hacia un horario donde tiene otro box. La excepción se valida en servidor por rol, correo propietario y cuenta activa; los demás profesionales mantienen el límite de un box por horario. Se conservan ocupación exclusiva de cada box, saldo, documentación, normas y anticipación de 24 horas.
 
@@ -297,3 +297,5 @@ Administración → Documentos ofrece una aprobación personal para colegas cono
 ### Normas al reservar
 
 Cada agendamiento (individual, selección múltiple o modificación) muestra primero las 12 normas y exige una aceptación explícita sin marcar por defecto; luego abre la confirmación de las horas. Aceptar las normas o cerrar cualquiera de las ventanas no reserva ni consume saldo. La API exige aceptación de la versión vigente. Se registra una evidencia por reserva (y por modificación) con titular, versión, texto y fecha. En horas cargadas por administración, incluida cortesía, la aceptación del plan utilizado se guarda en la misma transacción que la reserva; no es necesario ir antes a Comprar horas. Si un horario está ocupado o falta saldo, se revierten también las aceptaciones.
+
+Producción: [TRANSBANK.md](TRANSBANK.md) contiene las variables de Render, la prueba real de $50 exclusiva del propietario (sin cargar horas) y la activación/pausa explícita de ventas. El resumen mensual incorpora pagos productivos aprobados según la fecha de aprobación en Chile, incluyendo la validación de $50, sin sumar pagos de integración. No se han usado credenciales productivas ni realizado cobros reales desde las pruebas de desarrollo.

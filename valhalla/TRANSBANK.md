@@ -1,72 +1,58 @@
-# Webpay Plus: compra y acreditación de planes
+# Webpay Plus REST: pruebas y producción
 
-Implementado para el **ambiente oficial de integración**, desactivado por defecto. Esta versión no admite modo producción ni credenciales comerciales: no puede realizar cargos reales. El propietario ya tiene un comercio habilitado; no necesita volver a contratarlo para preparar las pruebas.
+## Activación de producción tras aprobación de Transbank
 
-## Panel de administración
+El código admite producción, pero las credenciales y el cambio de ambiente se configuran **solo en Render**, nunca en el repositorio, en el panel ni en los archivos de ejemplo.
 
-**Administración → Transbank** permite guardar el código comercial de Webpay Plus directo (8 a 12 dígitos, conservado exactamente como lo entrega Transbank), consultar el estado y activar/desactivar únicamente el checkout de pruebas. No almacena ni solicita claves comerciales. El identificador utilizado por Skedu no sustituye las credenciales del contrato directo.
-
-El código se guarda como preparación y no se envía en operaciones de integración: estas utilizan las credenciales públicas oficiales de Transbank. Guardar el código no valida el contrato ni habilita cobros. La clave de producción y el almacenamiento persistente siguen pendientes para la activación real.
-
-La configuración se conserva en SQLite y se restaura al iniciar el servicio. Si existe una configuración guardada en el panel, prevalece sobre el modo inicial de `VALHALLA_WEBPAY_MODE`. El panel requiere administrador autorizado y CSRF. No permite cambiar de ambiente mientras existan intentos de pago sin conciliar; tampoco acepta claves ni un modo producción en su API. El conciliador sigue funcionando cuando se activan las pruebas sin reiniciar el servicio.
-
-En el plan gratuito de Render, la base puede perderse al desplegar; guardar una configuración en SQLite no reemplaza el disco persistente. Antes de ingresar clientes, saldos o cobros reales, configura y prueba la persistencia.
-
-## Flujo implementado
-
-1. El profesional confirma su correo, elige un plan, lee las 12 normas, acepta su versión vigente y continúa al checkout alojado por Transbank. No se ingresan tarjetas en Valhalla.
-2. El servidor calcula el precio usando el catálogo; ignora importes, saldos y titulares enviados por el navegador. Guarda una orden única y un paquete pendiente con cero sesiones disponibles.
-3. Crea el pago mediante la API REST oficial v1.2 y envía el token por formulario POST al checkout de integración. Solo se admite el host HTTPS oficial, sin redirecciones arbitrarias de la API.
-4. El retorno GET/POST se procesa sin depender de una sesión del navegador (Webpay vuelve desde otro origen). Se busca el intento guardado y se consulta/confirma directamente con Transbank.
-5. Solo `AUTHORIZED` con código de respuesta entero `0`, importe exacto, orden y sesión coincidentes permite acreditar. El cambio de estado y el saldo se guardan juntos en una transacción.
-6. Un retorno repetido no acredita otra vez ni repone horas ya gastadas. El saldo siempre queda en la cuenta que inició el pago; un paquete Webpay no se puede confirmar manualmente como si fuera pago simulado.
-7. Rechazo, abandono, respuesta incoherente o error de red no habilitan saldo. Una respuesta perdida después de la aprobación puede recuperarse consultando el estado, sin ejecutar otra compra.
-
-El servidor revisa intentos pendientes en segundo plano cada 30 segundos, hasta cinco por pasada, incluso si el navegador no vuelve. El retorno normal acredita al confirmarse; en interrupciones puede tardar hasta una pasada de conciliación o más si Transbank no responde. «Consultar estado» existe en Paquetes y en Administración → Pagos. Los intentos con discrepancias requieren revisión; nunca se aprueban por una señal enviada por el navegador. No se permite otra compra mientras una anterior siga incierta.
-
-Si la creación no devuelve token, el intento queda pendiente de revisión administrativa. No se reintenta automáticamente: se debe consultar la orden con Transbank antes de cerrar o corregir ese intento. La interfaz no ofrece un botón que invente una aprobación.
-
-## Activar solo las pruebas en Render
-
-Conserva primero una copia de la base: en el servicio gratuito actual un nuevo despliegue puede perder los datos locales. Hasta tener persistencia usa saldos, clientes y documentos ficticios.
-
-En Environment:
+En Render → servicio → Environment → Edit configura:
 
 | Variable | Valor |
-| --- | --- |
-| `VALHALLA_WEBPAY_MODE` | `integration` |
-| `VALHALLA_PUBLIC_URL` | Origen HTTPS accesible de tu sitio, sin barra final, ruta ni parámetros |
+|---|---|
+| `VALHALLA_WEBPAY_MODE` | `production` |
+| `VALHALLA_WEBPAY_COMMERCE_CODE` | Código productivo de 12 dígitos confirmado por Transbank |
+| `VALHALLA_WEBPAY_API_KEY` | Clave privada productiva entregada por Transbank |
+| `VALHALLA_PUBLIC_URL` | `https://valhallaoffice.cl` |
 
-Mientras el dominio propio esté pendiente de DNS/certificado, utiliza `https://valhalla-office-demo.onrender.com`. Tras activarlo, puede ser `https://valhallaoffice.cl`. Esta URL se usa también en los enlaces de correo. Guarda y despliega; Paquetes mostrará «Comprar en Webpay · prueba» y una advertencia explícita de que no se realizan cargos reales.
+Espera a que el despliegue de esta versión termine antes de guardar el modo `production`. El inicio rechaza producción sin credenciales válidas o sin origen HTTPS. Una preferencia anterior de pruebas guardada en SQLite no reemplaza el ambiente productivo seleccionado en Render. Las credenciales se usan únicamente en el servidor; no se incluyen en respuestas, notas, errores ni historial de operaciones.
 
-Se usan las credenciales públicas oficiales de integración de Webpay Plus. No pegues aquí la clave ni el código de tu comercio real. Usa únicamente las tarjetas y datos de prueba publicados por Transbank. Para desactivar el checkout, vuelve a `VALHALLA_WEBPAY_MODE=disabled`; las operaciones simuladas anteriores conservan su origen.
+1. Inicia sesión con la cuenta administradora propietaria y abre Administración → Transbank.
+2. Las ventas normales comienzan pausadas. Pulsa **Realizar compra de validación de $50**.
+3. Acepta las normas y revisa la confirmación, que indica expresamente que es un cobro real y no acredita sesiones.
+4. Paga con una tarjeta real en el formulario alojado de Transbank. La aplicación no recibe datos de tarjeta. Este paso lo realiza el propietario, no las pruebas automatizadas.
+5. Vuelve a Administración → Transbank. Cuando la consulta servidor a servidor confirme el pago, aparecerá **Activar ventas reales**. Confirma esa activación para abrir las compras normales.
+6. Puedes pausar nuevas ventas desde el mismo panel. La conciliación de operaciones iniciadas y los saldos existentes se conservan.
 
-## Validación realizada y pendiente
+La validación es una compra separada de cero sesiones por $50, solo para el propietario y sin descuentos. Se registra como cobro real en ingresos, pero nunca crea saldo utilizable. La habilitación queda asociada al código de comercio: cambiarlo requiere otra validación. Transbank puede cobrar comisión sobre el importe. La aplicación no implementa anulaciones bancarias mediante API.
+
+En producción se usa exclusivamente `https://webpay3g.transbank.cl/rswebpaytransaction/api/webpay/v1.2/transactions` y el checkout alojado en `https://webpay3g.transbank.cl/webpayserver/initTransaction`. En integración siguen usándose host y credenciales públicas de pruebas. Los pagos y el índice de operaciones pendientes se separan por ambiente. Los antiguos pagos de integración pueden consultarse con su ambiente original, sin usar claves productivas para ellos. Ningún pago se aprueba por el simple retorno del navegador: se contrastan orden, sesión, monto y respuesta autorizada antes de acreditar una sola vez.
+
+El retorno con `token_ws` y `TBK_TOKEN` juntos se trata como error/aborto: se identifica mediante `TBK_TOKEN`, se cotejan orden y sesión si llegan, se consulta el estado y **no se llama a commit**, incluso si ambos tokens difieren. Los timeouts sin token se buscan mediante orden y sesión, también sin commit. Los datos enviados por el navegador no cambian por sí solos el estado financiero.
+
+Pruebas específicas sin cobros ni tráfico bancario real:
 
 ```bash
-cd /workspace/AVOJA/valhalla
-python3 -m unittest discover -s tests -v
-python3 tests/run_browser.py
-python3 tests/run_browser.py migration_payments_browser.cjs
+python3 -m unittest discover -s tests -p test_production_payments.py
+python3 tests/run_browser.py production_browser.cjs
 ```
 
-Las pruebas automatizadas usan un adaptador bancario falso aislado: cubren aprobación, rechazo, abandono, concurrencia, importe/orden/sesión alterados, respuesta perdida tras aprobar, conciliación de fondo, titularidad y repetición del retorno. El navegador recorre importación CSV, registro, reserva sin carnet y compra con acreditación única en móvil.
+## Integración y pruebas sin cobros
 
-**No se ha completado un pago contra el sandbox oficial desde este entorno.** El intento de conectar a `webpay3gint.transbank.cl` fue bloqueado por el proxy con `Tunnel connection failed: 403 Forbidden`. Esto no es una respuesta bancaria de rechazo. La creación y aprobación real de integración deben probarse desde Render antes de considerar lista la conexión comercial. No se desactivaron TLS ni verificaciones de certificados.
+Para conservar el ambiente de pruebas, usa `VALHALLA_WEBPAY_MODE=integration` y un `VALHALLA_PUBLIC_URL` HTTPS. El panel permite activar/desactivar únicamente este ambiente mientras no esté seleccionado `production` en Render. Sus credenciales son las públicas oficiales del sandbox; el código comercial guardado en el panel no se utiliza para autorizar pagos de integración.
 
-La integración usa la API REST con la biblioteca estándar, sin añadir un SDK. Hosts, cabeceras, credenciales públicas y métodos se contrastaron con el SDK oficial de Transbank.
+Los usuarios compran desde Comprar horas, aceptan las normas y salen al checkout alojado. La aplicación guarda orden, sesión, monto, ambiente e intento idempotente. No permite que el navegador cambie el importe del catálogo ni acredita por un mensaje de “aprobado” del cliente. Los descuentos se calculan en servidor y se guardan como parte del precio de cada compra.
 
-## Antes de habilitar el comercio real
+Se concilian hasta cinco pendientes por pasada en segundo plano, con recuperación de respuestas perdidas y controles contra acreditación duplicada. Un intento incierto no se reemplaza automáticamente por otro: se revisa con Transbank antes de intentar cobrar de nuevo. Pausar ventas no desactiva esta conciliación.
 
-- Preparar almacenamiento persistente protegido, copia/restauración probadas y despliegue que conserve usuarios, saldos, intentos y documentos. `VALHALLA_DB_PATH` permite ubicar SQLite en un disco persistente de Render; requiere contratar/configurar ese disco y montarlo con permisos para UID 10001. La aplicación actual usa un solo servicio; no compartas SQLite entre réplicas. PostgreSQL es la alternativa para escalar.
-- Configurar y comprobar el correo y el dominio HTTPS.
-- Completar los casos de integración oficiales con tu configuración, incluida conciliación tras cortes.
-- Revisar las condiciones de tus planes, cancelaciones y reembolsos. Devolver una sesión al cancelar una reserva no devuelve dinero a una tarjeta. Esta versión no ejecuta reembolsos ni procesa cambios posteriores de Webpay sobre compras ya acreditadas; se necesita conciliación operativa para devoluciones externas.
-- Con autorización expresa, preparar en una actualización separada el ambiente de producción y configurar las credenciales privadas del comercio exclusivamente en Render. `production` está rechazado por el programa actual; añadir claves comerciales por sí solo no activa cobros.
+La reserva exige correo confirmado, saldo y documentos aprobados o una validación personal/migrada autorizada. Cancelar una reserva y devolver una sesión no devuelve dinero a la tarjeta. Los reembolsos bancarios siguen fuera del alcance de esta integración.
+
+## Verificación
+
+Las pruebas automatizadas emplean respuestas bancarias ficticias, sin usar la clave del comercio ni hacer cargos reales. Cubren producción e integración, destinos y credenciales separados, prueba fija de $50, autorización de propietario, apertura/pausa de ventas, rechazo, orden/monto/sesión alterados, idempotencia y retornos de error/timeout sin commit. El navegador comprueba el flujo móvil y los ingresos reales usando únicamente un banco simulado.
+
+La compra real de $50 desde Render queda a cargo del propietario, con la versión desplegada y las credenciales configuradas. Solo esa compra confirma el funcionamiento efectivo con la cuenta productiva del comercio.
 
 ## Referencias oficiales
 
-- [Webpay](https://www.transbankdevelopers.cl/producto/webpay)
-- [Ambientes](https://www.transbankdevelopers.cl/documentacion/como_empezar#ambientes)
+- [Configuración de producción](https://transbankdevelopers.cl/documentacion/como_empezar#configuracion-de-produccion)
 - [Documentación Webpay](https://www.transbankdevelopers.cl/documentacion/webpay)
-- [SDK oficial Python](https://github.com/TransbankDevelopers/transbank-sdk-python), archivos `api_constants.py`, `integration_type.py`, `integration_commerce_codes.py`, `integration_api_keys.py`, `headers_builder.py` y `webpay_plus/transaction.py`.
+- [SDK oficial Python](https://github.com/TransbankDevelopers/transbank-sdk-python)

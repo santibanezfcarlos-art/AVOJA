@@ -196,6 +196,8 @@ class Store:
             CREATE TABLE IF NOT EXISTS purchase_acceptances (
               package_id INTEGER PRIMARY KEY REFERENCES packages(id), user_id INTEGER NOT NULL REFERENCES users(id),
               version TEXT NOT NULL, rules_text TEXT NOT NULL, accepted_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS webpay_live_settings (
+              id INTEGER PRIMARY KEY CHECK(id=1), sales_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, commerce_code TEXT NOT NULL DEFAULT '');
             CREATE TABLE IF NOT EXISTS webpay_settings (
               id INTEGER PRIMARY KEY CHECK(id=1), commerce_code TEXT NOT NULL DEFAULT '',
               sandbox_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
@@ -271,16 +273,22 @@ class Store:
             user_columns = {row['name'] for row in c.execute('PRAGMA table_info(users)')}
             if 'email_verified' not in user_columns:
                 c.execute('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0')
+            if 'commerce_code' not in {row['name'] for row in c.execute('PRAGMA table_info(webpay_live_settings)')}:
+                c.execute("ALTER TABLE webpay_live_settings ADD COLUMN commerce_code TEXT NOT NULL DEFAULT ''")
             payment_columns = {row['name'] for row in c.execute('PRAGMA table_info(payment_attempts)')}
             for column in ('checked_at','commit_requested'):
                 if column not in payment_columns:
                     c.execute(f'ALTER TABLE payment_attempts ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0')
+            if 'commerce_code' not in payment_columns:
+                c.execute("ALTER TABLE payment_attempts ADD COLUMN commerce_code TEXT NOT NULL DEFAULT ''")
+            if 'approved_at' not in payment_columns:
+                c.execute("ALTER TABLE payment_attempts ADD COLUMN approved_at TEXT NOT NULL DEFAULT ''")
             if 'archived' not in payment_columns:
                 c.execute('ALTER TABLE payment_attempts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
             index_sql=c.execute("SELECT sql FROM sqlite_master WHERE type='index' AND name='one_open_webpay_per_user'").fetchone()
-            if index_sql and 'archived' not in index_sql['sql']:
+            if index_sql and ('archived' not in index_sql['sql'] or 'user_id,environment' not in index_sql['sql'].replace(' ','')):
                 c.execute('DROP INDEX one_open_webpay_per_user')
-                c.execute("CREATE UNIQUE INDEX one_open_webpay_per_user ON payment_attempts(user_id) WHERE state IN ('creating','ready','uncertain','review') AND archived=0")
+                c.execute("CREATE UNIQUE INDEX one_open_webpay_per_user ON payment_attempts(user_id,environment) WHERE state IN ('creating','ready','uncertain','review') AND archived=0")
             package_columns = {row['name'] for row in c.execute('PRAGMA table_info(packages)')}
             for column,definition in [('archived_at',"TEXT NOT NULL DEFAULT ''"),('archive_reason',"TEXT NOT NULL DEFAULT ''"),('archived_by','INTEGER REFERENCES users(id)')]:
                 if column not in package_columns:c.execute(f'ALTER TABLE packages ADD COLUMN {column} {definition}')
@@ -991,7 +999,7 @@ class Store:
         with self.connection() as c:
             return {'personal_approvals':[dict(r) for r in c.execute('SELECT p.*,u.name AS operator_name FROM personal_approvals p JOIN users u ON u.id=p.actor_id ORDER BY p.id DESC')], 'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
-                    'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
+                    'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.approved_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
                     'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
@@ -1127,7 +1135,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Cache-Control', cache)
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self' https://webpay3gint.transbank.cl; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self' https://webpay3gint.transbank.cl https://webpay3g.transbank.cl; frame-ancestors 'none'")
 
     def respond(self, data, status=200, cookie=None):
         raw = json.dumps(data, ensure_ascii=False).encode()
@@ -1272,6 +1280,7 @@ class Handler(BaseHTTPRequestHandler):
             user = self.server.store.session(self.cookie())
             if route.path == '/api/me':
                 data = self.server.store.state(user)
+                data['webpay_live_sales_enabled']=self.server.webpay.live_configuration()['sales_enabled'] if getattr(self.server,'webpay',None) else False
                 data['webpay_mode'] = getattr(getattr(self.server, 'webpay', None), 'mode', 'disabled')
                 data['email_delivery_available'] = bool(getattr(self.server, 'email_delivery', None) and self.server.email_delivery.configured)
                 self.respond(data)
@@ -1424,6 +1433,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id'],uid=user['id']))
                 return
+            elif self.path == '/api/admin/webpay/live-sales':
+                self.admin(user)
+                self.respond(self.server.webpay.set_live_sales(user['id'],body));return
             elif self.path == '/api/admin/webpay/settings':
                 self.admin(user)
                 service = getattr(self.server,'webpay',None)

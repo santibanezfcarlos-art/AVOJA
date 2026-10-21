@@ -135,7 +135,7 @@ class MigrationAndPayments(unittest.TestCase):
     def test_forged_abandonment_and_unknown_returns_never_credit(self):
         checkout=self.create_payment();self.payments.returned({'TBK_TOKEN':checkout['token']})
         self.assertEqual(self.gateway.commit_calls,0);self.assertEqual(self.state()['packages'][0]['remaining'],0)
-        for fields in ({'token_ws':'x'*64},{'token_ws':checkout['token'],'TBK_TOKEN':checkout['token']},{'TBK_ORDEN_COMPRA':'fake','TBK_ID_SESION':'fake'}):
+        for fields in ({'token_ws':'x'*64},{'token_ws':checkout['token'],'TBK_TOKEN':'x'*64},{'TBK_ORDEN_COMPRA':'fake','TBK_ID_SESION':'fake'}):
             with self.assertRaises(PaymentError):self.payments.returned(fields)
 
     def test_declined_payment_never_credits(self):

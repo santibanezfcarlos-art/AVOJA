@@ -1,8 +1,4 @@
-"""Webpay Plus REST v1.2. Disabled by default; this release supports integration only.
-
-Protocol/hosts/public sandbox credentials follow TransbankDevelopers/transbank-sdk-python.
-Production is deliberately unavailable until a persistent deployment is approved.
-"""
+"""Webpay Plus REST: separate integration and explicitly configured production."""
 import json
 import os
 import re
@@ -35,12 +31,21 @@ class WebpayGateway:
 
     def __init__(self, mode=None):
         self.mode = (mode if mode is not None else os.environ.get('VALHALLA_WEBPAY_MODE', 'disabled')).lower()
-        if self.mode not in ('disabled', 'integration'):
-            raise ValueError('Solo se admite VALHALLA_WEBPAY_MODE=disabled o integration. Los cobros reales no están habilitados.')
+        if self.mode not in ('disabled', 'integration', 'production'):
+            raise ValueError('VALHALLA_WEBPAY_MODE debe ser disabled, integration o production.')
         self.public_url = os.environ.get('VALHALLA_PUBLIC_URL', 'https://valhalla-office-demo.onrender.com').rstrip('/')
         url = urlsplit(self.public_url)
         if self.mode == 'integration' and (url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/')):
             raise ValueError('Webpay requiere VALHALLA_PUBLIC_URL con un origen HTTPS válido.')
+        if self.mode=='production':
+            self.commerce_code=os.environ.get('VALHALLA_WEBPAY_COMMERCE_CODE','').strip()
+            self.api_key=os.environ.get('VALHALLA_WEBPAY_API_KEY','').strip()
+            if not re.fullmatch(r'5970[0-9]{8}',self.commerce_code) or not self.api_key or len(self.api_key)>200 or any(ch.isspace() for ch in self.api_key):
+                raise ValueError('Producción requiere VALHALLA_WEBPAY_COMMERCE_CODE de 12 dígitos y VALHALLA_WEBPAY_API_KEY privada en Render.')
+            if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
+                raise ValueError('Producción requiere VALHALLA_PUBLIC_URL con un origen HTTPS válido.')
+            self.checkout_host='webpay3g.transbank.cl'
+            self.endpoint='https://webpay3g.transbank.cl/rswebpaytransaction/api/webpay/v1.2/transactions'
         self.opener = build_opener(NoRedirect())
 
     def valid_checkout(self, value):
@@ -53,7 +58,7 @@ class WebpayGateway:
             return False
 
     def request(self, method, token=None, body=None):
-        if self.mode != 'integration':
+        if self.mode not in ('integration','production'):
             raise PaymentError('Webpay aún no está habilitado.', 409)
         if token is not None and not re.fullmatch(r'[A-Za-z0-9_-]{20,64}', token):
             raise PaymentError('Token de pago inválido.', 400)
@@ -89,13 +94,15 @@ class PaymentService:
     def configuration(self):
         with self.store.connection() as c:
             row = c.execute('SELECT * FROM webpay_settings WHERE id=1').fetchone()
-        return {'mode':self.mode, 'sandbox_enabled':self.mode=='integration',
-                'commerce_code':row['commerce_code'] if row else '',
+        live=self.live_configuration()
+        return {'live_sales_enabled':live['sales_enabled'],'validation_paid':live['validation_paid'],'mode':self.mode, 'sandbox_enabled':self.mode=='integration',
+                'commerce_code':self.gateway.commerce_code if self.mode=='production' else row['commerce_code'] if row else '',
                 'integration_commerce_code':WebpayGateway.commerce_code,
-                'production_available':False,
+                'production_available':self.mode=='production',
                 'return_url':getattr(self.gateway,'public_url',os.environ.get('VALHALLA_PUBLIC_URL','https://valhallaoffice.cl')) + '/api/webpay/return'}
 
     def restore_configuration(self):
+        if self.mode=='production':return
         with self.store.connection() as c:
             row = c.execute('SELECT sandbox_enabled FROM webpay_settings WHERE id=1').fetchone()
         if row:
@@ -103,6 +110,7 @@ class PaymentService:
 
     def configure(self, actor, body):
         from app import ADMIN_EMAIL, stamp, now
+        if self.mode=='production':raise PaymentError('El ambiente de producción se configura únicamente en Render.',409)
         enabled, code = body.get('sandbox_enabled'), body.get('commerce_code','')
         if type(enabled) is not bool or not isinstance(code,str):
             raise PaymentError('Revisa el código de comercio y la selección de pruebas.',400)
@@ -124,6 +132,22 @@ class PaymentService:
             self.gateway=gateway
         return self.configuration()
 
+    def live_configuration(self):
+        with self.store.connection() as c:
+            enabled=c.execute('SELECT sales_enabled FROM webpay_live_settings WHERE id=1 AND commerce_code=?',(self.gateway.commerce_code,)).fetchone()
+            paid=c.execute("SELECT 1 FROM payment_attempts WHERE environment='production' AND amount=50 AND hours=0 AND state='approved' AND commerce_code=? LIMIT 1",(self.gateway.commerce_code,)).fetchone()
+        return {'sales_enabled':bool(enabled and enabled['sales_enabled']),'validation_paid':bool(paid)}
+
+    def set_live_sales(self,actor,body):
+        if self.mode!='production' or type(body.get('enabled')) is not bool or body.get('confirmed') is not True:raise PaymentError('Confirma la activación o pausa de ventas en producción.',400)
+        from app import stamp,now
+        with self.configuration_lock,self.store.connection(True) as c:
+            self.store.require_owner(c,actor)
+            if body['enabled'] and not c.execute("SELECT 1 FROM payment_attempts WHERE environment='production' AND amount=50 AND hours=0 AND state='approved' AND commerce_code=? LIMIT 1",(self.gateway.commerce_code,)).fetchone():raise PaymentError('Primero completa la compra de validación de $50 con tarjeta real.',409)
+            c.execute('INSERT INTO webpay_live_settings(id,sales_enabled,updated_at,commerce_code) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET sales_enabled=excluded.sales_enabled,updated_at=excluded.updated_at,commerce_code=excluded.commerce_code',(int(body['enabled']),stamp(now()),self.gateway.commerce_code))
+            self.store.log(c,actor,'webpay_live_sales_'+str(body['enabled']),1)
+        return self.configuration()
+
     @property
     def mode(self):
         return self.gateway.mode
@@ -141,33 +165,37 @@ class PaymentService:
         from rules import validate_acceptance
         if not validate_acceptance(rules_acceptance):
             raise PaymentError('Debes leer y aceptar las normas vigentes antes de comprar.',400)
-        if self.mode != 'integration':
+        if self.mode not in ('integration','production'):
             raise PaymentError('Webpay aún no está habilitado.', 409)
         if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}', key):
             raise PaymentError('Recarga la página para iniciar la compra.', 400)
-        from app import CATALOG, supports_professional, now, stamp
-        if str(catalog) not in CATALOG:
+        from app import CATALOG, supports_professional, now, stamp, ADMIN_EMAIL
+        validation=str(catalog)=='validation_50'
+        if not validation and str(catalog) not in CATALOG:
             raise PaymentError('Plan inválido.', 400)
-        hours, price = CATALOG[str(catalog)]
+        hours, price = (0,50) if validation else CATALOG[str(catalog)]
         with self.store.connection(True) as c:
             user = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
             if not user or not supports_professional(user) or not user['active'] or not user['email_verified']:
                 raise PaymentError('Necesitas una cuenta activa y el correo confirmado para comprar.', 403)
+            if validation:
+                if self.mode!='production' or user['role']!='admin' or user['email']!=ADMIN_EMAIL or discount_code:raise PaymentError('La validación de $50 es exclusiva del administrador en producción, sin descuentos.',403)
+            elif self.mode=='production' and not c.execute('SELECT 1 FROM webpay_live_settings WHERE id=1 AND sales_enabled=1 AND commerce_code=?',(self.gateway.commerce_code,)).fetchone():raise PaymentError('Las compras están temporalmente pausadas. Contacta a administración.',409)
             previous = c.execute('SELECT * FROM payment_attempts WHERE user_id=? AND idempotency_key=?', (uid,key)).fetchone()
             if previous:
                 snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(previous['package_id'],)).fetchone()
-                if snapshot['discount_code']!=str(discount_code).strip().upper() or previous['hours']!=hours or (expected_price is not None and expected_price!=previous['amount']):raise PaymentError('Esta compra ya fue iniciada con otro plan o código.',409)
+                if snapshot['discount_code']!=str(discount_code).strip().upper() or previous['hours']!=hours or previous['environment']!=self.mode or (expected_price is not None and expected_price!=previous['amount']):raise PaymentError('Esta compra ya fue iniciada con otro plan o código.',409)
                 checkout=self.checkout(previous)
                 if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(previous['package_id'],)).fetchone():
                     self.store.record_purchase_acceptance(c,uid,previous['package_id'],rules_acceptance)
                 return checkout
             # Explicit resume retains the original quote, even after a promotion ends.
-            pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND state IN ('creating','ready','uncertain','review') AND archived=0", (uid,)).fetchone()
+            pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND environment=? AND state IN ('creating','ready','uncertain','review') AND archived=0", (uid,self.mode)).fetchone()
             if pending and pending['state']=='ready' and pending['hours']==hours and expected_price==pending['amount']:
                 snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()
                 if snapshot['discount_code']==str(discount_code).strip().upper():
                     return self.checkout(pending)
-            quote=self.store.discount_quote(c,catalog,discount_code);price=quote['price']
+            quote={'code':'','percent':0,'original_price':50,'price':50} if validation else self.store.discount_quote(c,catalog,discount_code);price=quote['price']
             if expected_price is not None and expected_price!=price:raise PaymentError('El precio cambió. Aplica nuevamente el código antes de comprar.',409)
             if pending:
                 if pending['state']=='ready' and pending['hours']==hours and pending['amount']==price and c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()['discount_code']==quote['code']:
@@ -175,12 +203,14 @@ class PaymentService:
                         self.store.record_purchase_acceptance(c,uid,pending['package_id'],rules_acceptance)
                     return self.checkout(pending)
                 raise PaymentError('Ya tienes un pago pendiente. Retómalo o consulta su estado en Comprar horas.', 409)
-            pid = c.execute("INSERT INTO packages(user_id,hours,remaining,price,created_at,source) VALUES(?,?,0,?,?,'webpay_integration')", (uid,hours,price,stamp(now()))).lastrowid
+            source='webpay_validation' if validation else 'webpay_production' if self.mode=='production' else 'webpay_integration'
+            pid = c.execute("INSERT INTO packages(user_id,hours,remaining,price,created_at,source) VALUES(?,?,0,?,?,?)", (uid,hours,price,stamp(now()),source)).lastrowid
             self.store.record_discount(c,pid,quote)
             self.store.record_purchase_acceptance(c,uid,pid,rules_acceptance)
             order, session = 'VH'+secrets.token_hex(10), secrets.token_hex(20)
             aid = c.execute("INSERT INTO payment_attempts(user_id,package_id,idempotency_key,buy_order,session_id,amount,hours,environment,state,created_at) VALUES(?,?,?,?,?,?,?,?, 'creating',?)", (uid,pid,key,order,session,price,hours,self.mode,stamp(now()))).lastrowid
-            self.store.log(c,uid,'webpay_integration_created',aid)
+            c.execute('UPDATE payment_attempts SET commerce_code=? WHERE id=?',(self.gateway.commerce_code,aid))
+            self.store.log(c,uid,'webpay_'+self.mode+'_created',aid)
         try:
             result = self.gateway.create(order,session,price)
             token, url = result.get('token'), result.get('url')
@@ -195,16 +225,20 @@ class PaymentService:
                 c.execute("UPDATE payment_attempts SET state='uncertain' WHERE id=?", (aid,))
             raise
 
-    def reconcile(self, aid, uid=None, commit=False):
-        if self.mode != 'integration':
+    def reconcile(self, aid, uid=None, commit=False, allow_commit=True):
+        from app import stamp,now
+        if self.mode not in ('integration','production'):
             raise PaymentError('Webpay aún no está habilitado.', 409)
         with self.store.connection(True) as c:
             row = c.execute('SELECT * FROM payment_attempts WHERE id=?', (aid,)).fetchone()
             if not row or (uid is not None and row['user_id'] != uid):
                 raise PaymentError('Pago no encontrado.', 404)
+            gateway=self.gateway
             if row['environment'] != self.mode:
-                raise PaymentError('El pago pertenece a otro ambiente.', 409)
-            if commit:
+                if self.mode=='production' and row['environment']=='integration':gateway=WebpayGateway('integration')
+                else:raise PaymentError('El pago pertenece a otro ambiente.', 409)
+            if row['environment']=='production' and row['commerce_code']!=gateway.commerce_code:raise PaymentError('El pago corresponde a otro código de comercio. Revisa la configuración antes de conciliar.',409)
+            if commit and allow_commit:
                 c.execute('UPDATE payment_attempts SET commit_requested=1 WHERE id=?',(aid,))
             commit = commit or bool(row['commit_requested'])
             if row['state'] in ('approved','rejected'):
@@ -216,12 +250,12 @@ class PaymentService:
             # Lease exceeds all HTTP timeouts. Never hold a DB transaction during network calls.
             c.execute('UPDATE payment_attempts SET processing_until=?,checked_at=? WHERE id=?', (time.time()+60,time.time(),aid))
         try:
-            result = self.gateway.status(row['token'])
-            if result.get('status') == 'INITIALIZED':
+            result = gateway.status(row['token'])
+            if result.get('status') == 'INITIALIZED' and allow_commit:
                 with self.store.connection() as c:
                     commit = commit or bool(c.execute('SELECT commit_requested FROM payment_attempts WHERE id=?',(aid,)).fetchone()[0])
-            if result.get('status') == 'INITIALIZED' and commit:
-                result = self.gateway.commit(row['token'])
+            if result.get('status') == 'INITIALIZED' and commit and allow_commit:
+                result = gateway.commit(row['token'])
             try:
                 amount_matches = not isinstance(result.get('amount'),bool) and Decimal(str(result.get('amount'))) == Decimal(row['amount'])
             except InvalidOperation:
@@ -241,10 +275,11 @@ class PaymentService:
                 if current == 'approved':
                     return {'state':'approved','payment_id':aid}
                 if approved:
-                    changed = c.execute("UPDATE packages SET status='paid',remaining=hours,archived_at='',archive_reason='',archived_by=NULL WHERE id=? AND status='pending' AND source='webpay_integration'", (row['package_id'],)).rowcount
+                    c.execute("UPDATE payment_attempts SET approved_at=? WHERE id=? AND approved_at=''",(stamp(now()),aid))
+                    changed = c.execute("UPDATE packages SET status='paid',remaining=hours,archived_at='',archive_reason='',archived_by=NULL WHERE id=? AND status='pending' AND source=?", (row['package_id'],'webpay_validation' if row['environment']=='production' and row['hours']==0 and row['amount']==50 else 'webpay_production' if row['environment']=='production' else 'webpay_integration')).rowcount
                     if changed != 1:
                         raise PaymentError('El paquete requiere conciliación administrativa.',409)
-                    self.store.log(c,row['user_id'],'webpay_integration_credited',aid)
+                    self.store.log(c,row['user_id'],'webpay_'+row['environment']+'_credited',aid)
                 elif rejected:
                     c.execute("UPDATE packages SET status='rejected' WHERE id=? AND status='pending'", (row['package_id'],))
                 c.execute("UPDATE payment_attempts SET state=?,processing_until=0,archived=CASE WHEN ?='approved' THEN 0 ELSE archived END WHERE id=?", (state,state,aid))
@@ -255,7 +290,7 @@ class PaymentService:
             raise
 
     def reconcile_pending(self):
-        if self.mode != 'integration':
+        if self.mode not in ('integration','production'):
             return
         with self.store.connection() as c:
             rows = c.execute("SELECT id FROM payment_attempts WHERE token IS NOT NULL AND state IN ('ready','uncertain') AND checked_at<=? AND processing_until<=? ORDER BY checked_at,id LIMIT 5", (time.time()-30,time.time())).fetchall()
@@ -267,15 +302,16 @@ class PaymentService:
 
     def returned(self, fields):
         normal, abort = fields.get('token_ws'), fields.get('TBK_TOKEN')
-        if normal and abort:
-            raise PaymentError('Retorno de pago inválido.',400)
-        token = normal or abort
+        token = abort or normal
         with self.store.connection() as c:
             if token:
-                row = c.execute('SELECT id FROM payment_attempts WHERE token=?',(token,)).fetchone()
+                row = c.execute('SELECT id,buy_order,session_id FROM payment_attempts WHERE token=?',(token,)).fetchone()
             else:
-                row = c.execute('SELECT id FROM payment_attempts WHERE buy_order=? AND session_id=?',(fields.get('TBK_ORDEN_COMPRA'), fields.get('TBK_ID_SESION'))).fetchone()
+                row = c.execute('SELECT id,buy_order,session_id FROM payment_attempts WHERE buy_order=? AND session_id=?',(fields.get('TBK_ORDEN_COMPRA'), fields.get('TBK_ID_SESION'))).fetchone()
         if not row:
             raise PaymentError('Retorno de pago no encontrado.',404)
+        if any(fields.get(key) and fields[key]!=row[column] for key,column in [('TBK_ORDEN_COMPRA','buy_order'),('TBK_ID_SESION','session_id')]):raise PaymentError('Los datos de retorno no corresponden al pago.',400)
+        if not normal or abort:
+            with self.store.connection(True) as c:c.execute('UPDATE payment_attempts SET commit_requested=0 WHERE id=?',(row['id'],))
         # Abandonment/timeout fields are untrusted: only a server-to-server status decides the result.
-        return self.reconcile(row['id'],commit=bool(normal))
+        return self.reconcile(row['id'],commit=bool(normal and not abort),allow_commit=bool(normal and not abort))
