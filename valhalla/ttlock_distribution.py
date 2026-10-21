@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from mailer import EmailDelivery
 from ttlock_daily import AttemptLedger, decrypt_code, email_content
+from ttlock_email_html import access_email_html
 from ttlock_recipients import recipients_for_tomorrow
 
 
@@ -26,7 +27,7 @@ def _initialize(db_path):
         )""")
 
 
-def _send_one(db_path, issue_day, booking_day, recipient, subject, message, mailer):
+def _send_one(db_path, issue_day, booking_day, recipient, subject, message, mailer, html=None):
     # Reserve before delivery to protect against restarts / concurrent workers.
     with sqlite3.connect(db_path, timeout=10) as db:
         result = db.execute("""INSERT OR IGNORE INTO ttlock_individual_delivery
@@ -39,7 +40,8 @@ def _send_one(db_path, issue_day, booking_day, recipient, subject, message, mail
     try:
         # One TO only: recipients never see anyone else's email.
         mailer.send_message(recipient,subject,message,
-            idempotency_key="ttlock-individual-"+issue_day+"-"+recipient.casefold())
+            idempotency_key="ttlock-individual-"+issue_day+"-"+recipient.casefold(),
+            html=html)
     except Exception:
         # Could have been delivered. A human must investigate before retry.
         status = "uncertain"
@@ -82,10 +84,12 @@ def distribute_saved(db_path, issue_key, issued_at, encrypted_code, *, mailer=No
     delivery = mailer or EmailDelivery()
     if not delivery.configured:
         return "email_not_configured"
-    subject,message = email_content(decrypt_code(encrypted_code),issued_at)
+    code = decrypt_code(encrypted_code)
+    subject,message = email_content(code,issued_at)
+    html = access_email_html(code,issued_at)
     _initialize(db_path)
     statuses = [
-        _send_one(db_path,issue_key,booking_day.isoformat(),email,subject,message,delivery)
+        _send_one(db_path,issue_key,booking_day.isoformat(),email,subject,message,delivery,html=html)
         for email in recipients
     ]
     if "uncertain" in statuses:

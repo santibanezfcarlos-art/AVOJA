@@ -15,7 +15,7 @@ from ttlock_distribution import distribute
 class FakeMailer:
     configured = True
     def __init__(self): self.sent=[]
-    def send_message(self,email,subject,text,idempotency_key=None):
+    def send_message(self,email,subject,text,idempotency_key=None,html=None):
         self.sent.append((email,subject,text,idempotency_key))
 
 

@@ -39,7 +39,7 @@ class FakeMailer:
         self.fail = fail
         self.messages = []
 
-    def send_message(self, to, subject, message, idempotency_key=None):
+    def send_message(self, to, subject, message, idempotency_key=None, html=None):
         self.messages.append((to, subject, message, idempotency_key))
         if self.fail:
             raise RuntimeError("simulated mail failure")
