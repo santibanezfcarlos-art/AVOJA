@@ -69,6 +69,14 @@ def run_daily_once(db_path, *, now=None, client=None, mailer=None):
 
     ledger.mark(day, "emailed", code_id=code_id)
     LOG.info("TTLock daily email accepted by provider on %s", day)
+    # Optional second delivery step. A failure cannot cause another lock code.
+    if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED") == "true":
+        try:
+            from ttlock_distribution import distribute
+            distribution_status = distribute(db_path, day)
+            LOG.info("Next-day distribution status: %s", distribution_status)
+        except Exception:
+            LOG.error("Next-day distribution failed; original code remains valid")
     return "emailed"
 
 
