@@ -22,6 +22,18 @@ const base=process.env.VALHALLA_TEST_URL;
   await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();await page.getByText('Perfil profesional actualizado.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Vincular Google',exact:true}).click();await page.waitForURL('https://accounts.google.com/**');assert.equal(links,1);
   await page.goto(base+'/?google_result=profile_required');await page.locator('#profile-form').waitFor();assert.equal(new URL(page.url()).search,'');
+  await page.getByLabel('Profesión o especialidad').fill('Psicología clínica');
+  await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();
+  await page.getByRole('heading',{name:'Documentación profesional',exact:true}).waitFor();
+  await page.getByText('Tu información se actualizó correctamente.',{exact:true}).waitFor();
+  assert.equal(await page.locator('[data-view="documents"]').getAttribute('aria-current'),'page');
+  assert.equal(await page.locator('#upload-form').count(),1);
+  assert.equal(await page.locator('#degree-upload-form').count(),1);
+  await page.locator('[data-view="profile"]').click();
+  assert.equal(await page.getByLabel('Profesión o especialidad').inputValue(),'Psicología clínica');
+  await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();
+  await page.getByText('Perfil profesional actualizado.',{exact:true}).waitFor();
+  assert.equal(await page.locator('#profile-form').count(),1);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.deepEqual(errors,[]);console.log('Google UI: acceso, registro, administrador sin Google, vinculación, perfil y móvil OK');
  }finally{await browser.close();}

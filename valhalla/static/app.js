@@ -16,6 +16,7 @@ let showArchivedPlans=false;
 let officeGallery = [];
 let googleEnabled = false;
 const googleResult = new URLSearchParams(location.search).get('google_result');
+let completingGoogleProfile=googleResult==='profile_required',profileSavedForDocuments=false;
 if(googleResult){const clean=new URL(location.href);clean.searchParams.delete('google_result');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
 async function continueWithGoogle(link=false){
   const button=document.querySelector(link?'#link-google':'#google-access');if(button)button.disabled=true;
@@ -530,7 +531,7 @@ async function render(guard=null) {
   }
   const html=view==='availability'?await availability():view==='packages'?packages():view==='bookings'?bookings():view==='documents'?documents():view==='profile'?profile():view==='admin'?administration():overview();
   if(generation!==renderGeneration||(guard&&!guard()))return;
-  shell();document.querySelector('#content').innerHTML=html;liveFormDirty=false;liveRefreshPending=false;bind();
+  shell();document.querySelector('#content').innerHTML=(view==='documents'&&profileSavedForDocuments?'<div class="notice info" id="profile-saved-notice" role="status" tabindex="-1"><strong>Tu información se actualizó correctamente.</strong><p>Ahora continúa con tu documentación. Envía tu carnet de identidad y tu certificado de título para que administración los revise.</p></div>':'')+html;liveFormDirty=false;liveRefreshPending=false;bind();
 }
 function canRefreshLive(){
   return state&&!document.hidden&&!modal.open&&!liveFormDirty&&!modifying&&!selectedBookings.length&&
@@ -587,7 +588,18 @@ function bind() {
   const refreshAgenda=document.querySelector('#refresh-agenda');if(refreshAgenda)refreshAgenda.onclick=()=>render().catch(e=>toast(e.message));
   bindGallery();
   const linkGoogle=document.querySelector('#link-google');if(linkGoogle)linkGoogle.onclick=()=>continueWithGoogle(true);
-  const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{event.preventDefault();const button=profileForm.querySelector('button[type=submit]');button.disabled=true;try{await api('profile',Object.fromEntries(new FormData(profileForm)));await reload();toast('Perfil profesional actualizado.');}catch(e){document.querySelector('#profile-error').textContent=e.message;}finally{button.disabled=false;}};
+  const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{
+    event.preventDefault();const button=profileForm.querySelector('button[type=submit]');button.disabled=true;
+    const nextDocuments=state.user.role==='professional'&&(completingGoogleProfile||(state.user.google_linked&&!state.user.specialty?.trim()));
+    try{
+      await api('profile',Object.fromEntries(new FormData(profileForm)));
+      if(nextDocuments){completingGoogleProfile=false;profileSavedForDocuments=true;view='documents';}
+      await reload();
+      if(nextDocuments){window.scrollTo(0,0);document.querySelector('#profile-saved-notice')?.focus();}
+      toast(nextDocuments?'Perfil actualizado. Continúa con tu documentación.':'Perfil profesional actualizado.');
+    }catch(e){const error=document.querySelector('#profile-error');if(error)error.textContent=e.message;else toast(e.message);}
+    finally{button.disabled=false;}
+  };
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{view=b.dataset.go;modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-modify]').forEach(b=>b.onclick=()=>{multiBooking=false;selectedBookings=[];modifying=state.bookings.find(x=>x.id===Number(b.dataset.modify));selectedDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(modifying.start));view='availability';render().catch(e=>toast(e.message));});
   const abort=document.querySelector('#abort-change');if(abort)abort.onclick=()=>{modifying=null;view='bookings';render().catch(e=>toast(e.message));};
