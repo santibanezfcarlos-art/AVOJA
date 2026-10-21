@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from mailer import EmailDelivery
 from ttlock_daily import AttemptLedger, decrypt_code, email_content
+from ttlock_email_html import access_email_html
 from ttlock_recipients import recipients_for_tomorrow
 
 
