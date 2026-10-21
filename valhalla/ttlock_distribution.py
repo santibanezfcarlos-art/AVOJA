@@ -40,7 +40,8 @@ def _send_one(db_path, issue_day, booking_day, recipient, subject, message, mail
     try:
         # One TO only: recipients never see anyone else's email.
         mailer.send_message(recipient,subject,message,
-            idempotency_key="ttlock-individual-"+issue_day+"-"+recipient.casefold())
+            idempotency_key="ttlock-individual-"+issue_day+"-"+recipient.casefold(),
+            html=access_email_html(message.split("#")[1], datetime.fromisoformat(booking_day+"T00:00:00").replace(tzinfo=ZoneInfo("America/Santiago")) - __import__("datetime").timedelta(days=1)))
     except Exception:
         # Could have been delivered. A human must investigate before retry.
         status = "uncertain"
