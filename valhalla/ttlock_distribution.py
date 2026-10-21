@@ -26,8 +26,7 @@ def distribute(db_path, issue_day, transport=None):
     # fallback inbox in BCC.
     excluded = {owner.casefold(), os.environ["TTLOCK_EMAIL_TO"].strip().casefold()}
     recipients = [r for r in recipients if r.strip().casefold() not in excluded]
-    if not recipients:
-        return "no_recipients"
+    # Always deliver the corporate backup even when nobody is booked.
     if len(recipients) > 40:
         return "recipient_limit"
     code = decrypt_code(record["encrypted_code"])
@@ -41,7 +40,9 @@ def distribute(db_path, issue_day, transport=None):
         if cursor.rowcount == 0:
             return "already_attempted"
     payload = {"from":os.environ["VALHALLA_EMAIL_FROM"],"to":[owner],
-               "bcc":recipients,"subject":subject,"text":message}
+               "subject":subject,"text":message}
+    if recipients:
+        payload["bcc"] = recipients
     request = Request("https://api.resend.com/emails",
         data=json.dumps(payload).encode(),method="POST",
         headers={"Authorization":"Bearer "+os.environ["VALHALLA_RESEND_API_KEY"],
