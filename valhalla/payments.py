@@ -129,7 +129,7 @@ class PaymentService:
         return self.gateway.mode
 
     def checkout(self, row):
-        if row['state'] != 'ready' or row['environment'] != self.mode:
+        if row['archived'] or row['state'] != 'ready' or row['environment'] != self.mode:
             raise PaymentError('Hay un pago pendiente de conciliación. Consulta su estado; no inicies otro cobro.', 409)
         return {'payment_id':row['id'], 'token':row['token'], 'url':row['checkout_url'], 'mode':self.mode}
 
@@ -159,7 +159,7 @@ class PaymentService:
                 if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(previous['package_id'],)).fetchone():
                     self.store.record_purchase_acceptance(c,uid,previous['package_id'],rules_acceptance)
                 return checkout
-            pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND state IN ('creating','ready','uncertain','review')", (uid,)).fetchone()
+            pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND state IN ('creating','ready','uncertain','review') AND archived=0", (uid,)).fetchone()
             if pending:
                 if pending['state']=='ready' and pending['hours']==hours:
                     if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(pending['package_id'],)).fetchone():
@@ -231,13 +231,13 @@ class PaymentService:
                 if current == 'approved':
                     return {'state':'approved','payment_id':aid}
                 if approved:
-                    changed = c.execute("UPDATE packages SET status='paid',remaining=hours WHERE id=? AND status='pending' AND source='webpay_integration'", (row['package_id'],)).rowcount
+                    changed = c.execute("UPDATE packages SET status='paid',remaining=hours,archived_at='',archive_reason='',archived_by=NULL WHERE id=? AND status='pending' AND source='webpay_integration'", (row['package_id'],)).rowcount
                     if changed != 1:
                         raise PaymentError('El paquete requiere conciliación administrativa.',409)
                     self.store.log(c,row['user_id'],'webpay_integration_credited',aid)
                 elif rejected:
                     c.execute("UPDATE packages SET status='rejected' WHERE id=? AND status='pending'", (row['package_id'],))
-                c.execute('UPDATE payment_attempts SET state=?,processing_until=0 WHERE id=?', (state,aid))
+                c.execute("UPDATE payment_attempts SET state=?,processing_until=0,archived=CASE WHEN ?='approved' THEN 0 ELSE archived END WHERE id=?", (state,state,aid))
             return {'state':state, 'payment_id':aid}
         except PaymentError:
             with self.store.connection(True) as c:

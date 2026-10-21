@@ -153,6 +153,15 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions (
               token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
               csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS package_archive_events (
+              id INTEGER PRIMARY KEY, package_id INTEGER NOT NULL REFERENCES packages(id),
+              actor_id INTEGER NOT NULL REFERENCES users(id), reason TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS session_adjustments (
+              id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+              package_id INTEGER NOT NULL REFERENCES packages(id), actor_id INTEGER NOT NULL REFERENCES users(id),
+              delta INTEGER NOT NULL, before_balance INTEGER NOT NULL, after_balance INTEGER NOT NULL,
+              reason TEXT NOT NULL, request_key TEXT NOT NULL, fingerprint TEXT NOT NULL, created_at TEXT NOT NULL,
+              UNIQUE(actor_id,request_key));
             CREATE TABLE IF NOT EXISTS manual_credits (
               id INTEGER PRIMARY KEY, package_id INTEGER NOT NULL UNIQUE REFERENCES packages(id),
               user_id INTEGER NOT NULL REFERENCES users(id), actor_id INTEGER NOT NULL REFERENCES users(id),
@@ -245,7 +254,15 @@ class Store:
             for column in ('checked_at','commit_requested'):
                 if column not in payment_columns:
                     c.execute(f'ALTER TABLE payment_attempts ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0')
+            if 'archived' not in payment_columns:
+                c.execute('ALTER TABLE payment_attempts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+            index_sql=c.execute("SELECT sql FROM sqlite_master WHERE type='index' AND name='one_open_webpay_per_user'").fetchone()
+            if index_sql and 'archived' not in index_sql['sql']:
+                c.execute('DROP INDEX one_open_webpay_per_user')
+                c.execute("CREATE UNIQUE INDEX one_open_webpay_per_user ON payment_attempts(user_id) WHERE state IN ('creating','ready','uncertain','review') AND archived=0")
             package_columns = {row['name'] for row in c.execute('PRAGMA table_info(packages)')}
+            for column,definition in [('archived_at',"TEXT NOT NULL DEFAULT ''"),('archive_reason',"TEXT NOT NULL DEFAULT ''"),('archived_by','INTEGER REFERENCES users(id)')]:
+                if column not in package_columns:c.execute(f'ALTER TABLE packages ADD COLUMN {column} {definition}')
             if 'source' not in package_columns:
                 c.execute("ALTER TABLE packages ADD COLUMN source TEXT NOT NULL DEFAULT 'simulated'")
             if 'kind' not in columns:
@@ -575,11 +592,11 @@ class Store:
             profile['degree_approved'] = bool(degree and degree['status']=='approved')
             profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
             return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':max(now().astimezone(CHILE).date()+timedelta(days=1),(now().astimezone(timezone.utc)+MIN_BOOKING_NOTICE).astimezone(CHILE).date()).isoformat(),
-                    'packages': [dict(r) for r in c.execute('SELECT p.*,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? ORDER BY p.id DESC', (user['id'],))],
+                    'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? AND p.archived_at=\'\' ORDER BY p.id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
                     'email_verification_delivery': next((row['status'] for row in c.execute("SELECT status FROM mail_events WHERE user_id=? AND kind='verification' ORDER BY id DESC LIMIT 1",(user['id'],))),None),
-                    'payments': [dict(r) for r in c.execute('SELECT id,package_id,buy_order,amount,hours,environment,state,created_at FROM payment_attempts WHERE user_id=? ORDER BY id DESC', (user['id'],))],
+                    'payments': [dict(r) for r in c.execute('SELECT id,package_id,buy_order,amount,hours,environment,state,created_at FROM payment_attempts WHERE user_id=? AND archived=0 ORDER BY id DESC', (user['id'],))],
                     'session_minutes': SESSION_MINUTES, 'booking_interval_minutes': 60,
                     'catalog': [{'id': key, 'hours': val[0], 'sessions': val[0], 'duration_minutes': SESSION_MINUTES, 'price': val[1]} for key, val in CATALOG.items()]}
 
@@ -706,6 +723,56 @@ class Store:
                 return {'package_id':pid,'repeated':False}
         except sqlite3.IntegrityError:
             raise Problem('La carga ya está registrada o sus datos entraron en conflicto. Revisa el historial antes de volver a cargar.',409)
+
+    def require_owner(self,c,actor):
+        user=c.execute('SELECT role,email,active FROM users WHERE id=?',(actor,)).fetchone()
+        if not user or user['role']!='admin' or user['email']!=ADMIN_EMAIL or not user['active']:
+            raise Problem('Acceso exclusivo de administración.',403)
+
+    def adjust_sessions(self,actor,body):
+        uid,pid,delta,expected=body.get('user_id'),body.get('package_id'),body.get('delta'),body.get('expected_remaining')
+        reason,key=body.get('reason'),body.get('request_key')
+        if any(type(value) is not int for value in (uid,pid,delta,expected)) or not -200<=delta<=200 or delta==0 or expected<0:
+            raise Problem('Indica un plan confirmado y un ajuste de 1 a 200 sesiones, para sumar o descontar.')
+        if not isinstance(reason,str) or not 5<=len(reason.strip())<=500 or not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
+            raise Problem('Incluye el motivo del ajuste y vuelve a confirmar.')
+        reason=reason.strip();fingerprint=hashlib.sha256(json.dumps([uid,pid,delta,expected,reason]).encode()).hexdigest()
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            previous=c.execute('SELECT * FROM session_adjustments WHERE actor_id=? AND request_key=?',(actor,key)).fetchone()
+            if previous:
+                if previous['fingerprint']!=fingerprint:raise Problem('Esta confirmación corresponde a otro ajuste.',409)
+                return {'id':previous['id'],'remaining':previous['after_balance'],'repeated':True}
+            plan=c.execute('SELECT * FROM packages WHERE id=? AND user_id=?',(pid,uid)).fetchone()
+            if not plan or plan['status']!='paid' or plan['archived_at']:
+                raise Problem('Solo puedes ajustar el saldo de un plan confirmado de esta cuenta.',409)
+            if plan['remaining']!=expected:raise Problem('El saldo cambió desde que abriste la ficha. Vuelve a consultar antes de ajustar.',409)
+            balance=plan['remaining']+delta
+            if not 0<=balance<=10000:raise Problem('El ajuste no puede dejar saldo negativo ni superar 10.000 sesiones.',409)
+            c.execute('UPDATE packages SET remaining=? WHERE id=?',(balance,pid))
+            aid=c.execute('INSERT INTO session_adjustments(user_id,package_id,actor_id,delta,before_balance,after_balance,reason,request_key,fingerprint,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(uid,pid,actor,delta,plan['remaining'],balance,reason,key,fingerprint,stamp(now()))).lastrowid
+            self.log(c,actor,'sessions_adjusted',aid)
+            return {'id':aid,'remaining':balance,'repeated':False}
+
+    def archive_package(self,actor,body):
+        pid,reason=body.get('package_id'),body.get('reason')
+        if type(pid) is not int or not isinstance(reason,str) or not 5<=len(reason.strip())<=500:
+            raise Problem('Selecciona el plan e indica por qué lo eliminas de la vista.')
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            plan=c.execute('SELECT * FROM packages WHERE id=?',(pid,)).fetchone()
+            if not plan:raise Problem('Plan no encontrado.',404)
+            if plan['archived_at']:return {'ok':True,'repeated':True}
+            if plan['status'] not in ('pending','rejected') or c.execute('SELECT 1 FROM bookings WHERE package_id=?',(pid,)).fetchone():
+                raise Problem('Solo se pueden archivar planes sin pago acreditado y sin reservas asociadas.',409)
+            payment=c.execute('SELECT * FROM payment_attempts WHERE package_id=?',(pid,)).fetchone()
+            if payment and (payment['state'] not in ('ready','rejected') or payment['processing_until']>time.time() or (payment['state']=='ready' and payment['commit_requested'])):
+                raise Problem('Este pago requiere comprobación antes de archivarlo. Consulta su estado y vuelve a intentarlo.',409)
+            c.execute('INSERT INTO package_archive_events(package_id,actor_id,reason,created_at) VALUES(?,?,?,?)',(pid,actor,reason.strip(),stamp(now())))
+            c.execute('UPDATE packages SET archived_at=?,archive_reason=?,archived_by=? WHERE id=?',(stamp(now()),reason.strip(),actor,pid))
+            if payment:c.execute('UPDATE payment_attempts SET archived=1 WHERE id=?',(payment['id'],))
+            self.log(c,actor,'package_archived',pid)
+            return {'ok':True,'repeated':False}
 
     def accept_manual_rules(self, uid, body):
         pid=body.get('package_id')
@@ -848,13 +915,13 @@ class Store:
 
     def admin_state(self):
         with self.connection() as c:
-            return {'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+            return {'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
-                    'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
+                    'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
                     'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
-                    'packages': [dict(r) for r in c.execute('SELECT p.*,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
+                    'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
                     'audit': [dict(r) for r in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 30')]}
 
@@ -869,6 +936,7 @@ class Store:
                     raise Problem('Paquete no encontrado.', 404)
                 if row['source'] != 'simulated':
                     raise Problem('Este paquete no es un pago simulado y no admite confirmación manual.', 403)
+                if row['archived_at']:raise Problem('Este plan fue archivado y no admite confirmación manual.',409)
                 if row['status'] != 'pending':
                     raise Problem('El pago ya fue procesado.', 409)
                 decision = body.get('decision')
@@ -1275,6 +1343,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not service or type(body.get('id')) is not int:
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id']))
+                return
+            elif self.path == '/api/admin/session-adjustments':
+                self.admin(user)
+                self.respond(store.adjust_sessions(user['id'],body))
+                return
+            elif self.path == '/api/admin/packages/archive':
+                self.admin(user)
+                self.respond(store.archive_package(user['id'],body))
                 return
             elif self.path == '/api/admin/manual-credits':
                 self.admin(user)
