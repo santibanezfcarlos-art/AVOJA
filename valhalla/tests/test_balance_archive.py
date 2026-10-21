@@ -26,6 +26,13 @@ class BalanceAndArchive(unittest.TestCase):
  def adjust(self,**changes):return self.store.adjust_sessions(self.admin,self.body|changes)
  def pending(self):return self.store.buy(self.uid,{'catalog_id':'5','rules_acceptance':self.rules})
  def archive(self,pid):return self.store.archive_package(self.admin,{'package_id':pid,'reason':'Compra abandonada sin pago acreditado'})
+ def test_adjustment_and_archive_without_reason(self):
+  body=dict(self.body);del body['reason']
+  self.assertEqual(self.store.adjust_sessions(self.admin,body)['remaining'],2)
+  self.assertEqual(self.store.admin_state()['session_adjustments'][0]['reason'],'')
+  pid=self.pending();self.store.archive_package(self.admin,{'package_id':pid})
+  self.assertNotIn(pid,[plan['id'] for plan in self.state()['packages']])
+  self.assertEqual(self.store.admin_state()['package_archive_events'][0]['reason'],'')
  def test_five_to_two_then_increase_preserves_price_hours_and_money_history(self):
   self.assertEqual(self.adjust()['remaining'],2);self.adjust(delta=2,expected_remaining=2,request_key='balance-second-key-12345')
   plan=self.state()['packages'][0];self.assertEqual((plan['hours'],plan['remaining'],plan['price'],plan['balance_adjustment']),(5,4,0,-1))
@@ -41,7 +48,7 @@ class BalanceAndArchive(unittest.TestCase):
   with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:result=list(pool.map(attempt,['balance-parallel-11111','balance-parallel-22222']))
   self.assertEqual(sum(item is not None for item in result),1);self.assertEqual(self.state()['packages'][0]['remaining'],1)
  def test_invalid_negative_stale_and_wrong_user_rejected_without_changes(self):
-  for changes in ({'delta':-6},{'delta':0},{'delta':True},{'expected_remaining':4},{'user_id':self.admin},{'reason':'x'},{'delta':201}):
+  for changes in ({'delta':-6},{'delta':0},{'delta':True},{'expected_remaining':4},{'user_id':self.admin},{'reason':'x'*501},{'delta':201}):
    with self.subTest(changes=changes),self.assertRaises(Problem):self.adjust(**changes)
   self.assertEqual(self.state()['packages'][0]['remaining'],5)
   with self.assertRaises(Problem):self.store.adjust_sessions(self.uid,self.body)

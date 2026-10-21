@@ -21,5 +21,17 @@ await admin.reload();await admin.locator('[data-monthly-total]').waitFor();asser
 await admin.locator('#payments-month').fill(received.slice(0,7));await admin.getByRole('cell',{name:'Caja-previous-browser',exact:true}).waitFor();assert.match(await admin.locator('[data-monthly-total]').innerText(),/1[.\s]?000/);
 await admin.locator('[data-tab="users"]').click();await admin.getByRole('button',{name:'Profesional Efectivo',exact:true}).click();await admin.getByRole('heading',{name:'Ficha de Profesional Efectivo',exact:true}).waitFor();assert.equal((await admin.locator('[data-user-balance]').innerText()).trim(),'6');assert.match(await admin.locator('#modal').innerText(),/Reservadas \/ en curso/);assert.match(await admin.locator('#modal').innerText(),/Banco-20261019-browser001/);assert.match(await admin.locator('#modal').innerText(),/Historial de reservas/);assert.equal(await admin.locator('#modal').evaluate(dialog=>dialog.scrollHeight>dialog.clientHeight),true);await admin.getByRole('button',{name:'Cerrar ficha',exact:true}).click();
 await admin.setViewportSize({width:1440,height:900});await admin.getByRole('button',{name:'Profesional Efectivo',exact:true}).click();await admin.locator('[data-user-balance]').waitFor();await admin.getByRole('button',{name:'Cerrar ficha',exact:true}).click();
+// Courtesy needs neither a comment nor an external payment reference.
+await admin.locator('[data-tab="manual_credits"]').click();
+await admin.locator('#manual-credit-form select[name="user_id"]').selectOption(String(profile.user.id));
+await admin.getByLabel('Sesiones a cargar').fill('2');
+await admin.getByLabel('Medio de pago o motivo').selectOption('courtesy');
+assert.equal(await admin.locator('#manual-credit-form [name="reference"]').evaluate(e=>e.required),false);
+assert.equal(await admin.locator('#manual-credit-form textarea').evaluate(e=>e.required),false);
+await admin.locator('#manual-credit-form [name="confirmed"]').check();
+await admin.getByRole('button',{name:'Revisar carga de horas',exact:true}).click();
+await admin.getByRole('button',{name:'Confirmar carga de horas',exact:true}).click();
+await admin.getByRole('cell',{name:/CORTESIA-/}).waitFor();
+assert.equal((await me()).packages.reduce((sum,p)=>sum+p.remaining,0),8);
 assert.equal(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);console.log('PASS: administrador carga transferencia, profesional acepta normas sin nueva compra, mantiene validaciones y reserva con sus horas en móvil.');
 }finally{await browser.close();}})().catch(error=>{console.error(error);process.exitCode=1;});

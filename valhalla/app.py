@@ -43,6 +43,14 @@ class Problem(Exception):
         self.message, self.status = message, status
 
 
+def optional_comment(body,key='note'):
+    value=body.get(key,'')
+    if value is None:return ''
+    if not isinstance(value,str) or len(value.strip())>500:
+        raise Problem('El comentario debe ser texto de hasta 500 caracteres.')
+    return value.strip()
+
+
 def supports_professional(user):
     return user and (user['role'] == 'professional' or (user['role'] == 'admin' and user['email'] == ADMIN_EMAIL))
 
@@ -447,14 +455,14 @@ class Store:
         name = str(body.get('name', '')).strip()
         specialty = str(body.get('specialty', '')).strip()
         reference = str(body.get('reference', '')).strip()
-        note = str(body.get('note', '')).strip()
+        note = optional_comment(body)
         sessions = body.get('sessions')
         if body.get('identity_confirmed') is not True:
             raise Problem('Confirma que este cliente ya fue validado en el sistema anterior.')
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email) or len(email)>200 or email == ADMIN_EMAIL or email in LEGACY_DEMO_EMAILS:
             raise Problem('Indica el correo de un cliente profesional válido.')
-        if not 2<=len(name)<=100 or not 2<=len(specialty)<=100 or not 2<=len(reference)<=100 or not 5<=len(note)<=500:
-            raise Problem('Completa nombre, especialidad, referencia anterior y observación (mínimo 5 caracteres).')
+        if not 2<=len(name)<=100 or not 2<=len(specialty)<=100 or not 2<=len(reference)<=100 :
+            raise Problem('Completa nombre, especialidad y referencia del sistema anterior.')
         if type(sessions) is not int or not 0<=sessions<=10000:
             raise Problem('Indica un saldo entero entre 0 y 10.000 sesiones.')
         with (nullcontext(connection) if connection is not None else self.connection(True)) as c:
@@ -484,8 +492,8 @@ class Store:
             delimiter = ';' if text.splitlines()[0].count(';')>text.splitlines()[0].count(',') else ','
             reader = csv.DictReader(io.StringIO(text.lstrip('\ufeff')), delimiter=delimiter, strict=True)
             expected = ['referencia','nombre','correo','especialidad','sesiones','observacion']
-            if reader.fieldnames != expected:
-                raise Problem('Las columnas deben ser: referencia,nombre,correo,especialidad,sesiones,observacion. Descarga la plantilla.')
+            if reader.fieldnames not in (expected,expected[:-1]):
+                raise Problem('Las columnas deben ser: referencia,nombre,correo,especialidad,sesiones. La columna observacion es opcional.')
             rows = list(reader)
         except (csv.Error, IndexError):
             raise Problem('El CSV no tiene un formato válido.')
@@ -495,9 +503,9 @@ class Store:
         with self.connection(True) as c:
             for number, row in enumerate(rows, 2):
                 try:
-                    if None in row or any(value is None for value in row.values()) or not re.fullmatch(r'\d{1,5}',row['sesiones'].strip()):
+                    if None in row or any(row.get(key) is None for key in expected[:-1]) or not re.fullmatch(r'\d{1,5}',row['sesiones'].strip()):
                         raise Problem('Verifica el número de columnas y el saldo entero de sesiones.')
-                    data = dict(zip(('reference','name','email','specialty','sessions','note'), (row[key] for key in expected)))
+                    data = dict(zip(('reference','name','email','specialty','sessions','note'), (row.get(key) for key in expected)))
                     data['sessions'] = int(data['sessions'])
                     data['identity_confirmed'] = True
                     self.import_legacy(actor, data, connection=c)
@@ -685,13 +693,13 @@ class Store:
 
     def manual_credit(self, actor, body):
         uid, hours, amount=body.get('user_id'),body.get('hours'),body.get('amount')
-        method, reference, note, key=body.get('method'),body.get('reference'),body.get('note'),body.get('request_key')
+        method, reference, note, key=body.get('method'),body.get('reference',''),optional_comment(body),body.get('request_key')
         if type(uid) is not int or type(hours) is not int or not 1<=hours<=200 or type(amount) is not int or not 0<=amount<=100000000:
             raise Problem('Selecciona el profesional, entre 1 y 200 sesiones y un monto entero en pesos.')
         if method not in ('cash','transfer','courtesy') or (method=='courtesy' and amount!=0) or (method in ('cash','transfer') and amount<=0):
             raise Problem('Indica el medio y monto recibido. Las cortesías deben tener monto cero.')
-        if not isinstance(reference,str) or not 3<=len(reference.strip())<=120 or not isinstance(note,str) or not 5<=len(note.strip())<=500:
-            raise Problem('Incluye una referencia única y una observación de respaldo de al menos 5 caracteres.')
+        if not isinstance(reference,str) or len(reference.strip())>120 or (len(reference.strip())<3 and not (method=='courtesy' and not reference.strip())):
+            raise Problem('Incluye una referencia única de 3 a 120 caracteres. En las cortesías puedes dejarla vacía.')
         if body.get('confirmed') is not True or not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
             raise Problem('Confirma que verificaste el pago o autorizaste la cortesía.')
         received_on=body.get('received_on',now().astimezone(CHILE).date().isoformat())
@@ -700,7 +708,7 @@ class Store:
                 raise ValueError()
         except (ValueError,TypeError):
             raise Problem('Indica una fecha de recepción válida, hasta hoy.')
-        reference,note=reference.strip(),note.strip()
+        reference=reference.strip() or 'CORTESIA-'+hashlib.sha256(key.encode()).hexdigest()[:20]
         fingerprint=hashlib.sha256(json.dumps([uid,hours,amount,method,reference,note,received_on]).encode()).hexdigest()
         try:
             with self.connection(True) as c:
@@ -731,11 +739,11 @@ class Store:
 
     def adjust_sessions(self,actor,body):
         uid,pid,delta,expected=body.get('user_id'),body.get('package_id'),body.get('delta'),body.get('expected_remaining')
-        reason,key=body.get('reason'),body.get('request_key')
+        reason,key=optional_comment(body,'reason'),body.get('request_key')
         if any(type(value) is not int for value in (uid,pid,delta,expected)) or not -200<=delta<=200 or delta==0 or expected<0:
             raise Problem('Indica un plan confirmado y un ajuste de 1 a 200 sesiones, para sumar o descontar.')
-        if not isinstance(reason,str) or not 5<=len(reason.strip())<=500 or not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
-            raise Problem('Incluye el motivo del ajuste y vuelve a confirmar.')
+        if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',key):
+            raise Problem('Vuelve a confirmar el ajuste desde la ficha.')
         reason=reason.strip();fingerprint=hashlib.sha256(json.dumps([uid,pid,delta,expected,reason]).encode()).hexdigest()
         with self.connection(True) as c:
             self.require_owner(c,actor)
@@ -755,9 +763,9 @@ class Store:
             return {'id':aid,'remaining':balance,'repeated':False}
 
     def archive_package(self,actor,body):
-        pid,reason=body.get('package_id'),body.get('reason')
-        if type(pid) is not int or not isinstance(reason,str) or not 5<=len(reason.strip())<=500:
-            raise Problem('Selecciona el plan e indica por qué lo eliminas de la vista.')
+        pid,reason=body.get('package_id'),optional_comment(body,'reason')
+        if type(pid) is not int:
+            raise Problem('Selecciona el plan que deseas eliminar de la vista.')
         with self.connection(True) as c:
             self.require_owner(c,actor)
             plan=c.execute('SELECT * FROM packages WHERE id=?',(pid,)).fetchone()
@@ -951,9 +959,9 @@ class Store:
                 if target != latest:
                     raise Problem('Revisa el documento más reciente de este profesional.', 409)
                 decision = body.get('decision')
-                note = str(body.get('note', '')).strip()[:500]
-                if decision not in ('approved', 'rejected') or (decision == 'rejected' and not note):
-                    raise Problem('Indica una decisión y, si rechazas, un motivo.')
+                note = optional_comment(body)
+                if decision not in ('approved', 'rejected'):
+                    raise Problem('Indica una decisión válida para el documento.')
                 if row['kind'] == 'identity' and decision == 'approved' and body.get('identity_confirmed') is not True:
                     raise Problem('Confirma que revisaste ambos lados del carnet y que corresponden al titular.')
                 c.execute('UPDATE documents SET status=?,note=?,reviewer_id=? WHERE id=?', (decision, note, actor, target))

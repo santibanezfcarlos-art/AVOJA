@@ -278,8 +278,7 @@ class Rules(unittest.TestCase):
             self.store.reserve(3,self.slot(11))
         with self.assertRaises(Problem):
             self.store.admin_action(4,{'action':'document','id':1,'decision':'approved','identity_confirmed':True})
-        with self.assertRaises(Problem):
-            self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected'})
+        self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected'})
         self.store.admin_action(4,{'action':'document','id':2,'decision':'rejected','note':'Documento incompleto'})
 
     def test_invalid_or_empty_files_are_rejected(self):

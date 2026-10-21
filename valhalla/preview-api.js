@@ -109,7 +109,6 @@ async function api(path,body){
     }else if(body.action==='document'){
       const d=db.documents.find(d=>d.id===body.id);if(!d)throw Error('Documento no encontrado.');
       if(db.documents.some(other=>other.user_id===d.user_id&&other.id>d.id))throw Error('Revisa el documento más reciente.');
-      if(body.decision==='rejected'&&!body.note.trim())throw Error('Indica un motivo para rechazar.');
       if(d.kind==='identity'&&body.decision==='approved'&&body.identity_confirmed!==true)throw Error('Confirma la revisión de ambos lados del carnet.');d.status=body.decision;d.note=body.note;const latest=kind=>db.documents.filter(x=>x.user_id===d.user_id&&x.kind===kind).at(-1)?.status==='approved';db.users.find(u=>u.id===d.user_id).verified=Number(latest('identity')&&latest('degree'));
     }else if(body.action==='user'){
       const u=db.users.find(u=>u.id===body.id&&u.role==='professional');if(!u)throw Error('Usuario inválido.');u.active=Number(body.active);

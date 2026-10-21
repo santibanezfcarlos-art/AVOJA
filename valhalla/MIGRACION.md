@@ -8,7 +8,7 @@ Administración → Migración permite reconocer clientes ya validados, sin exig
 
 1. Abre Administración → Migración → Descargar plantilla CSV.
 2. Reemplaza la fila de ejemplo por los clientes reales, cuando el almacenamiento esté listo. Exporta Excel como CSV UTF-8. Se admiten separadores coma o punto y coma; la interfaz también lee archivos Windows-1252.
-3. Conserva exactamente estos encabezados, en este orden:
+3. Conserva estos encabezados en este orden; la columna final `observacion` y su contenido son opcionales:
 
 ```csv
 referencia,nombre,correo,especialidad,sesiones,observacion

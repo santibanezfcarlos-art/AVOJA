@@ -50,6 +50,16 @@ class MigrationAndPayments(unittest.TestCase):
     def csv(self, second=''):
         return {'csv':'referencia,nombre,correo,especialidad,sesiones,observacion\nold001,Juanita Ejemplo,juanita@example.cl,Psicología,10,Saldo validado\n'+second,'identity_confirmed':True}
 
+    def test_manual_migration_without_note(self):
+        body=dict(self.legacy);del body['note']
+        self.store.import_legacy(self.admin,body)
+        self.assertEqual(self.state()['packages'][0]['remaining'],10)
+
+    def test_csv_without_optional_observation_column(self):
+        body={'csv':'referencia,nombre,correo,especialidad,sesiones\nold001,Juanita Ejemplo,juanita@example.cl,Psicología,10\n','identity_confirmed':True}
+        self.store.import_legacy_csv(self.admin,body)
+        self.assertEqual(self.state()['packages'][0]['remaining'],10)
+
     def test_migrated_client_books_without_carnet_but_needs_email(self):
         self.store.import_legacy(self.admin,self.legacy)
         with self.store.connection() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM documents').fetchone()[0],0)

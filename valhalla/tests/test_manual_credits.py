@@ -19,6 +19,22 @@ class ManualCredits(unittest.TestCase):
         self.body={'user_id':self.uid,'hours':5,'amount':28990,'method':'cash','reference':'CAJA-20261019-001','note':'Recibido en sucursal','confirmed':True,'request_key':'manual-request-123456789'}
     def credit(self,**changes):return self.store.manual_credit(self.admin,self.body|changes)
     def state(self):return self.store.state(self.store.session(self.token))
+    def test_courtesy_without_reference_or_note_is_idempotent(self):
+        body=self.body|{'method':'courtesy','amount':0}
+        del body['reference'];del body['note']
+        first=self.store.manual_credit(self.admin,body)
+        repeated=self.store.manual_credit(self.admin,body)
+        self.assertEqual(first['package_id'],repeated['package_id'])
+        self.assertEqual(len(self.state()['packages']),1)
+        record=self.store.admin_state()['manual_credits'][0]
+        self.assertTrue(record['reference'].startswith('CORTESIA-'))
+        self.assertEqual(record['note'],'')
+
+    def test_cash_without_note_keeps_required_payment_reference(self):
+        body=dict(self.body);del body['note']
+        self.store.manual_credit(self.admin,body)
+        self.assertEqual(self.store.admin_state()['manual_credits'][0]['note'],'')
+
     def test_credit_ready_no_bank_transaction_and_no_forged_client_consent_or_validation(self):
         pid=self.credit()['package_id'];state=self.state()
         self.assertEqual(state['packages'][0]['id'],pid);self.assertEqual(state['packages'][0]['remaining'],5)
@@ -49,7 +65,7 @@ class ManualCredits(unittest.TestCase):
         with self.store.connection(True) as c:c.execute('UPDATE users SET active=0 WHERE id=?',(self.uid,))
         with self.assertRaises(Problem):self.credit()
     def test_invalid_amount_hours_method_and_attestation_do_not_create_balance(self):
-        for changes in ({'hours':0},{'hours':201},{'hours':True},{'hours':2.5},{'amount':-1},{'amount':True},{'amount':0},{'method':'courtesy'},{'method':'card'},{'confirmed':False},{'reference':''},{'note':'x'},{'request_key':'short'}):
+        for changes in ({'hours':0},{'hours':201},{'hours':True},{'hours':2.5},{'amount':-1},{'amount':True},{'amount':0},{'method':'courtesy'},{'method':'card'},{'confirmed':False},{'reference':''},{'note':'x'*501},{'request_key':'short'}):
             with self.subTest(changes=changes),self.assertRaises(Problem):self.credit(**changes)
         self.assertEqual(self.state()['packages'],[])
     def test_retry_and_reference_duplicate_cannot_credit_twice(self):
