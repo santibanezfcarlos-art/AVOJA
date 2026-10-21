@@ -78,3 +78,5 @@ body:has(dialog[open]) .whatsapp-contact{visibility:hidden}
 @media(max-width:720px){.whatsapp-contact{right:max(14px,env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));padding:10px 15px;gap:8px}}
 
 .discount-checkout{margin-top:24px;padding:20px;border:1px solid var(--line);border-radius:12px;display:grid;gap:12px;background:#f5f8f2}.discount-checkout input{text-transform:uppercase}#discount-form{max-width:480px;margin:20px 0}
+
+.admin-occupied .user-detail-link{font:inherit;text-align:center;max-width:100%;white-space:normal;overflow-wrap:anywhere}

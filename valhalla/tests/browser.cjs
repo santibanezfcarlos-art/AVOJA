@@ -157,9 +157,20 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
     await admin.locator('#schedule-date').dispatchEvent('change');
     await admin.locator('.admin-occupied strong').filter({hasText:'Profesional Prueba'}).waitFor();
     assert.match(await admin.locator('.admin-occupied').innerText(),/09:00–09:55/);
+    await admin.locator('.admin-occupied [data-user-detail]').click();
+    await admin.getByRole('heading',{name:'Ficha de Profesional Prueba',exact:true}).waitFor();
+    assert.match(await admin.locator('#modal').innerText(),/Planes y saldos/);
+    await admin.getByRole('button',{name:'Cerrar ficha',exact:true}).click();
+    await admin.locator('.admin-occupied').waitFor();
+
     await admin.setViewportSize({width:390,height:844});
     assert.equal(await admin.evaluate(()=>document.documentElement.scrollWidth),390);
     await admin.screenshot({path:'/tmp/valhalla-agenda-identificada-mobile.png',fullPage:true});
+    await admin.locator('.admin-occupied [data-user-detail]').click();
+    await admin.getByRole('heading',{name:'Ficha de Profesional Prueba',exact:true}).waitFor();
+    await admin.getByRole('button',{name:'Cerrar ficha',exact:true}).click();
+    await admin.locator('.admin-occupied').waitFor();
+
     await admin.setViewportSize({width:1440,height:1000});
     await admin.locator('[data-view="admin"]').click();
     await admin.locator('[data-tab="daily_contacts"]').click();
