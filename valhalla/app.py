@@ -400,6 +400,7 @@ class Store:
         return bool(c.execute("SELECT 1 FROM personal_approvals p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.revoked_at='' AND p.approved_name=u.name",(uid,)).fetchone())
 
     def identity_verified(self, c, uid):
+        if self.can_book_parallel(c,uid):return True
         if self.personally_approved(c,uid):return True
         if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (uid,)).fetchone():
             return True
@@ -407,6 +408,7 @@ class Store:
         return bool(row and row['status'] == 'approved')
 
     def professional_verified(self, c, uid):
+        if self.can_book_parallel(c,uid):return True
         if self.personally_approved(c,uid):return True
         if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1',(uid,)).fetchone():
             return True
@@ -626,8 +628,9 @@ class Store:
             profile['identity_approved'] = self.identity_verified(c,user['id'])
             degree=c.execute("SELECT status FROM documents WHERE user_id=? AND kind='degree' ORDER BY id DESC LIMIT 1",(user['id'],)).fetchone()
             profile['degree_approved'] = bool(degree and degree['status']=='approved')
-            profile['identity_source'] = 'personal' if self.personally_approved(c,user['id']) else 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
-            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':max(now().astimezone(CHILE).date()+timedelta(days=1),(now().astimezone(timezone.utc)+MIN_BOOKING_NOTICE).astimezone(CHILE).date()).isoformat(),
+            profile['owner_booking_privileges']=self.can_book_parallel(c,user['id'])
+            profile['identity_source'] = 'administrator' if profile['owner_booking_privileges'] else 'personal' if self.personally_approved(c,user['id']) else 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
+            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':(now().astimezone(CHILE).date() if profile['owner_booking_privileges'] else max(now().astimezone(CHILE).date()+timedelta(days=1),(now().astimezone(timezone.utc)+MIN_BOOKING_NOTICE).astimezone(CHILE).date())).isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? AND p.archived_at=\'\' ORDER BY p.id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
@@ -650,11 +653,16 @@ class Store:
                 c.execute("""UPDATE documents SET status='pending',reviewer_id=NULL,
                              note='El nombre del perfil cambió; revisa nuevamente el documento.'
                              WHERE id IN (SELECT MAX(id) FROM documents WHERE user_id=? AND kind IN ('identity','degree') GROUP BY kind)""", (uid,))
-                c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
+                c.execute('UPDATE users SET verified=? WHERE id=?', (int(self.can_book_parallel(c,uid)),uid))
                 c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND user_id=? AND status IN ('pending','retry','processing')",(uid,))
             self.log(c, uid, 'profile_updated', uid)
 
-    def parse_slot(self, value):
+    def parse_slot(self, value, uid=None, connection=None):
+        owner=False
+        if uid is not None:
+            if connection is not None:owner=self.can_book_parallel(connection,uid)
+            else:
+                with self.connection() as c:owner=self.can_book_parallel(c,uid)
         try:
             parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
             if parsed.tzinfo is None:
@@ -662,13 +670,14 @@ class Store:
             local = parsed.astimezone(CHILE)
             if local.minute or local.second or local.microsecond or not OPENING_HOUR <= local.hour < CLOSING_HOUR:
                 raise ValueError()
-            if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + MIN_BOOKING_NOTICE or parsed > now() + timedelta(days=90):
+            if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + (timedelta(0) if owner else MIN_BOOKING_NOTICE) or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
         except (ValueError, TypeError):
+            if owner:raise Problem('Elige un horario futuro con inicio entre 07:00 y 22:00, dentro de los próximos 90 días.')
             raise Problem('Reserva con al menos 24 horas de anticipación, con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
 
-    def availability(self, date, include_names=False):
+    def availability(self, date, include_names=False, uid=None):
         try:
             day = datetime.strptime(date, '%Y-%m-%d').date()
         except (ValueError, TypeError):
@@ -677,6 +686,7 @@ class Store:
         if day < today or day > today + timedelta(days=90):
             raise Problem('Consulta fechas de hoy a los próximos 90 días.')
         with self.connection() as c:
+            owner=self.can_book_parallel(c,uid) if uid is not None else False
             occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
         for hour in range(OPENING_HOUR, CLOSING_HOUR):
@@ -684,7 +694,7 @@ class Store:
             boxes = []
             for box in range(1,4):
                 booking = occupied.get((box, stamp(start)))
-                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= now().astimezone(timezone.utc) + MIN_BOOKING_NOTICE}
+                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= now().astimezone(timezone.utc) + (timedelta(0) if owner else MIN_BOOKING_NOTICE)}
                 if include_names and booking:
                     end = start + timedelta(minutes=SESSION_MINUTES)
                     booking['end'] = stamp(end)
@@ -861,7 +871,7 @@ class Store:
         c.execute('INSERT INTO booking_rule_acceptances(booking_id,user_id,version,rules_text,accepted_at,is_modification) VALUES(?,?,?,?,?,?)',(bid,uid,RULES_VERSION,RULES_TEXT,stamp(now()),int(modification)))
 
     def reserve_one(self, c, uid, box, start, receipt_balance=None, rules_acceptance=None):
-        self.parse_slot(start)
+        self.parse_slot(start,uid,c)
         if not self.can_book_parallel(c,uid) and c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
             raise Problem('Ya tienes una reserva a esa hora.', 409)
         package=c.execute("SELECT * FROM packages WHERE user_id=? AND status='paid' AND remaining>0 ORDER BY id LIMIT 1",(uid,)).fetchone()
@@ -879,7 +889,7 @@ class Store:
 
     def reserve(self, uid, body):
         if 'rules_acceptance' in body and not validate_acceptance(body['rules_acceptance']):raise Problem('Debes aceptar las normas vigentes antes de reservar.',400)
-        start=self.parse_slot(body.get('start')); box=body.get('box')
+        start=self.parse_slot(body.get('start'),uid); box=body.get('box')
         if type(box) is not int or box not in (1,2,3):
             raise Problem('Box inválido.')
         try:
@@ -898,7 +908,7 @@ class Store:
         for item in selected:
             if not isinstance(item,dict) or type(item.get('box')) is not int or item['box'] not in (1,2,3):
                 raise Problem('Box inválido en la selección.')
-            slots.append((self.parse_slot(item.get('start')),item['box']))
+            slots.append((self.parse_slot(item.get('start'),uid),item['box']))
         if len(set(slots))!=len(slots):
             raise Problem('No puedes seleccionar dos veces el mismo box y horario.',409)
         slots.sort()
@@ -925,22 +935,23 @@ class Store:
 
     def modify(self, uid, bid, body):
         if 'rules_acceptance' in body and not validate_acceptance(body['rules_acceptance']):raise Problem('Debes aceptar las normas vigentes antes de reservar.',400)
-        start = self.parse_slot(body.get('start'))
+        start = self.parse_slot(body.get('start'),uid)
         box = body.get('box')
         if type(box) is not int or box not in (1, 2, 3):
             raise Problem('Box inválido.')
         try:
             with self.connection(True) as c:
                 self.professional(c, uid)
-                self.parse_slot(start)
+                self.parse_slot(start,uid,c)
                 booking = c.execute('SELECT * FROM bookings WHERE id=? AND user_id=?', (bid, uid)).fetchone()
                 if not booking:
                     raise Problem('Reserva no encontrada.', 404)
-                if booking['status'] != 'confirmed' or booking['modifications'] >= 1:
+                owner=self.can_book_parallel(c,uid)
+                if booking['status'] != 'confirmed' or (booking['modifications'] >= 1 and not owner):
                     raise Problem('Esta reserva ya no admite modificaciones.', 409)
-                cutoff = now() + timedelta(hours=2)
+                cutoff = now() + (timedelta(0) if owner else timedelta(hours=2))
                 if datetime.fromisoformat(booking['start']) < cutoff or datetime.fromisoformat(start) < cutoff:
-                    raise Problem('El cambio requiere al menos dos horas de anticipación para ambos horarios.', 409)
+                    raise Problem('Solo puedes modificar reservas que todavía no hayan comenzado.' if owner else 'El cambio requiere al menos dos horas de anticipación para ambos horarios.', 409)
                 if booking['box'] == box and booking['start'] == start:
                     raise Problem('Elige un box u horario diferente; tu cambio sigue disponible.')
                 if not self.can_book_parallel(c,uid) and c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed' AND id<>?", (uid, start, bid)).fetchone():
@@ -1001,7 +1012,7 @@ class Store:
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.approved_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
-                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
+                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id']),'owner_booking_privileges':self.can_book_parallel(c,r['id'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
@@ -1289,9 +1300,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(self.server.store.daily_contacts(parse_qs(route.query).get('date',[''])[0]))
             elif route.path == '/api/admin/availability':
                 self.admin(user)
-                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True))
+                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True,uid=user['id']))
             elif route.path == '/api/availability':
-                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0]))
+                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0],uid=user['id']))
             elif route.path == '/api/admin':
                 self.admin(user)
                 data=self.server.store.admin_state()

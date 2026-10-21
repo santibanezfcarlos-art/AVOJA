@@ -89,15 +89,6 @@ class AccessTests(unittest.TestCase):
         with self.assertRaises(Problem):self.store.reserve(owner['id'],{'box':1,'start':start})
         pid=self.store.buy(owner['id'],{'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5','user_id':999})
         self.store.admin_action(owner['id'],{'action':'payment','id':pid,'decision':'paid'})
-        import base64
-        self.store.upload(owner['id'],{'kind':'identity','filename':'carnet.pdf','content':base64.b64encode(b'%PDF-1.4\nTEST').decode()})
-        with self.store.connection() as c:
-            did=c.execute("SELECT MAX(id) FROM documents WHERE user_id=?",(owner['id'],)).fetchone()[0]
-        self.store.admin_action(owner['id'],{'action':'document','id':did,'decision':'approved','identity_confirmed':True})
-        self.store.upload(owner['id'],{'kind':'degree','filename':'degree.pdf','content':base64.b64encode(b'Test degree').decode()})
-        with self.store.connection() as c:
-            degree=c.execute("SELECT MAX(id) FROM documents WHERE user_id=? AND kind='degree'",(owner['id'],)).fetchone()[0]
-        self.store.admin_action(owner['id'],{'action':'document','id':degree,'decision':'approved'})
         bid=self.store.reserve(owner['id'],{'box':1,'start':start})
         with self.store.connection() as c:
             booking=c.execute('SELECT * FROM bookings WHERE id=?',(bid,)).fetchone()
@@ -113,7 +104,7 @@ class AccessTests(unittest.TestCase):
         token=self.store.login({'email':ADMIN_EMAIL,'password':self.private})
         owner=self.store.session(token)
         self.store.upload(owner['id'],{'kind':'identity','filename':'ficticio.pdf','content':base64.b64encode(b'%PDF-1.4\nFICTICIO').decode()})
-        self.assertEqual(self.store.session(token)['verified'],0)
+        self.assertEqual(self.store.session(token)['verified'],1)
         self.assertEqual(self.store.session(token)['role'],'admin')
 
     def test_profile_edit_cannot_change_email_or_permissions(self):

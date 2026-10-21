@@ -44,7 +44,7 @@ def main():
         store=Store(Path(directory)/'test.sqlite3');store.configure_access(private)
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.store=store;server.email_delivery=delivery
         script=sys.argv[1] if len(sys.argv)>1 else 'browser.cjs'
-        if script not in ('browser.cjs','migration_payments_browser.cjs','google_browser.cjs','transbank_browser.cjs','batch_browser.cjs','manual_credits_browser.cjs','confirmation_browser.cjs','live_updates_browser.cjs','balance_archive_browser.cjs','discounts_browser.cjs','personal_approval_browser.cjs','booking_rules_browser.cjs','production_browser.cjs'):
+        if script not in ('browser.cjs','migration_payments_browser.cjs','google_browser.cjs','transbank_browser.cjs','batch_browser.cjs','manual_credits_browser.cjs','confirmation_browser.cjs','live_updates_browser.cjs','balance_archive_browser.cjs','discounts_browser.cjs','personal_approval_browser.cjs','booking_rules_browser.cjs','production_browser.cjs','owner_privileges_browser.cjs'):
             raise ValueError('Unknown browser suite')
         if script=='transbank_browser.cjs':
             from payments import PaymentService, WebpayGateway

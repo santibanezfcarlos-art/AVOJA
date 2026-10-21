@@ -72,11 +72,11 @@ class IdentityAndSchedule(unittest.TestCase):
         self.pay()
         self.store.reserve(self.uid, self.slot())
 
-    def test_owner_professional_profile_also_requires_identity(self):
+    def test_owner_professional_profile_can_book_without_identity(self):
         self.pay(self.owner)
-        with self.assertRaises(Problem): self.store.reserve(self.owner, self.slot())
-        self.approve(self.upload(uid=self.owner))
-        self.store.reserve(self.owner, self.slot())
+        self.store.reserve(self.owner,self.slot())
+        with self.store.connection() as c:
+            self.assertIsNone(c.execute("SELECT id FROM documents WHERE user_id=? AND kind='identity'",(self.owner,)).fetchone())
 
     def test_identity_approval_requires_explicit_both_sides_confirmation(self):
         did = self.upload()
