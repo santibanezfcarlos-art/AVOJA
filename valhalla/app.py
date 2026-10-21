@@ -145,6 +145,12 @@ class Store:
         with self.connection() as c:
             c.executescript('''
             PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS personal_approvals (
+                id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+                actor_id INTEGER NOT NULL REFERENCES users(id), approved_name TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, revoked_at TEXT NOT NULL DEFAULT '',
+                revoked_by INTEGER REFERENCES users(id));
+            CREATE UNIQUE INDEX IF NOT EXISTS one_personal_approval ON personal_approvals(user_id) WHERE revoked_at='';
             CREATE TABLE IF NOT EXISTS discount_codes (
                 code TEXT PRIMARY KEY, percent INTEGER NOT NULL CHECK(percent BETWEEN 1 AND 99),
                 active INTEGER NOT NULL DEFAULT 1, actor_id INTEGER NOT NULL, created_at TEXT NOT NULL);
@@ -378,13 +384,18 @@ class Store:
             for row in c.execute('SELECT id FROM users').fetchall():
                 c.execute('UPDATE users SET verified=? WHERE id=?',(int(self.professional_verified(c,row['id'])),row['id']))
 
+    def personally_approved(self,c,uid):
+        return bool(c.execute("SELECT 1 FROM personal_approvals p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.revoked_at='' AND p.approved_name=u.name",(uid,)).fetchone())
+
     def identity_verified(self, c, uid):
+        if self.personally_approved(c,uid):return True
         if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (uid,)).fetchone():
             return True
         row = c.execute("SELECT status FROM documents WHERE user_id=? AND kind='identity' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
         return bool(row and row['status'] == 'approved')
 
     def professional_verified(self, c, uid):
+        if self.personally_approved(c,uid):return True
         if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1',(uid,)).fetchone():
             return True
         degree=c.execute("SELECT status FROM documents WHERE user_id=? AND kind='degree' ORDER BY id DESC LIMIT 1",(uid,)).fetchone()
@@ -603,7 +614,7 @@ class Store:
             profile['identity_approved'] = self.identity_verified(c,user['id'])
             degree=c.execute("SELECT status FROM documents WHERE user_id=? AND kind='degree' ORDER BY id DESC LIMIT 1",(user['id'],)).fetchone()
             profile['degree_approved'] = bool(degree and degree['status']=='approved')
-            profile['identity_source'] = 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
+            profile['identity_source'] = 'personal' if self.personally_approved(c,user['id']) else 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
             return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':max(now().astimezone(CHILE).date()+timedelta(days=1),(now().astimezone(timezone.utc)+MIN_BOOKING_NOTICE).astimezone(CHILE).date()).isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? AND p.archived_at=\'\' ORDER BY p.id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
@@ -623,6 +634,7 @@ class Store:
             c.execute('UPDATE users SET name=?,specialty=? WHERE id=?', (name, specialty, uid))
             if previous and previous['name'] != name:
                 c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
+                c.execute("UPDATE personal_approvals SET revoked_at=?,revoked_by=? WHERE user_id=? AND revoked_at=''",(stamp(now()),uid,uid))
                 c.execute("""UPDATE documents SET status='pending',reviewer_id=NULL,
                              note='El nombre del perfil cambió; revisa nuevamente el documento.'
                              WHERE id IN (SELECT MAX(id) FROM documents WHERE user_id=? AND kind IN ('identity','degree') GROUP BY kind)""", (uid,))
@@ -954,6 +966,7 @@ class Store:
             for position, (filename, raw) in enumerate(prepared[1:], 2):
                 c.execute("INSERT INTO document_attachments VALUES(?,?,?,'application/octet-stream',?)", (cursor.lastrowid, position, filename, raw))
             if kind == 'identity':
+                c.execute("UPDATE personal_approvals SET revoked_at=?,revoked_by=? WHERE user_id=? AND revoked_at=''",(stamp(now()),uid,uid))
                 c.execute('UPDATE legacy_imports SET identity_valid=0 WHERE user_id=?', (uid,))
                 c.execute('UPDATE users SET verified=0 WHERE id=?', (uid,))
             c.execute('UPDATE users SET verified=? WHERE id=?',(int(self.professional_verified(c,uid)),uid))
@@ -963,11 +976,11 @@ class Store:
 
     def admin_state(self):
         with self.connection() as c:
-            return {'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+            return {'personal_approvals':[dict(r) for r in c.execute('SELECT p.*,u.name AS operator_name FROM personal_approvals p JOIN users u ON u.id=p.actor_id ORDER BY p.id DESC')], 'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
-                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id']))} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
+                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
@@ -978,7 +991,21 @@ class Store:
         if type(target) is not int:
             raise Problem('Identificador inválido.')
         with self.connection(True) as c:
-            if action == 'payment':
+            if action == 'personal_approval':
+                self.require_owner(c,actor)
+                row=c.execute('SELECT * FROM users WHERE id=?',(target,)).fetchone()
+                if not row or row['role']!='professional' or not row['active']:raise Problem('Selecciona una cuenta profesional activa.',403)
+                decision=body.get('decision')
+                if decision not in ('approved','revoked') or body.get('confirmed') is not True:raise Problem('Confirma expresamente la aprobación personal o su retiro.')
+                note=optional_comment(body)
+                if decision=='approved':
+                    if self.personally_approved(c,target):return
+                    c.execute("UPDATE personal_approvals SET revoked_at=?,revoked_by=? WHERE user_id=? AND revoked_at=''",(stamp(now()),actor,target))
+                    c.execute('INSERT INTO personal_approvals(user_id,actor_id,approved_name,note,created_at) VALUES(?,?,?,?,?)',(target,actor,row['name'],note,stamp(now())))
+                else:
+                    c.execute("UPDATE personal_approvals SET revoked_at=?,revoked_by=? WHERE user_id=? AND revoked_at=''",(stamp(now()),actor,target))
+                c.execute('UPDATE users SET verified=? WHERE id=?',(int(self.professional_verified(c,target)),target))
+            elif action == 'payment':
                 row = c.execute('SELECT * FROM packages WHERE id=?', (target,)).fetchone()
                 if not row:
                     raise Problem('Paquete no encontrado.', 404)

@@ -51,7 +51,7 @@ async function api(path,body){
   if(path==='logout'){previewUser=null;return {ok:true};}
   const user=db.users.find(u=>u.id===previewUser);
   if(!user||!user.active)throw Error('Inicia sesión para continuar.');
-  if(path==='me'){user.identity_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1)?.status==='approved';user.degree_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='degree').at(-1)?.status==='approved';}
+  if(path==='me'){user.identity_source=user.personally_approved?'personal':'document';user.identity_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1)?.status==='approved';user.degree_approved=db.documents.filter(d=>d.user_id===user.id&&d.kind==='degree').at(-1)?.status==='approved';}
   if(path==='me')return previewClone({purchase_rules:globalThis.VALHALLA_RULES,rooms:globalThis.VALHALLA_ROOMS||[],user:{...user,password:undefined},csrf:'preview-only',today:previewToday(),earliest_booking_date:new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(Date.now()+86400000)),catalog:previewCatalog,packages:db.packages.filter(p=>p.user_id===user.id),bookings:db.bookings.filter(b=>b.user_id===user.id).sort((a,b)=>a.start.localeCompare(b.start)),documents:db.documents.filter(d=>d.user_id===user.id)});
   if(path.startsWith('availability?')){
     const day=new URLSearchParams(path.split('?')[1]).get('date');
@@ -116,7 +116,9 @@ async function api(path,body){
   if(path==='admin'){
     if(user.role!=='admin')throw Error('Acceso exclusivo de administración.');
     if(body===undefined)return previewClone({discount_codes:db.discounts,users:db.users.map(({password,...u})=>u),packages:db.packages.map(p=>({...p,name:db.users.find(u=>u.id===p.user_id)?.name})).reverse(),documents:db.documents.map(d=>({...d,name:db.users.find(u=>u.id===d.user_id)?.name})).reverse(),bookings:db.bookings.map(b=>({...b,name:db.users.find(u=>u.id===b.user_id)?.name})),audit:db.audit});
-    if(body.action==='payment'){
+    if(body.action==='personal_approval'){
+      if(body.confirmed!==true)throw Error('Confirma la decisión.');const target=db.users.find(u=>u.id===body.id&&u.role==='professional'&&u.active);if(!target)throw Error('Cuenta inválida.');target.personally_approved=body.decision==='approved';target.verified=Number(target.personally_approved);
+    }else if(body.action==='payment'){
       const p=db.packages.find(p=>p.id===body.id);if(!p||p.status!=='pending')throw Error('El pago ya fue procesado.');p.status=body.decision;
     }else if(body.action==='document'){
       const d=db.documents.find(d=>d.id===body.id);if(!d)throw Error('Documento no encontrado.');
