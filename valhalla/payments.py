@@ -174,7 +174,7 @@ class PaymentService:
                     if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(pending['package_id'],)).fetchone():
                         self.store.record_purchase_acceptance(c,uid,pending['package_id'],rules_acceptance)
                     return self.checkout(pending)
-                raise PaymentError('Ya tienes un pago pendiente. Retómalo o consulta su estado en Paquetes.', 409)
+                raise PaymentError('Ya tienes un pago pendiente. Retómalo o consulta su estado en Comprar horas.', 409)
             pid = c.execute("INSERT INTO packages(user_id,hours,remaining,price,created_at,source) VALUES(?,?,0,?,?,'webpay_integration')", (uid,hours,price,stamp(now()))).lastrowid
             self.store.record_discount(c,pid,quote)
             self.store.record_purchase_acceptance(c,uid,pid,rules_acceptance)

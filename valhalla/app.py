@@ -837,7 +837,7 @@ class Store:
         if not package:
             raise Problem('Necesitas saldo de un paquete con pago confirmado.',409)
         if package['source']=='manual_credit' and not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(package['id'],)).fetchone():
-            raise Problem('Acepta las normas de tus horas cargadas por administración desde Paquetes antes de reservar.',403)
+            raise Problem('Acepta las normas de tus horas cargadas por administración desde Comprar horas antes de reservar.',403)
         bid=c.execute('INSERT INTO bookings(user_id,package_id,box,start,created_at) VALUES(?,?,?,?,?)',(uid,package['id'],box,start,stamp(now()))).lastrowid
         c.execute('UPDATE packages SET remaining=remaining-1 WHERE id=?',(package['id'],))
         self.log(c,uid,'reserved',bid)
