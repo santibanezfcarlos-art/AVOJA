@@ -145,6 +145,12 @@ class Store:
         with self.connection() as c:
             c.executescript('''
             PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS blocked_emails (
+                email TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1,
+                actor_id INTEGER NOT NULL REFERENCES users(id), note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS user_access_events (
+                id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), email TEXT NOT NULL,
+                actor_id INTEGER NOT NULL REFERENCES users(id), action TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS personal_approvals (
                 id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
                 actor_id INTEGER NOT NULL REFERENCES users(id), approved_name TEXT NOT NULL,
@@ -275,6 +281,8 @@ class Store:
                 c.execute('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0')
             if 'commerce_code' not in {row['name'] for row in c.execute('PRAGMA table_info(webpay_live_settings)')}:
                 c.execute("ALTER TABLE webpay_live_settings ADD COLUMN commerce_code TEXT NOT NULL DEFAULT ''")
+            if 'deleted_at' not in {row['name'] for row in c.execute('PRAGMA table_info(users)')}:
+                c.execute("ALTER TABLE users ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''")
             payment_columns = {row['name'] for row in c.execute('PRAGMA table_info(payment_attempts)')}
             for column in ('checked_at','commit_requested'):
                 if column not in payment_columns:
@@ -420,11 +428,54 @@ class Store:
             raise Problem('Debes leer y aceptar las normas vigentes antes de comprar.',400)
         c.execute('INSERT INTO purchase_acceptances VALUES(?,?,?,?,?)',(pid,uid,RULES_VERSION,RULES_TEXT,stamp(now())))
 
+    def email_blocked(self,c,email):
+        return bool(c.execute('SELECT 1 FROM blocked_emails WHERE email=? AND active=1',(email.strip().lower(),)).fetchone())
+
+    def manage_user_access(self,actor,body):
+        action=body.get('action');uid=body.get('user_id');note=optional_comment(body)
+        if action not in ('block','unblock','delete') or body.get('confirmed') is not True:raise Problem('Confirma la acción sobre la cuenta.')
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            if action=='unblock':
+                email=body.get('email','')
+                if not isinstance(email,str):raise Problem('Correo inválido.')
+                email=email.strip().lower()
+                if email==ADMIN_EMAIL:raise Problem('La cuenta administradora está protegida.',403)
+                entry=c.execute('SELECT * FROM blocked_emails WHERE email=? AND active=1',(email,)).fetchone()
+                if not entry:raise Problem('El correo no tiene un bloqueo activo.',404)
+                user=c.execute('SELECT id FROM users WHERE email=?',(email,)).fetchone();uid=user['id'] if user else None
+                c.execute('UPDATE blocked_emails SET active=0 WHERE email=?',(email,))
+                history=False
+            else:
+                if type(uid) is not int:raise Problem('Selecciona una cuenta profesional.')
+                user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
+                if not user or user['role']!='professional' or user['email']==ADMIN_EMAIL:raise Problem('Solo puedes gestionar cuentas profesionales.',403)
+                if user['deleted_at']:raise Problem('Esta cuenta ya fue eliminada.',409)
+                email=user['email'];history=False
+                if action=='block':
+                    c.execute('INSERT INTO blocked_emails(email,active,actor_id,note,created_at) VALUES(?,1,?,?,?) ON CONFLICT(email) DO UPDATE SET active=1,actor_id=excluded.actor_id,note=excluded.note,created_at=excluded.created_at',(email,actor,note,stamp(now())))
+                else:
+                    history=any(c.execute('SELECT 1 FROM '+table+' WHERE user_id=? LIMIT 1',(uid,)).fetchone() for table in ('packages','bookings','payment_attempts','manual_credits','session_adjustments','legacy_imports'))
+                    c.execute('UPDATE users SET active=0,verified=0,deleted_at=?,password=? WHERE id=?',(stamp(now()),password_hash(secrets.token_urlsafe(48)),uid))
+                    c.execute("UPDATE personal_approvals SET revoked_at=?,revoked_by=? WHERE user_id=? AND revoked_at=''",(stamp(now()),actor,uid))
+                    if not history:
+                        # Retain a retired ID for immutable audit links; release an erroneous email.
+                        c.execute("UPDATE users SET name='Cuenta eliminada',email=?,specialty='',email_verified=0 WHERE id=?",('deleted-'+secrets.token_hex(16)+'@retired.invalid',uid))
+                        c.execute('DELETE FROM document_attachments WHERE document_id IN (SELECT id FROM documents WHERE user_id=?)',(uid,))
+                        c.execute('DELETE FROM documents WHERE user_id=?',(uid,))
+                    c.execute('DELETE FROM google_accounts WHERE user_id=?',(uid,))
+                    c.execute("UPDATE notification_outbox SET status='superseded' WHERE user_id=? AND status IN ('pending','retry','processing')",(uid,))
+                for table in ('sessions','email_verifications','password_resets'):
+                    c.execute('DELETE FROM '+table+' WHERE user_id=?',(uid,))
+            c.execute('INSERT INTO user_access_events(user_id,email,actor_id,action,note,created_at) VALUES(?,?,?,?,?,?)',(uid,email,actor,action,note,stamp(now())))
+            self.log(c,actor,'user_access_'+action,uid or email)
+        return {'action':action,'history_preserved':bool(history)}
+
     def session(self, token):
         with self.connection() as c:
             row = c.execute('SELECT u.*,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?',
                             (token, time.time())).fetchone()
-            if not row or not row['active'] or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
+            if not row or not row['active'] or row['deleted_at'] or self.email_blocked(c,row['email']) or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
                 raise Problem('Inicia sesión para continuar.', 401)
             return dict(row)
 
@@ -437,7 +488,7 @@ class Store:
             row = c.execute('SELECT * FROM users WHERE email=?', (email,)).fetchone()
             # Work comparable to a real password check for unknown users.
             encoded = row['password'] if row else password_hash('invalid', '0' * 32)
-            if not password_matches(password, encoded) or not row or not row['active'] or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
+            if not password_matches(password, encoded) or not row or not row['active'] or row['deleted_at'] or self.email_blocked(c,row['email']) or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
                 raise Problem('Correo o contraseña incorrectos, o cuenta desactivada.', 401)
             if body.get('portal') == 'admin' and (row['role'] != 'admin' or row['email'] != ADMIN_EMAIL):
                 raise Problem('Este acceso está reservado para la cuenta administradora autorizada.', 403)
@@ -459,6 +510,7 @@ class Store:
             raise Problem('Indica tu profesión o especialidad.')
         try:
             with self.connection(True) as c:
+                if self.email_blocked(c,email):raise Problem('Este correo no tiene permitido registrarse. Contacta a administración.',403)
                 cursor = c.execute('INSERT INTO users(name,email,password,specialty) VALUES(?,?,?,?)',
                                    (name, email, password_hash(password), specialty))
                 self.log(c, cursor.lastrowid, 'registered', cursor.lastrowid)
@@ -550,8 +602,8 @@ class Store:
     def issue_email_token(self, uid):
         token = secrets.token_urlsafe(32)
         with self.connection(True) as c:
-            user = c.execute('SELECT email,email_verified FROM users WHERE id=?', (uid,)).fetchone()
-            if not user:
+            user = c.execute("SELECT email,email_verified FROM users WHERE id=? AND active=1 AND deleted_at=''", (uid,)).fetchone()
+            if not user or self.email_blocked(c,user['email']):
                 raise Problem('Cuenta no encontrada.', 404)
             if user['email_verified']:
                 return None, user['email']
@@ -586,6 +638,7 @@ class Store:
             c.execute('DELETE FROM recovery_limits WHERE requested_at<?', (timestamp-3600,))
             c.execute('INSERT OR REPLACE INTO recovery_limits VALUES(?,?)', (email_hash, timestamp))
             user = c.execute("SELECT id,email FROM users WHERE email=? AND active=1 AND role='professional'", (email,)).fetchone()
+            if user and self.email_blocked(c,email):user=None
             # The administrator password remains managed by the private Render setting.
             if not user or email in LEGACY_DEMO_EMAILS:
                 return None
@@ -706,7 +759,7 @@ class Store:
 
     def professional(self, c, uid):
         row = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-        if not row or not supports_professional(row) or not row['active'] or not self.professional_verified(c, uid):
+        if not row or not supports_professional(row) or not row['active'] or row['deleted_at'] or self.email_blocked(c,row['email']) or not self.professional_verified(c, uid):
             raise Problem('Para reservar necesitas una cuenta activa, carnet y certificado de título aprobados por administración, y saldo confirmado.', 403)
         if not row['email_verified']:
             raise Problem('Confirma tu correo electrónico antes de reservar.', 403)
@@ -748,7 +801,7 @@ class Store:
         hours, price = CATALOG[key]
         with self.connection(True) as c:
             row = c.execute('SELECT role,email,active FROM users WHERE id=?', (uid,)).fetchone()
-            if not row or not supports_professional(row) or not row['active']:
+            if not row or not supports_professional(row) or not row['active'] or self.email_blocked(c,row['email']):
                 raise Problem('Solo los profesionales activos pueden solicitar paquetes.', 403)
             quote=self.discount_quote(c,key,body.get('discount_code',''));price=quote['price']
             if body.get('expected_price',price)!=price:raise Problem('El precio cambió. Aplica nuevamente el código antes de comprar.',409)
@@ -989,8 +1042,8 @@ class Store:
             prepared.append((filename, raw))
         # All file types remain private binary attachments; none are rendered or executed.
         with self.connection(True) as c:
-            role = c.execute('SELECT role,email FROM users WHERE id=?', (uid,)).fetchone()
-            if not supports_professional(role):
+            role = c.execute('SELECT role,email,active,deleted_at FROM users WHERE id=?', (uid,)).fetchone()
+            if not supports_professional(role) or not role['active'] or role['deleted_at'] or self.email_blocked(c,role['email']):
                 raise Problem('Solo profesionales pueden adjuntar documentos.', 403)
             c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND user_id=? AND entity_id IN (SELECT id FROM documents WHERE user_id=? AND kind=?) AND status IN ('pending','retry','processing')",(uid,uid,kind))
             filename, raw = prepared[0]
@@ -1008,11 +1061,11 @@ class Store:
 
     def admin_state(self):
         with self.connection() as c:
-            return {'personal_approvals':[dict(r) for r in c.execute('SELECT p.*,u.name AS operator_name FROM personal_approvals p JOIN users u ON u.id=p.actor_id ORDER BY p.id DESC')], 'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+            return {'blocked_emails':[dict(r) for r in c.execute('SELECT b.*,u.name AS operator_name FROM blocked_emails b JOIN users u ON u.id=b.actor_id WHERE b.active=1 ORDER BY b.created_at DESC')], 'user_access_events':[dict(r) for r in c.execute('SELECT e.*,u.name AS operator_name FROM user_access_events e JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'personal_approvals':[dict(r) for r in c.execute('SELECT p.*,u.name AS operator_name FROM personal_approvals p JOIN users u ON u.id=p.actor_id ORDER BY p.id DESC')], 'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.approved_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
-                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id']),'owner_booking_privileges':self.can_book_parallel(c,r['id'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified FROM users ORDER BY id')],
+                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id']),'owner_booking_privileges':self.can_book_parallel(c,r['id']),'blocked_email':self.email_blocked(c,r['email'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified,deleted_at FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
@@ -1072,7 +1125,7 @@ class Store:
                     c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND entity_id=? AND status IN ('pending','retry','processing')",(target,))
             elif action == 'user':
                 row = c.execute('SELECT * FROM users WHERE id=?', (target,)).fetchone()
-                if not row or row['role'] == 'admin':
+                if not row or row['role'] == 'admin' or row['deleted_at']:
                     raise Problem('Solo puedes gestionar cuentas profesionales.', 403)
                 if type(body.get('active')) is not bool:
                     raise Problem('Estado inválido.')
@@ -1444,6 +1497,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id'],uid=user['id']))
                 return
+            elif self.path == '/api/admin/users/access':
+                self.admin(user)
+                self.respond(store.manage_user_access(user['id'],body));return
             elif self.path == '/api/admin/webpay/live-sales':
                 self.admin(user)
                 self.respond(self.server.webpay.set_live_sales(user['id'],body));return

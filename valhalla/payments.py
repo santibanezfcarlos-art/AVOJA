@@ -176,7 +176,7 @@ class PaymentService:
         hours, price = (0,50) if validation else CATALOG[str(catalog)]
         with self.store.connection(True) as c:
             user = c.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-            if not user or not supports_professional(user) or not user['active'] or not user['email_verified']:
+            if not user or not supports_professional(user) or not user['active'] or user['deleted_at'] or self.store.email_blocked(c,user['email']) or not user['email_verified']:
                 raise PaymentError('Necesitas una cuenta activa y el correo confirmado para comprar.', 403)
             if validation:
                 if self.mode!='production' or user['role']!='admin' or user['email']!=ADMIN_EMAIL or discount_code:raise PaymentError('La validación de $50 es exclusiva del administrador en producción, sin descuentos.',403)

@@ -101,8 +101,10 @@ def authenticate(store, identity, link_session=''):
     if email == ADMIN_EMAIL or email in LEGACY_DEMO_EMAILS:
         raise GoogleError('admin_password')
     with store.connection(True) as c:
+        if store.email_blocked(c,email):raise GoogleError()
         linked = c.execute('SELECT * FROM google_accounts WHERE subject=?',(subject,)).fetchone()
         existing = c.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
+        if existing and existing['deleted_at']:raise GoogleError()
         if link_session:
             session = c.execute('SELECT * FROM sessions WHERE token=? AND expires>?',(link_session,time.time())).fetchone()
             if not session or not existing or session['user_id']!=existing['id']:

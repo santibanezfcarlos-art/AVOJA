@@ -303,3 +303,13 @@ Producción: [TRANSBANK.md](TRANSBANK.md) contiene las variables de Render, la p
 ### Permisos de agenda del propietario
 
 La cuenta administradora propietaria conserva sus permisos al pasar a Perfil profesional. Su habilitación se deriva en servidor de rol, correo propietario y cuenta activa, sin modificar documentos ni exigir autoaprobación. Puede reservar horarios futuros el mismo día sin anticipación de 24 horas, varios boxes a la vez y modificar sus reservas más de una vez mientras no hayan comenzado. Conserva horarios de apertura/cierre, horizonte de 90 días, exclusividad de cada box, saldo y aceptación de normas. Las cuentas profesionales mantienen sus requisitos, anticipación de 24 horas y una sola modificación con 2 horas de anticipación. No es posible obtener esta excepción enviando flags, roles o IDs ajenos desde el navegador.
+
+### Bloqueo de correos y eliminación de cuentas
+
+Administración → Usuarios mantiene tres acciones diferentes:
+
+- **Desactivar / Activar** pausa o reactiva una cuenta.
+- **Bloquear correo / Desbloquear correo** registra un bloqueo independiente: cierra sesiones, invalida enlaces de recuperación/confirmación e impide acceso con contraseña, Google y nuevos registros por ese correo. Activar una cuenta no elimina su bloqueo. El bloqueo persiste aunque se elimine la cuenta; se puede quitar desde Correos bloqueados. Quitar el bloqueo no reactiva una cuenta pausada ni recupera una eliminada.
+- **Eliminar cuenta** retira el perfil del listado y revoca acceso y enlaces. Sin planes, movimientos o reservas, retira los datos de perfil, desvincula Google, elimina documentos y libera el correo; conserva un ID retirado para que el historial de auditoría nunca apunte a otra persona. Si hay actividad, conserva identidad e historial financiero/de reservas para administración y mantiene la cuenta sin acceso. Eliminar no cancela reservas ni devuelve cobros; los pagos pendientes siguen conciliándose.
+
+Las acciones requieren administrador propietario, sesión y CSRF, confirmación de la cuenta seleccionada y dejan constancia de operador, fecha y motivo opcional. La cuenta propietaria administradora está protegida de bloqueo y eliminación. Los usuarios eliminados no pueden reactivarse con Activar. Las revisiones de bloqueo se hacen dentro de las transacciones de registro, Google, compra y reserva para evitar operaciones nuevas después del bloqueo.
