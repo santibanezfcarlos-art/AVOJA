@@ -30,6 +30,31 @@ class ManualCredits(unittest.TestCase):
         self.assertTrue(record['reference'].startswith('CORTESIA-'))
         self.assertEqual(record['note'],'')
 
+    def test_courtesy_queues_one_receipt_with_balance_and_safe_html(self):
+        import json
+        from notifications import notification_message,notification_html,NotificationDispatcher
+        self.credit(method='courtesy',amount=0)
+        self.credit(method='courtesy',amount=0)
+        with self.store.connection() as c:
+            jobs=c.execute("SELECT * FROM notification_outbox WHERE kind='hours_credited'").fetchall()
+        self.assertEqual(len(jobs),1)
+        self.assertEqual(jobs[0]['recipient'],self.credentials['email'])
+        payload=json.loads(jobs[0]['payload'])
+        self.assertEqual((payload['hours'],payload['remaining'],payload['source']),(5,5,'courtesy'))
+        subject,text=notification_message('hours_credited',payload,'https://valhallaoffice.cl')
+        self.assertIn('Tus horas ya fueron cargadas',subject)
+        self.assertIn('sin costo',text)
+        html=notification_html('hours_credited',payload|{'name':'<script>bad</script>'},'https://valhallaoffice.cl')
+        self.assertIn('&lt;script&gt;',html);self.assertNotIn('<script>',html)
+        self.assertIn('Ir a mi cuenta y reservar',html)
+        class Delivery:
+            configured=True
+            def __init__(self):self.sent=[]
+            def send_notification(self,email,kind,payload,key):self.sent.append((email,kind))
+        delivery=Delivery();dispatcher=NotificationDispatcher(self.store,delivery)
+        dispatcher.dispatch_pending(20);dispatcher.dispatch_pending(20)
+        self.assertEqual(delivery.sent.count((self.credentials['email'],'hours_credited')),1)
+
     def test_cash_without_note_keeps_required_payment_reference(self):
         body=dict(self.body);del body['note']
         self.store.manual_credit(self.admin,body)

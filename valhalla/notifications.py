@@ -30,6 +30,14 @@ def booking_links(booking, public_url='https://valhallaoffice.cl'):
 
 def notification_message(kind, payload, public_url):
     person = payload['name'] + ' (' + payload['email'] + ')'
+    if kind == 'hours_credited':
+        source={'courtesy':'Cortesía de administración, sin costo.','cash':'Compra abonada en efectivo.','transfer':'Compra abonada por transferencia.','production':'Compra confirmada mediante Webpay.','integration':'Prueba de Webpay: no se realizó un cobro real.'}.get(payload['source'],'Horas acreditadas por administración.')
+        return ('Tus horas ya fueron cargadas · Valhalla Office',
+                f"Hola, {payload['name']}.\n\nTus horas ya fueron cargadas.\n"
+                f"Sesiones acreditadas: {payload['hours']}\n{source}\n"
+                f"Saldo disponible al realizar esta carga: {payload['remaining']} sesiones.\n\n"
+                "Cada sesión corresponde a 55 minutos de atención. Para reservar necesitas tu cuenta habilitada y aceptar las normas en cada agendamiento.\n\n"
+                f"Revisa tu saldo y agenda desde tu cuenta: {public_url.rstrip('/')}/\n")
     if kind == 'document_approved':
         document='carnet de identidad' if payload['document_kind']=='identity' else 'certificado de título'
         return (f'Tu {document} fue aprobado · Valhalla Office',
@@ -85,6 +93,10 @@ def document_approval_html(payload,public_url):
 
 def notification_html(kind, payload, public_url, logo_url=None):
     """Table layout and inline styles work without scripts, fonts, or client CSS."""
+    if kind=='hours_credited':
+        subject,text=notification_message(kind,payload,public_url)
+        paragraphs=''.join(f'<p style="font-size:16px;line-height:26px;">{escape(part).replace(chr(10),"<br>")}</p>' for part in text.split('\n\n')[:-1])
+        return f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="background:#f4f6ef;color:#193e37;font-family:Arial,sans-serif;padding:20px;"><div style="max-width:580px;margin:auto;background:white;padding:26px;border-radius:16px;"><a href="https://valhallaoffice.cl/"><img src="{escape(public_url.rstrip('/'),quote=True)}/images/valhalla-logo.png" width="180" alt="Valhalla Office" style="display:block;margin:auto;max-width:100%;"></a><h1 style="font-size:26px;">Tus horas ya fueron cargadas</h1>{paragraphs}<a href="{escape(public_url.rstrip('/')+'/',quote=True)}" style="display:block;background:#245e50;color:white;padding:16px;text-align:center;text-decoration:none;border-radius:9px;">Ir a mi cuenta y reservar</a></div></body></html>'''
     if kind=='document_approved':
         return document_approval_html(payload,public_url)
     if kind not in ('booking_confirmed','booking_modified','booking_cancelled'):

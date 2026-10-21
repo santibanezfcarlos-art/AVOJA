@@ -47,6 +47,7 @@ class ProductionPayments(unittest.TestCase):
         with self.store.connection() as c:
             p=c.execute('SELECT * FROM packages WHERE user_id=?',(self.admin,)).fetchone();self.assertEqual((p['hours'],p['remaining'],p['price'],p['status']),(0,0,50,'paid'))
         self.assertTrue(self.service.configuration()['validation_paid']);self.assertFalse(self.service.configuration()['live_sales_enabled'])
+        with self.store.connection() as c:self.assertEqual(c.execute("SELECT COUNT(*) FROM notification_outbox WHERE kind='hours_credited'").fetchone()[0],0)
         self.service.set_live_sales(self.admin,{'enabled':True,'confirmed':True});self.assertTrue(self.service.configuration()['live_sales_enabled'])
     def test_validation_is_owner_only_fixed_price_no_discount_or_forged_hours(self):
         with self.assertRaises(PaymentError):self.service.create(self.uid,'validation_50','forged-validation-owner',self.rules)
@@ -56,11 +57,17 @@ class ProductionPayments(unittest.TestCase):
     def test_live_discount_payment_credits_once_and_pause_does_not_stop_reconciliation(self):
         self.enable();self.store.save_discount(self.admin,{'code':'REAL20','percent':20})
         checkout=self.service.create(self.uid,'5','live-normal-purchase-12345',self.rules,'REAL20',23192)
+        with self.store.connection() as c:self.assertEqual(c.execute("SELECT COUNT(*) FROM notification_outbox WHERE kind='hours_credited'").fetchone()[0],0)
         self.service.set_live_sales(self.admin,{'enabled':False,'confirmed':True})
         self.service.returned({'token_ws':checkout['token']});self.service.returned({'token_ws':checkout['token']})
         with self.store.connection() as c:
             p=c.execute('SELECT * FROM packages WHERE user_id=?',(self.uid,)).fetchone();self.assertEqual((p['hours'],p['remaining'],p['price'],p['source']),(5,5,23192,'webpay_production'))
             self.assertTrue(c.execute('SELECT approved_at FROM payment_attempts WHERE user_id=?',(self.uid,)).fetchone()[0])
+            import json
+            receipts=c.execute("SELECT * FROM notification_outbox WHERE kind='hours_credited' AND user_id=?",(self.uid,)).fetchall()
+            self.assertEqual(len(receipts),1)
+            self.assertEqual(json.loads(receipts[0]['payload'])['hours'],5)
+            self.assertEqual(json.loads(receipts[0]['payload'])['source'],'production')
         with self.assertRaises(PaymentError):self.service.create(self.uid,'1','paused-live-purchase-12345',self.rules)
     def test_pending_integration_does_not_block_production_or_switch_its_host(self):
         sandbox=PaymentService(self.store,FakeGateway());sandbox.create(self.uid,'1','pending-sandbox-before-live',self.rules)

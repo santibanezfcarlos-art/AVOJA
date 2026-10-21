@@ -332,6 +332,13 @@ class Store:
         c.execute('INSERT OR IGNORE INTO notification_outbox(event_key,delivery_key,user_id,recipient,kind,entity_id,payload,created_at) VALUES(?,?,?,?,?,?,?,?)',
                   (event_key,secrets.token_hex(24),uid,recipient,kind,entity_id,json.dumps(payload),stamp(now())))
 
+    def queue_hours_receipt(self, c, uid, pid, source):
+        package=c.execute("SELECT hours FROM packages WHERE id=? AND user_id=? AND status='paid'",(pid,uid)).fetchone()
+        if not package or package['hours']<=0:return
+        person=c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
+        remaining=c.execute("SELECT COALESCE(SUM(remaining),0) FROM packages WHERE user_id=? AND status='paid' AND archived_at=''",(uid,)).fetchone()[0]
+        self.queue_notification(c,uid,'hours_credited',pid,person['email'],dict(person)|{'hours':package['hours'],'remaining':remaining,'source':source})
+
     def queue_booking_receipt(self, c, uid, bid, kind, remaining=None):
         person = c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
         booking = c.execute('SELECT id,box,start,status FROM bookings WHERE id=? AND user_id=?',(bid,uid)).fetchone()
@@ -849,6 +856,7 @@ class Store:
                 pid=c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at,source) VALUES(?,?,?,?,'paid',?,'manual_credit')",(uid,hours,hours,amount,stamp(now()))).lastrowid
                 cid=c.execute('INSERT INTO manual_credits(package_id,user_id,actor_id,method,amount,reference,note,request_key,fingerprint,created_at,received_on) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(pid,uid,actor,method,amount,reference,note,key,fingerprint,stamp(now()),received_on)).lastrowid
                 self.log(c,actor,'manual_hours_credited',cid)
+                self.queue_hours_receipt(c,uid,pid,method)
                 return {'package_id':pid,'repeated':False}
         except sqlite3.IntegrityError:
             raise Problem('La carga ya está registrada o sus datos entraron en conflicto. Revisa el historial antes de volver a cargar.',409)

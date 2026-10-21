@@ -280,6 +280,7 @@ class PaymentService:
                     if changed != 1:
                         raise PaymentError('El paquete requiere conciliación administrativa.',409)
                     self.store.log(c,row['user_id'],'webpay_'+row['environment']+'_credited',aid)
+                    self.store.queue_hours_receipt(c,row['user_id'],row['package_id'],row['environment'])
                 elif rejected:
                     c.execute("UPDATE packages SET status='rejected' WHERE id=? AND status='pending'", (row['package_id'],))
                 c.execute("UPDATE payment_attempts SET state=?,processing_until=0,archived=CASE WHEN ?='approved' THEN 0 ELSE archived END WHERE id=?", (state,state,aid))
