@@ -21,7 +21,7 @@ def access_email_html(code, issued_at, public_url="https://valhalla-office-demo.
         raise ValueError("Invalid TTLock code")
     if issued_at.tzinfo is None:
         raise ValueError("issued_at must be timezone-aware")
-    booking_date = issued_at.astimezone(CHILE).date() + timedelta(days=1)
+    booking_date = issued_at.astimezone(CHILE).date() if issued_at.astimezone(CHILE).hour == 5 else issued_at.astimezone(CHILE).date() + timedelta(days=1)
     date_label = f"{booking_date.day} de {MONTHS[booking_date.month-1]} de {booking_date.year}"
     parsed = urlsplit(public_url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
