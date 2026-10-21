@@ -19,8 +19,13 @@ def distribute(db_path, issue_day, transport=None):
     issued_at = datetime.fromisoformat(issue_day + "T22:00:00").replace(
         tzinfo=ZoneInfo("America/Santiago"))
     day, recipients = recipients_for_tomorrow(db_path, issued_at)
-    owner = os.environ["TTLOCK_EMAIL_TO"]
-    recipients = [r for r in recipients if r.casefold() != owner.casefold()]
+    owner = os.environ.get("TTLOCK_DISTRIBUTION_TO", "contacto@valhallaoffice.cl").strip()
+    if not owner or "@" not in owner:
+        return "recipient_not_configured"
+    # Do not repeat the primary distribution address or the original TTLock
+    # fallback inbox in BCC.
+    excluded = {owner.casefold(), os.environ["TTLOCK_EMAIL_TO"].strip().casefold()}
+    recipients = [r for r in recipients if r.strip().casefold() not in excluded]
     if not recipients:
         return "no_recipients"
     if len(recipients) > 40:
