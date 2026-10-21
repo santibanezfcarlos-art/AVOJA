@@ -14,14 +14,14 @@ CHILE = ZoneInfo("America/Santiago")
 class Tests(unittest.TestCase):
     def test_standard_window(self):
         start, end = validity_window(datetime(2026,10,19,22,0,tzinfo=CHILE))
-        self.assertEqual((start.hour, end.hour, (end-start).days), (22,22,1))
-        self.assertEqual((end.timestamp()-start.timestamp())/3600,24)
+        self.assertEqual((start.hour, end.hour, start.day, end.day), (5,23,20,20))
+        self.assertEqual((end.timestamp()-start.timestamp())/3600,18)
 
-    def test_dst_windows_keep_local_22(self):
+    def test_dst_windows_keep_local_05_to_23(self):
         for month, day in [(4,4),(9,5)]:
             start,end = validity_window(datetime(2027,month,day,22,tzinfo=CHILE))
-            self.assertEqual((start.hour,end.hour),(22,22))
-            self.assertEqual(end.date().toordinal()-start.date().toordinal(),1)
+            self.assertEqual((start.hour,end.hour),(5,23))
+            self.assertEqual(end.date().toordinal()-start.date().toordinal(),0)
 
     def test_email_format(self):
         start,_ = validity_window(datetime(2026,10,19,22,tzinfo=CHILE))
@@ -60,6 +60,9 @@ class Tests(unittest.TestCase):
         start,end=validity_window(datetime(2026,10,19,22,tzinfo=CHILE))
         self.assertEqual(client.generate(token,start,end,detail["keyboardPwdVersion"]),("123456",42))
         self.assertEqual(len(calls),3)
+        self.assertEqual(calls[-1][1]['keyboardPwdName'], ['20 de octubre'])
+        self.assertEqual(calls[-1][1]['startDate'], [str(timestamp_ms(start))])
+        self.assertEqual(calls[-1][1]['endDate'], [str(timestamp_ms(end))])
 
 
 if __name__=="__main__":
