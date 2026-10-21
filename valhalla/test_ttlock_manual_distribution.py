@@ -40,7 +40,7 @@ class ManualDistributionTests(unittest.TestCase):
             with patch.dict(os.environ,env):
                 with sqlite3.connect(db) as con:
                     con.execute("INSERT INTO ttlock_manual_tests VALUES (?,?,?,?)",
-                        ("test-123","emailed","2026-10-21T03:00:00+00:00",encrypt_code("123456")))
+                        ("test-123","emailed","2026-10-22T01:00:00+00:00",encrypt_code("123456")))
                 mailer = FakeMailer()
                 self.assertEqual(distribute_manual_test(db,"test-123",mailer=mailer),"accepted")
                 self.assertEqual([row[0] for row in mailer.sent],
