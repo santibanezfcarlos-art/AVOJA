@@ -84,7 +84,16 @@ def main():
         return
 
     record(db_path, test_id, "emailed")
-    print("RESULTADO: emailed. Revisa tu bandeja de entrada.")
+    print("RESULTADO ORIGINAL: emailed.")
+    if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED", "").lower() == "true":
+        from ttlock_distribution import distribute_manual_test
+        try:
+            outcome = distribute_manual_test(db_path, test_id, mailer=mailer)
+        except Exception:
+            outcome = "error_requires_review"
+        print("DISTRIBUCION REAL:", outcome)
+    else:
+        print("DISTRIBUCION REAL: disabled")
 
 
 if __name__ == "__main__":
