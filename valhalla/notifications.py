@@ -79,6 +79,7 @@ def document_approval_html(payload,public_url):
     if (Path(__file__).parent/'static/images/valhalla-logo.png').is_file():
         logo=f'<img src="{escape(public_url.rstrip("/"),quote=True)}/images/valhalla-logo.png" width="180" alt="Valhalla" style="display:block;width:180px;height:auto;margin:auto;border:0;">'
     else:logo='<strong style="letter-spacing:3px;">VALHALLA OFFICE</strong>'
+    logo=f'<a href="https://valhallaoffice.cl/" aria-label="Ir al inicio de Valhalla Office" style="display:inline-block;text-decoration:none;">{logo}</a>'
     return f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Documento aprobado · Valhalla Office</title></head><body style="margin:0;background:#f4f6ef;font-family:Arial,sans-serif;color:#193e37;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:580px;background:#fff;border:1px solid #dce4d7;border-radius:16px;"><tr><td align="center" style="padding:16px 24px;">{logo}</td></tr><tr><td style="padding:8px 26px 28px;"><h1 style="font-size:26px;line-height:34px;margin:0 0 20px;">¡Estás más cerca de tu reserva!</h1><p style="font-size:16px;line-height:26px;">Hola, {escape(payload['name'])}.</p><p style="font-size:16px;line-height:26px;">Acabamos de aprobar tu <strong>{document}</strong>.</p><ul style="font-size:15px;line-height:25px;padding-left:22px;"><li style="margin-bottom:12px;">Revisa el estado de tus documentos en tu cuenta.</li><li>Para reservar necesitas tu carnet y certificado de título aprobados, correo confirmado y saldo disponible.</li></ul><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:26px;"><tr><td align="center" bgcolor="#245e50" style="border-radius:9px;"><a href="{escape(public_url.rstrip('/')+'/',quote=True)}" style="display:block;padding:16px;color:#fff;font-size:16px;font-weight:bold;text-decoration:none;">Ir a mi cuenta</a></td></tr></table><p style="font-size:12px;color:#66786e;text-align:center;margin:24px 0 0;">Valhalla Office · Un espacio para tu práctica profesional.</p></td></tr></table></td></tr></table></body></html>'''
 
 
@@ -100,6 +101,7 @@ def notification_html(kind, payload, public_url, logo_url=None):
         logo_url=public_url.rstrip('/')+'/images/valhalla-logo.png'
     logo=(f'<img src="{escape(logo_url,quote=True)}" width="200" alt="Valhalla" style="display:block;width:200px;max-width:100%;height:auto;border:0;margin:0 auto;">'
           if logo_url else '<span style="font-family:Georgia,serif;font-size:25px;letter-spacing:4px;color:#193e37;">VALHALLA</span>')
+    logo=f'<a href="https://valhallaoffice.cl/" aria-label="Ir al inicio de Valhalla Office" style="display:inline-block;text-decoration:none;">{logo}</a>'
     notes=['La reserva fue cancelada y se devolvió una sesión al paquete original.'] if cancelled else [
         'Recibe personalmente a tu consultante.',
         'Tu reserva es personal e intransferible.',

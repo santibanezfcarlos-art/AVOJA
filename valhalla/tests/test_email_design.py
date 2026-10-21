@@ -22,7 +22,7 @@ class BookingEmailDesign(unittest.TestCase):
     def test_ordered_buttons_bullets_details_and_no_visible_long_urls(self):
         html=notification_html('booking_confirmed',self.payload,self.url);parsed=ParsedEmail();parsed.feed(html)
         links=booking_links(self.payload['booking'],self.url)
-        self.assertEqual(parsed.links,[links['bookings'],links['calendar'],links['directions']])
+        self.assertEqual(parsed.links,[self.url+'/',links['bookings'],links['calendar'],links['directions']])
         self.assertEqual(parsed.items,6)
         text=' '.join(parsed.text)
         for item in ('¡Tu espacio te espera!','Miércoles 21 de octubre de 2026','07:00–07:55','Box 1','Colo Colo 222, oficina 710','0 sesiones','Mis reservas','Agregar al calendario','Cómo llegar'):
@@ -41,7 +41,7 @@ class BookingEmailDesign(unittest.TestCase):
         self.assertIn('Tu reserva fue actualizada',modified);self.assertIn('1 sesión.',modified)
         self.assertIn('actualízalo también',modified)
         cancelled=ParsedEmail();cancelled.feed(notification_html('booking_cancelled',self.payload,self.url))
-        self.assertEqual(cancelled.links,[self.url+'/#mis-reservas'])
+        self.assertEqual(cancelled.links,[self.url+'/',self.url+'/#mis-reservas'])
         self.assertIn('Tu reserva fue cancelada',' '.join(cancelled.text))
         self.assertIsNone(notification_html('admin_signup',{},self.url))
     def test_plain_text_fallback_is_bulleted(self):

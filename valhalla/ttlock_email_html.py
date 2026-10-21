@@ -33,6 +33,7 @@ def access_email_html(code, issued_at, public_url="https://valhalla-office-demo.
         if logo_file.is_file() else
         '<span style="font-family:Georgia,serif;font-size:26px;letter-spacing:3px;color:#193d35;">VALHALLA OFFICE</span>'
     )
+    logo=f'<a href="https://valhallaoffice.cl/" aria-label="Ir al inicio de Valhalla Office" style="display:inline-block;text-decoration:none;">{logo}</a>'
     safe_code = escape(str(code))
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
