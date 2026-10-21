@@ -71,6 +71,13 @@
 .auth-story .welcome-carousel{margin-left:auto;margin-right:auto}
 
 .btn.google-signin{background:#fff;color:#3c4043;border:1px solid #dadce0;gap:12px}.google-icon{display:block;flex-shrink:0}
+
+/* Floating contact, with space below content and safe areas on mobile. */
+body{padding-bottom:88px}
+.whatsapp-contact{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:10px;padding:12px 18px;min-height:52px;border-radius:30px;background:#176b45;color:#fff;text-decoration:none;box-shadow:0 4px 18px #183e3733;font-size:.85rem}
+.whatsapp-contact strong{display:block;font-size:.95rem}.whatsapp-contact:hover{background:#125637}.whatsapp-contact:focus-visible{outline:3px solid #b7d875;outline-offset:4px}
+body:has(dialog[open]) .whatsapp-contact{visibility:hidden}
+@media(max-width:720px){.whatsapp-contact{right:max(14px,env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));padding:10px 15px;gap:8px}}
 </style></head>
 <body><div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="root"></div><dialog id="modal" aria-labelledby="modal-title"></dialog>
@@ -801,5 +808,14 @@ async function startApp() {
   const googleMessages={success:'Ingresaste con Google.',profile_required:'Completa tu profesión o especialidad en Mi perfil. Para reservar también necesitas tu identidad validada y saldo.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Google. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Google. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Google está disponible para cuentas profesionales.',error:'No se pudo completar el acceso con Google. Vuelve a intentarlo desde el inicio.'};
   if(googleResult&&googleMessages[googleResult])toast(googleMessages[googleResult]);
 }
+// Keep contact available across login, registration and account views.
+const whatsappContact=document.createElement('a');
+whatsappContact.className='whatsapp-contact';
+whatsappContact.href='https://wa.me/56936680947?text='+encodeURIComponent('Hola, quisiera hacer una consulta sobre Valhalla Office.');
+whatsappContact.target='_blank';
+whatsappContact.rel='noopener noreferrer';
+whatsappContact.setAttribute('aria-label','Hablar con Valhalla Office por WhatsApp (abre una nueva pestaña)');
+whatsappContact.innerHTML=`<svg viewBox="0 0 32 32" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M16 3a13 13 0 0 0-11.2 19.6L3 29l6.6-1.7A13 13 0 1 0 16 3zm0 2.4a10.6 10.6 0 1 1-5.7 19.5l-.4-.3-3.5.9.9-3.4-.3-.4A10.6 10.6 0 0 1 16 5.4zm-4.3 5c-.3 0-.6.1-.8.4-.5.5-1.1 1.2-1.1 2.5s1 2.6 1.2 2.8c.1.2 2.1 3.3 5.2 4.5 2.6 1 3.1.8 3.7.7.6-.1 1.9-.8 2.1-1.6.3-.8.3-1.4.2-1.6-.1-.1-.3-.2-.7-.4l-2.1-1c-.3-.1-.5-.2-.7.2l-1 1.2c-.2.2-.4.3-.7.1-1-.4-1.9-.9-2.6-1.6-.7-.7-1.2-1.5-1.4-1.8-.1-.3 0-.4.2-.6l.6-.7.3-.6c.1-.2 0-.4 0-.6l-1-2.2c-.2-.6-.5-.6-.8-.6z"/></svg><span>¿Hablamos? <strong>WhatsApp</strong></span>`;
+document.body.append(whatsappContact);
 startApp();
 </script></body></html>

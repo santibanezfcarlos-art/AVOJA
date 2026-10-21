@@ -69,3 +69,10 @@
 .auth-story .welcome-carousel{margin-left:auto;margin-right:auto}
 
 .btn.google-signin{background:#fff;color:#3c4043;border:1px solid #dadce0;gap:12px}.google-icon{display:block;flex-shrink:0}
+
+/* Floating contact, with space below content and safe areas on mobile. */
+body{padding-bottom:88px}
+.whatsapp-contact{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:10px;padding:12px 18px;min-height:52px;border-radius:30px;background:#176b45;color:#fff;text-decoration:none;box-shadow:0 4px 18px #183e3733;font-size:.85rem}
+.whatsapp-contact strong{display:block;font-size:.95rem}.whatsapp-contact:hover{background:#125637}.whatsapp-contact:focus-visible{outline:3px solid #b7d875;outline-offset:4px}
+body:has(dialog[open]) .whatsapp-contact{visibility:hidden}
+@media(max-width:720px){.whatsapp-contact{right:max(14px,env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));padding:10px 15px;gap:8px}}
