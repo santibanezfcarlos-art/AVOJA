@@ -53,6 +53,35 @@ class Tests(unittest.TestCase):
                 self.assertEqual(distribute(db_path,"2026-10-21",mailer=mailer),"already_attempted")
                 self.assertEqual(len(mailer.sent),2)
 
+    def test_manual_saved_code_has_separate_idempotency_key(self):
+        from ttlock_distribution import distribute_saved
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        with tempfile.TemporaryDirectory() as folder:
+            db_path=str(Path(folder)/"test.db")
+            with sqlite3.connect(db_path) as db:
+                db.executescript("""
+                    CREATE TABLE users(id INTEGER PRIMARY KEY,email TEXT);
+                    CREATE TABLE bookings(id INTEGER PRIMARY KEY,user_id INTEGER,status TEXT,start TEXT);
+                    INSERT INTO users VALUES(1,'one@example.com');
+                    INSERT INTO bookings VALUES(1,1,'confirmed','2026-10-22T13:00:00+00:00');
+                """)
+            env={"TTLOCK_DISTRIBUTION_ENABLED":"true",
+                 "TTLOCK_EMAIL_TO":"owner@example.com",
+                 "TTLOCK_DISTRIBUTION_TO":"contacto@valhallaoffice.cl",
+                 "TTLOCK_ENCRYPTION_KEY":base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")}
+            with patch.dict(os.environ,env):
+                mailer=FakeMailer()
+                start=datetime(2026,10,21,22,tzinfo=ZoneInfo("America/Santiago"))
+                # This historical date is expired at test runtime. Freeze time in module.
+                with patch("ttlock_distribution.datetime") as clock:
+                    clock.now.return_value=datetime(2026,10,21,23,tzinfo=ZoneInfo("America/Santiago"))
+                    clock.side_effect=lambda *a,**k: datetime(*a,**k)
+                    self.assertEqual(distribute_saved(db_path,"manual-example",start,encrypt_code("456789"),mailer=mailer),"accepted")
+                    self.assertEqual(distribute_saved(db_path,"manual-example",start,encrypt_code("456789"),mailer=mailer),"already_attempted")
+                self.assertEqual(len(mailer.sent),2)
+                self.assertEqual([s[0] for s in mailer.sent],["contacto@valhallaoffice.cl","one@example.com"])
+
     def test_disabled_by_default(self):
         with patch.dict(os.environ,{"TTLOCK_DISTRIBUTION_ENABLED":"false"}):
             self.assertEqual(distribute("/not-used","2026-10-21"),"disabled")
