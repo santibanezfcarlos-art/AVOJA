@@ -76,3 +76,5 @@ body{padding-bottom:88px}
 .whatsapp-contact strong{display:block;font-size:.95rem}.whatsapp-contact:hover{background:#125637}.whatsapp-contact:focus-visible{outline:3px solid #b7d875;outline-offset:4px}
 body:has(dialog[open]) .whatsapp-contact{visibility:hidden}
 @media(max-width:720px){.whatsapp-contact{right:max(14px,env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));padding:10px 15px;gap:8px}}
+
+.discount-checkout{margin-top:24px;padding:20px;border:1px solid var(--line);border-radius:12px;display:grid;gap:12px;background:#f5f8f2}.discount-checkout input{text-transform:uppercase}#discount-form{max-width:480px;margin:20px 0}

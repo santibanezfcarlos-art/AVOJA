@@ -133,11 +133,11 @@ class PaymentService:
             raise PaymentError('Hay un pago pendiente de conciliación. Consulta su estado; no inicies otro cobro.', 409)
         return {'payment_id':row['id'], 'token':row['token'], 'url':row['checkout_url'], 'mode':self.mode}
 
-    def create(self, uid, catalog, key, rules_acceptance=None):
+    def create(self, uid, catalog, key, rules_acceptance=None, discount_code='', expected_price=None):
         with self.configuration_lock:
-            return self._create(uid,catalog,key,rules_acceptance)
+            return self._create(uid,catalog,key,rules_acceptance,discount_code,expected_price)
 
-    def _create(self, uid, catalog, key, rules_acceptance):
+    def _create(self, uid, catalog, key, rules_acceptance, discount_code, expected_price):
         from rules import validate_acceptance
         if not validate_acceptance(rules_acceptance):
             raise PaymentError('Debes leer y aceptar las normas vigentes antes de comprar.',400)
@@ -155,18 +155,28 @@ class PaymentService:
                 raise PaymentError('Necesitas una cuenta activa y el correo confirmado para comprar.', 403)
             previous = c.execute('SELECT * FROM payment_attempts WHERE user_id=? AND idempotency_key=?', (uid,key)).fetchone()
             if previous:
+                snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(previous['package_id'],)).fetchone()
+                if snapshot['discount_code']!=str(discount_code).strip().upper() or previous['hours']!=hours or (expected_price is not None and expected_price!=previous['amount']):raise PaymentError('Esta compra ya fue iniciada con otro plan o código.',409)
                 checkout=self.checkout(previous)
                 if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(previous['package_id'],)).fetchone():
                     self.store.record_purchase_acceptance(c,uid,previous['package_id'],rules_acceptance)
                 return checkout
+            # Explicit resume retains the original quote, even after a promotion ends.
             pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND state IN ('creating','ready','uncertain','review') AND archived=0", (uid,)).fetchone()
+            if pending and pending['state']=='ready' and pending['hours']==hours and expected_price==pending['amount']:
+                snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()
+                if snapshot['discount_code']==str(discount_code).strip().upper():
+                    return self.checkout(pending)
+            quote=self.store.discount_quote(c,catalog,discount_code);price=quote['price']
+            if expected_price is not None and expected_price!=price:raise PaymentError('El precio cambió. Aplica nuevamente el código antes de comprar.',409)
             if pending:
-                if pending['state']=='ready' and pending['hours']==hours:
+                if pending['state']=='ready' and pending['hours']==hours and pending['amount']==price and c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()['discount_code']==quote['code']:
                     if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(pending['package_id'],)).fetchone():
                         self.store.record_purchase_acceptance(c,uid,pending['package_id'],rules_acceptance)
                     return self.checkout(pending)
                 raise PaymentError('Ya tienes un pago pendiente. Retómalo o consulta su estado en Paquetes.', 409)
             pid = c.execute("INSERT INTO packages(user_id,hours,remaining,price,created_at,source) VALUES(?,?,0,?,?,'webpay_integration')", (uid,hours,price,stamp(now()))).lastrowid
+            self.store.record_discount(c,pid,quote)
             self.store.record_purchase_acceptance(c,uid,pid,rules_acceptance)
             order, session = 'VH'+secrets.token_hex(10), secrets.token_hex(20)
             aid = c.execute("INSERT INTO payment_attempts(user_id,package_id,idempotency_key,buy_order,session_id,amount,hours,environment,state,created_at) VALUES(?,?,?,?,?,?,?,?, 'creating',?)", (uid,pid,key,order,session,price,hours,self.mode,stamp(now()))).lastrowid

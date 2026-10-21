@@ -1,6 +1,6 @@
 // In-memory adapter for the standalone ChatGPT preview. No network or real payments.
 const previewDB = {
-  users: [],
+  discounts:[], users: [],
   batches:[], packages:[],
   documents:[], bookings:[], audit:[]
 };
@@ -61,11 +61,23 @@ async function api(path,body){
     })};
   }
   if(path==='profile'){if(user.name!==String(body.name).trim()){const identity=db.documents.filter(d=>d.user_id===user.id&&d.kind==='identity').at(-1);if(identity)identity.status='pending';user.verified=0;}user.name=String(body.name).trim();user.specialty=String(body.specialty).trim();return {ok:true};}
+  if(path==='admin/discounts'){
+    if(user.role!=='admin')throw Error('Acceso exclusivo de administración.');
+    const code=String(body.code).trim().toUpperCase();if(!/^[A-Z0-9_-]{3,40}$/.test(code)||!Number.isInteger(body.percent)||body.percent<1||body.percent>99)throw Error('Código o porcentaje inválido.');
+    const row=db.discounts.find(d=>d.code===code);if(row)Object.assign(row,{percent:body.percent,active:body.active});else db.discounts.push({code,percent:body.percent,active:body.active});return {code};
+  }
+  if(path==='discounts/quote'){
+    const plan=previewCatalog.find(p=>p.id===String(body.catalog_id));if(!plan)throw Error('Plan inválido.');
+    const code=String(body.discount_code||'').trim().toUpperCase(),d=db.discounts.find(d=>d.code===code&&d.active);
+    if(code&&!d)throw Error('El código de descuento no existe o está desactivado.');
+    const percent=d?.percent||0,price=Math.max(1,Math.floor((plan.price*(100-percent)+50)/100));return {code,percent,price,original_price:plan.price,discount:plan.price-price};
+  }
   if(path==='packages'){
     if(body.rules_acceptance?.accepted!==true||body.rules_acceptance?.version!==globalThis.VALHALLA_RULES.version)throw Error('Debes aceptar las normas vigentes antes de comprar.');
     if(user.role!=='professional')throw Error('Solo profesionales pueden solicitar paquetes.');
     const p=previewCatalog.find(p=>p.id===body.catalog_id);if(!p)throw Error('Paquete inválido.');
-    const row={id:previewId(db.packages),user_id:user.id,hours:p.hours,remaining:p.hours,price:p.price,status:'pending',created_at:new Date().toISOString()};db.packages.push(row);previewRecord('payment_requested_simulated',row.id);return {ok:true,id:row.id};
+    const quote=await api('discounts/quote',body);
+    const row={discount_code:quote.code,discount_percent:quote.percent,original_price:quote.original_price,id:previewId(db.packages),user_id:user.id,hours:p.hours,remaining:p.hours,price:quote.price,status:'pending',created_at:new Date().toISOString()};db.packages.push(row);previewRecord('payment_requested_simulated',row.id);return {ok:true,id:row.id};
   }
   if(path==='bookings/batch'){
     if(!Array.isArray(body.slots)||!body.slots.length||body.slots.length>200||!body.request_key)throw Error('Selecciona las horas antes de confirmar.');
@@ -103,7 +115,7 @@ async function api(path,body){
   }
   if(path==='admin'){
     if(user.role!=='admin')throw Error('Acceso exclusivo de administración.');
-    if(body===undefined)return previewClone({users:db.users.map(({password,...u})=>u),packages:db.packages.map(p=>({...p,name:db.users.find(u=>u.id===p.user_id)?.name})).reverse(),documents:db.documents.map(d=>({...d,name:db.users.find(u=>u.id===d.user_id)?.name})).reverse(),bookings:db.bookings.map(b=>({...b,name:db.users.find(u=>u.id===b.user_id)?.name})),audit:db.audit});
+    if(body===undefined)return previewClone({discount_codes:db.discounts,users:db.users.map(({password,...u})=>u),packages:db.packages.map(p=>({...p,name:db.users.find(u=>u.id===p.user_id)?.name})).reverse(),documents:db.documents.map(d=>({...d,name:db.users.find(u=>u.id===d.user_id)?.name})).reverse(),bookings:db.bookings.map(b=>({...b,name:db.users.find(u=>u.id===b.user_id)?.name})),audit:db.audit});
     if(body.action==='payment'){
       const p=db.packages.find(p=>p.id===body.id);if(!p||p.status!=='pending')throw Error('El pago ya fue procesado.');p.status=body.decision;
     }else if(body.action==='document'){

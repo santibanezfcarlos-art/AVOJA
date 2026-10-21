@@ -281,3 +281,9 @@ Archivar no anula ni devuelve una operación en Transbank. Se exige comprobar pr
 La base existente se amplía conservando sus planes y saldos; no se requiere volver a importar clientes. Pruebas: `python3 -m unittest discover -s tests -p test_balance_archive.py` y `python3 tests/run_browser.py balance_archive_browser.cjs`. El navegador comprueba saldo migrado 5 → 2 → 4, rechazo de saldo negativo, archivo de Webpay desde la ficha, consulta del historial y nueva compra en móvil, usando un banco simulado localmente.
 
 Los motivos, observaciones y comentarios administrativos son opcionales, también al ocultar planes, revisar documentos e importar saldos. Se conservan las validaciones de identidad, consentimiento y datos operativos.
+
+### Códigos de descuento
+
+Administración → Descuentos permite crear códigos personalizados (3–40 letras, números o guiones), elegir un porcentaje entero de 1 a 99, editarlos y activarlos/desactivarlos. Se normalizan a mayúsculas y pueden reutilizarse en cualquier plan, sin acumulación de códigos en una compra. No tienen vencimiento ni límite de usos en esta versión.
+
+Después de aceptar las normas, el cliente puede aplicar un código y revisar precio original, ahorro y total en CLP antes de pagar. El servidor calcula y valida el precio; se guardan el código y porcentaje históricos en el plan. El monto descontado se envía a Webpay y se verifica al aprobar, acreditando las mismas sesiones una sola vez. Los pagos ya iniciados conservan su precio, aunque luego se edite o desactive el código. Si existe un pago pendiente con otro código o precio, se debe retomar o resolver antes de crear otro. Las promociones no habilitan cobros de producción ni reemplazan la aceptación de normas.

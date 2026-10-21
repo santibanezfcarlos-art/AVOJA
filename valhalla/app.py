@@ -145,6 +145,9 @@ class Store:
         with self.connection() as c:
             c.executescript('''
             PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS discount_codes (
+                code TEXT PRIMARY KEY, percent INTEGER NOT NULL CHECK(percent BETWEEN 1 AND 99),
+                active INTEGER NOT NULL DEFAULT 1, actor_id INTEGER NOT NULL, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS users (
               id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
               password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'professional',
@@ -270,6 +273,8 @@ class Store:
                 c.execute("CREATE UNIQUE INDEX one_open_webpay_per_user ON payment_attempts(user_id) WHERE state IN ('creating','ready','uncertain','review') AND archived=0")
             package_columns = {row['name'] for row in c.execute('PRAGMA table_info(packages)')}
             for column,definition in [('archived_at',"TEXT NOT NULL DEFAULT ''"),('archive_reason',"TEXT NOT NULL DEFAULT ''"),('archived_by','INTEGER REFERENCES users(id)')]:
+                if column not in package_columns:c.execute(f'ALTER TABLE packages ADD COLUMN {column} {definition}')
+            for column,definition in [('discount_code',"TEXT NOT NULL DEFAULT ''"),('discount_percent','INTEGER NOT NULL DEFAULT 0'),('original_price','INTEGER NOT NULL DEFAULT 0')]:
                 if column not in package_columns:c.execute(f'ALTER TABLE packages ADD COLUMN {column} {definition}')
             if 'source' not in package_columns:
                 c.execute("ALTER TABLE packages ADD COLUMN source TEXT NOT NULL DEFAULT 'simulated'")
@@ -674,6 +679,32 @@ class Store:
         if not 2 <= len(row['specialty']) <= 100 and c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(uid,)).fetchone():
             raise Problem('Completa tu profesión o especialidad en Mi perfil antes de reservar.', 403)
 
+    def discount_quote(self, c, catalog, code=''):
+        if str(catalog) not in CATALOG:raise Problem('Plan inválido.')
+        if not isinstance(code,str):raise Problem('Código inválido.')
+        code=code.strip().upper()
+        price=CATALOG[str(catalog)][1];percent=0
+        if code:
+            row=c.execute('SELECT * FROM discount_codes WHERE code=? AND active=1',(code,)).fetchone()
+            if not row:raise Problem('El código de descuento no existe o está desactivado.')
+            percent=row['percent']
+        amount=max(1,(price*(100-percent)+50)//100)
+        return {'code':code,'percent':percent,'original_price':price,'price':amount,'discount':price-amount}
+
+    def save_discount(self, actor, body):
+        code=body.get('code','');percent=body.get('percent');active=body.get('active',True)
+        if not isinstance(code,str) or not re.fullmatch(r'[A-Za-z0-9_-]{3,40}',code.strip()):raise Problem('Usa un código de 3 a 40 letras, números, guiones o guiones bajos.')
+        code=code.strip().upper()
+        if type(percent) is not int or not 1<=percent<=99 or type(active) is not bool:raise Problem('Indica un porcentaje entero entre 1 y 99.')
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            c.execute('INSERT INTO discount_codes(code,percent,active,actor_id,created_at) VALUES(?,?,?,?,?) ON CONFLICT(code) DO UPDATE SET percent=excluded.percent,active=excluded.active',(code,percent,int(active),actor,stamp(now())))
+            self.log(c,actor,'discount_updated',code)
+        return {'code':code}
+
+    def record_discount(self,c,pid,quote):
+        c.execute('UPDATE packages SET discount_code=?,discount_percent=?,original_price=? WHERE id=?',(quote['code'],quote['percent'],quote['original_price'],pid))
+
     def buy(self, uid, body):
         if not validate_acceptance(body.get('rules_acceptance')):
             raise Problem('Debes leer y aceptar las normas vigentes antes de comprar.',400)
@@ -685,8 +716,11 @@ class Store:
             row = c.execute('SELECT role,email,active FROM users WHERE id=?', (uid,)).fetchone()
             if not row or not supports_professional(row) or not row['active']:
                 raise Problem('Solo los profesionales activos pueden solicitar paquetes.', 403)
+            quote=self.discount_quote(c,key,body.get('discount_code',''));price=quote['price']
+            if body.get('expected_price',price)!=price:raise Problem('El precio cambió. Aplica nuevamente el código antes de comprar.',409)
             cur = c.execute('INSERT INTO packages(user_id,hours,remaining,price,created_at) VALUES(?,?,?,?,?)',
                             (uid, hours, hours, price, stamp(now())))
+            self.record_discount(c,cur.lastrowid,quote)
             self.record_purchase_acceptance(c,uid,cur.lastrowid,body['rules_acceptance'])
             self.log(c, uid, 'payment_requested_simulated', cur.lastrowid)
             return cur.lastrowid
@@ -923,7 +957,7 @@ class Store:
 
     def admin_state(self):
         with self.connection() as c:
-            return {'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+            return {'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
@@ -1326,11 +1360,17 @@ class Handler(BaseHTTPRequestHandler):
                 if getattr(getattr(self.server,'webpay',None),'mode','disabled') != 'disabled':
                     raise Problem('Utiliza Webpay para comprar este plan.',409)
                 result = store.buy(user['id'], body)
+            elif self.path == '/api/discounts/quote':
+                with store.connection() as c:result=store.discount_quote(c,body.get('catalog_id'),body.get('discount_code',''))
+                self.respond(result);return
+            elif self.path == '/api/admin/discounts':
+                self.admin(user)
+                self.respond(store.save_discount(user['id'],body));return
             elif self.path == '/api/webpay/create':
                 service = getattr(self.server,'webpay',None)
                 if not service:
                     raise PaymentError('Webpay no está habilitado.',409)
-                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key'),body.get('rules_acceptance')))
+                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key'),body.get('rules_acceptance'),body.get('discount_code',''),body.get('expected_price')))
                 return
             elif self.path == '/api/webpay/reconcile':
                 service = getattr(self.server,'webpay',None)
