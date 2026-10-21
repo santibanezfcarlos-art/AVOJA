@@ -1,62 +1,93 @@
-"""Daily access email BCC distribution. Opt-in only, never creates codes."""
-import json
+"""Opt-in individual delivery of a saved daily TTLock code.
+
+Every recipient gets their own private email. Each attempt has a durable,
+unique audit record; ambiguous outcomes are not automatically retried.
+No new lock passcodes are ever requested by this module.
+"""
 import os
 import sqlite3
 from datetime import datetime
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
+from mailer import EmailDelivery
 from ttlock_daily import AttemptLedger, decrypt_code, email_content
 from ttlock_recipients import recipients_for_tomorrow
 
 
-def distribute(db_path, issue_day, transport=None):
-    if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED") != "true":
+def _initialize(db_path):
+    with sqlite3.connect(db_path, timeout=10) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS ttlock_individual_delivery (
+            issue_day TEXT NOT NULL,
+            recipient TEXT NOT NULL,
+            booking_day TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(issue_day,recipient)
+        )""")
+
+
+def _send_one(db_path, issue_day, booking_day, recipient, subject, message, mailer):
+    # Reserve before delivery to protect against restarts / concurrent workers.
+    with sqlite3.connect(db_path, timeout=10) as db:
+        result = db.execute("""INSERT OR IGNORE INTO ttlock_individual_delivery
+            (issue_day,recipient,booking_day,status,created_at)
+            VALUES (?,?,?,?,?)""",
+            (issue_day,recipient.casefold(),booking_day,"sending",
+             datetime.now(ZoneInfo("America/Santiago")).isoformat()))
+        if result.rowcount != 1:
+            return "already_attempted"
+    try:
+        # One TO only: recipients never see anyone else's email.
+        mailer.send_message(recipient,subject,message,
+            idempotency_key="ttlock-individual-"+issue_day+"-"+recipient.casefold())
+    except Exception:
+        # Could have been delivered. A human must investigate before retry.
+        status = "uncertain"
+    else:
+        status = "accepted"
+    with sqlite3.connect(db_path,timeout=10) as db:
+        db.execute("""UPDATE ttlock_individual_delivery SET status=?
+            WHERE issue_day=? AND recipient=?""",
+            (status,issue_day,recipient.casefold()))
+    return status
+
+
+def distribute(db_path, issue_day, transport=None, *, mailer=None):
+    if os.environ.get("TTLOCK_DISTRIBUTION_ENABLED","").lower() != "true":
         return "disabled"
     record = AttemptLedger(db_path).get_existing(issue_day)
     if not record or record["status"] != "emailed" or not record["encrypted_code"]:
         return "code_not_ready"
-    issued_at = datetime.fromisoformat(issue_day + "T22:00:00").replace(
+    issued_at = datetime.fromisoformat(issue_day+"T22:00:00").replace(
         tzinfo=ZoneInfo("America/Santiago"))
-    day, recipients = recipients_for_tomorrow(db_path, issued_at)
-    owner = os.environ.get("TTLOCK_DISTRIBUTION_TO", "contacto@valhallaoffice.cl").strip()
-    if not owner or "@" not in owner:
+    booking_day, booked = recipients_for_tomorrow(db_path,issued_at)
+    main = os.environ.get("TTLOCK_DISTRIBUTION_TO","contacto@valhallaoffice.cl").strip()
+    if not main or "@" not in main:
         return "recipient_not_configured"
-    # Do not repeat the primary distribution address or the original TTLock
-    # fallback inbox in BCC.
-    excluded = {owner.casefold(), os.environ["TTLOCK_EMAIL_TO"].strip().casefold()}
-    recipients = [r for r in recipients if r.strip().casefold() not in excluded]
-    # Always deliver the corporate backup even when nobody is booked.
-    if len(recipients) > 40:
+    # Original TTLock email continues unchanged. It is not resent here.
+    original = os.environ["TTLOCK_EMAIL_TO"].strip().casefold()
+    recipients = []
+    seen = set()
+    for email in [main]+booked:
+        value = email.strip()
+        normalized = value.casefold()
+        if not value or normalized in seen or (normalized == original and normalized != main.casefold()):
+            continue
+        recipients.append(value)
+        seen.add(normalized)
+    if len(recipients)>41:
         return "recipient_limit"
-    code = decrypt_code(record["encrypted_code"])
-    subject, message = email_content(code, issued_at)
-    # An attempt record is committed before sending to avoid double submissions.
-    with sqlite3.connect(db_path) as db:
-        db.execute("""CREATE TABLE IF NOT EXISTS ttlock_distribution_events (
-            issue_day TEXT PRIMARY KEY, booking_day TEXT, status TEXT, recipient_count INTEGER)""")
-        cursor = db.execute("""INSERT OR IGNORE INTO ttlock_distribution_events
-            VALUES (?,?,?,?)""", (issue_day, day.isoformat(), "pending", len(recipients)))
-        if cursor.rowcount == 0:
-            return "already_attempted"
-    payload = {"from":os.environ["VALHALLA_EMAIL_FROM"],"to":[owner],
-               "subject":subject,"text":message}
-    if recipients:
-        payload["bcc"] = recipients
-    request = Request("https://api.resend.com/emails",
-        data=json.dumps(payload).encode(),method="POST",
-        headers={"Authorization":"Bearer "+os.environ["VALHALLA_RESEND_API_KEY"],
-                 "Content-Type":"application/json",
-                 "Idempotency-Key":"ttlock-distribution-"+issue_day})
-    try:
-        with (transport or urlopen)(request,timeout=15) as response:
-            result=json.load(response)
-            if not isinstance(result,dict) or not result.get("id"):
-                raise ValueError("Missing provider receipt")
-        status="accepted"
-    except Exception:
-        status="uncertain"
-    with sqlite3.connect(db_path) as db:
-        db.execute("UPDATE ttlock_distribution_events SET status=? WHERE issue_day=?",
-                   (status,issue_day))
-    return status
+    delivery = mailer or EmailDelivery()
+    if not delivery.configured:
+        return "email_not_configured"
+    subject,message = email_content(decrypt_code(record["encrypted_code"]),issued_at)
+    _initialize(db_path)
+    statuses = [
+        _send_one(db_path,issue_day,booking_day.isoformat(),email,subject,message,delivery)
+        for email in recipients
+    ]
+    if "uncertain" in statuses:
+        return "partial_or_uncertain"
+    if all(s=="already_attempted" for s in statuses):
+        return "already_attempted"
+    return "accepted"
