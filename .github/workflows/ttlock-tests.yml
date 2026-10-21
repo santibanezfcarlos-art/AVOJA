@@ -2,7 +2,7 @@ name: TTLock offline tests
 
 on:
   push:
-    branches: [ttlock-integration]
+    branches: [ttlock-integration, ttlock-nextday-distribution]
   workflow_dispatch:
 
 permissions:
