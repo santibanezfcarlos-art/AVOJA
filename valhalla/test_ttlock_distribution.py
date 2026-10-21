@@ -35,6 +35,7 @@ class DistributionTests(unittest.TestCase):
                 """)
             env={"TTLOCK_DISTRIBUTION_ENABLED":"true",
                  "TTLOCK_EMAIL_TO":"owner@example.com",
+                 "TTLOCK_DISTRIBUTION_TO":"contacto@valhallaoffice.cl",
                  "VALHALLA_EMAIL_FROM":"AVOJA <noreply@example.com>",
                  "VALHALLA_RESEND_API_KEY":"FAKE",
                  "TTLOCK_ENCRYPTION_KEY":base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")}
@@ -52,7 +53,7 @@ class DistributionTests(unittest.TestCase):
                 self.assertEqual(distribute(path,"2026-10-21",transport=fake_transport),"already_attempted")
                 self.assertEqual(len(sent),1)
                 self.assertEqual(sent[0]["bcc"],["one@example.com"])
-                self.assertEqual(sent[0]["to"],["owner@example.com"])
+                self.assertEqual(sent[0]["to"],["contacto@valhallaoffice.cl"])
                 self.assertIn("#123456#",sent[0]["text"])
 
     def test_default_disabled(self):
