@@ -26,6 +26,37 @@ class BatchBookings(unittest.TestCase):
     def batch(self,slots,key='test-batch-key-123456789',uid=None):return self.store.reserve_batch(uid or self.user,{'slots':slots,'request_key':key})
     def count(self,table,where=''):
         with self.store.connection() as c:return c.execute('SELECT COUNT(*) FROM '+table+' '+where).fetchone()[0]
+    def prepare_owner(self):
+        with self.store.connection(True) as c:
+            for kind in ('identity','degree'):
+                c.execute("INSERT INTO documents(user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,'application/pdf',?,'approved',?,?)",(self.admin,kind+'.pdf',b'Fixture',stamp(self.clock),kind))
+            c.execute("INSERT INTO packages(user_id,hours,remaining,price,status,created_at) VALUES(?,6,6,0,'paid',?)",(self.admin,stamp(self.clock)))
+    def test_owner_can_reserve_three_boxes_same_time_individually(self):
+        self.prepare_owner()
+        for box in (1,2,3):self.store.reserve(self.admin,self.slot(9,box))
+        self.assertEqual(self.balance(self.admin),3)
+        with self.assertRaises(Problem):self.store.reserve(self.admin,self.slot(9,1))
+        with self.assertRaises(Problem):self.store.reserve(self.user,self.slot(9,2))
+        self.assertEqual(self.balance(self.admin),3);self.assertEqual(self.balance(),5)
+    def test_owner_parallel_batch_idempotence_and_occupied_box_rollback(self):
+        self.prepare_owner();slots=[self.slot(9,box) for box in (1,2,3)]
+        first=self.batch(slots,uid=self.admin);second=self.batch(slots,uid=self.admin)
+        self.assertEqual(first['ids'],second['ids']);self.assertEqual(self.balance(self.admin),3)
+        with self.assertRaises(Problem):self.batch([self.slot(10,1),self.slot(9,2)],key='occupied-owner-key-12345',uid=self.admin)
+        self.assertEqual(self.balance(self.admin),3);self.assertEqual(self.count('bookings'),3)
+        with self.assertRaises(Problem):self.batch([self.slot(11,1),self.slot(11,1)],key='duplicate-owner-key-1234',uid=self.admin)
+    def test_owner_modification_to_parallel_time_but_not_occupied_box(self):
+        self.prepare_owner();self.store.reserve(self.admin,self.slot(9,1))
+        bid=self.store.reserve(self.admin,self.slot(10,2))
+        with self.assertRaises(Problem):self.store.modify(self.admin,bid,self.slot(9,1))
+        self.store.modify(self.admin,bid,self.slot(9,3))
+        self.assertEqual(self.balance(self.admin),4)
+    def test_professional_still_cannot_reserve_simultaneously_or_modify_to_same_time(self):
+        self.store.reserve(self.user,self.slot(9,1))
+        with self.assertRaises(Problem):self.store.reserve(self.user,self.slot(9,2)|{'role':'admin'})
+        bid=self.store.reserve(self.user,self.slot(10,2))
+        with self.assertRaises(Problem):self.store.modify(self.user,bid,self.slot(9,3))
+        self.assertEqual(self.balance(),3)
     def test_all_five_across_days_and_boxes_with_individual_receipts(self):
         result=self.batch([self.slot(hour=hour,box=(hour%3)+1,day=hour%2+1) for hour in range(7,12)])
         self.assertEqual(len(result['ids']),5);self.assertEqual(self.balance(),0)

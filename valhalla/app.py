@@ -829,9 +829,13 @@ class Store:
                 self.log(c,uid,'manual_plan_rules_accepted',pid)
         return {'ok':True}
 
+    def can_book_parallel(self,c,uid):
+        user=c.execute('SELECT role,email,active FROM users WHERE id=?',(uid,)).fetchone()
+        return bool(user and user['role']=='admin' and user['email']==ADMIN_EMAIL and user['active'])
+
     def reserve_one(self, c, uid, box, start, receipt_balance=None):
         self.parse_slot(start)
-        if c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
+        if not self.can_book_parallel(c,uid) and c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed'", (uid, start)).fetchone():
             raise Problem('Ya tienes una reserva a esa hora.', 409)
         package=c.execute("SELECT * FROM packages WHERE user_id=? AND status='paid' AND remaining>0 ORDER BY id LIMIT 1",(uid,)).fetchone()
         if not package:
@@ -864,13 +868,15 @@ class Store:
             if not isinstance(item,dict) or type(item.get('box')) is not int or item['box'] not in (1,2,3):
                 raise Problem('Box inválido en la selección.')
             slots.append((self.parse_slot(item.get('start')),item['box']))
-        if len({start for start,box in slots})!=len(slots):
-            raise Problem('No puedes seleccionar dos boxes para la misma hora.',409)
+        if len(set(slots))!=len(slots):
+            raise Problem('No puedes seleccionar dos veces el mismo box y horario.',409)
         slots.sort()
         fingerprint=hashlib.sha256(json.dumps(slots).encode()).hexdigest()
         try:
             with self.connection(True) as c:
                 self.professional(c,uid)
+                if not self.can_book_parallel(c,uid) and len({start for start,box in slots})!=len(slots):
+                    raise Problem('No puedes seleccionar dos boxes para la misma hora.',409)
                 previous=c.execute('SELECT * FROM booking_batches WHERE user_id=? AND request_key=?',(uid,key)).fetchone()
                 if previous:
                     if previous['fingerprint']!=fingerprint:
@@ -905,7 +911,7 @@ class Store:
                     raise Problem('El cambio requiere al menos dos horas de anticipación para ambos horarios.', 409)
                 if booking['box'] == box and booking['start'] == start:
                     raise Problem('Elige un box u horario diferente; tu cambio sigue disponible.')
-                if c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed' AND id<>?", (uid, start, bid)).fetchone():
+                if not self.can_book_parallel(c,uid) and c.execute("SELECT id FROM bookings WHERE user_id=? AND start=? AND status='confirmed' AND id<>?", (uid, start, bid)).fetchone():
                     raise Problem('Ya tienes una reserva a esa hora.', 409)
                 c.execute('UPDATE bookings SET box=?,start=?,modifications=modifications+1 WHERE id=?', (box, start, bid))
                 self.log(c, uid, 'modified', bid)

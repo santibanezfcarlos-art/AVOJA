@@ -242,6 +242,24 @@ const base = process.env.VALHALLA_TEST_URL || 'http://127.0.0.1:8081';
     assert.equal(ownerBooked.packages[0].remaining,4);
     assert.equal(ownerBooked.bookings[0].user_id,ownerBefore.user.id);
     assert.equal(ownerBooked.user.role,'admin');
+    // Owner may reserve the other two rooms at the same time through batch UI.
+    const parallelStart=ownerBooked.bookings[0].start;
+    await goto(admin,'availability');
+    await admin.locator('#schedule-date').fill(tomorrow(ownerPending.today));
+    await admin.locator('#schedule-date').dispatchEvent('change');
+    await admin.waitForFunction(date=>document.querySelector('[data-slot]')?.dataset.slot?.startsWith(date),tomorrow(ownerPending.today));
+    await admin.locator('#toggle-multiple').click();
+    for(const box of [1,2]){
+      const slot=admin.locator(`[data-box="${box}"][data-slot="${parallelStart}"]`);
+      assert.equal(await slot.isDisabled(),false);await slot.click();
+      await admin.locator(`[data-box="${box}"][data-slot="${parallelStart}"][aria-pressed="true"]`).waitFor();
+    }
+    await admin.locator('#confirm-multiple').click();await confirm(admin,'Confirmar horas seleccionadas');
+    await admin.getByRole('heading',{name:'Tu agenda, en orden'}).waitFor();
+    const ownerParallel=await profile(admin);
+    assert.equal(ownerParallel.packages[0].remaining,2);
+    assert.equal(ownerParallel.bookings.filter(b=>b.start===parallelStart).length,3);
+
     await admin.setViewportSize({width:390,height:844});
     assert.equal(await admin.evaluate(()=>document.documentElement.scrollWidth),390);
     await admin.locator('[data-mode="admin"]').click();

@@ -99,7 +99,7 @@ async function api(path,body){
       if(new Date(existing.start)-Date.now()<7200000||new Date(start)-Date.now()<7200000)throw Error('El cambio requiere al menos dos horas de anticipación para ambos horarios.');
       if(existing.start===start&&existing.box===body.box)throw Error('Elige un box u horario diferente.');
     }
-    if(db.bookings.some(b=>b.id!==id&&b.status==='confirmed'&&b.start===start&&(b.box===body.box||b.user_id===user.id)))throw Error('Ese box está ocupado o ya tienes una reserva a esa hora.');
+    if(db.bookings.some(b=>b.id!==id&&b.status==='confirmed'&&b.start===start&&(b.box===body.box||(b.user_id===user.id&&user.role!=='admin'))))throw Error('Ese box está ocupado o ya tienes una reserva a esa hora.');
     if(existing){existing.start=start;existing.box=body.box;existing.modifications++;previewRecord('modified',id);return {ok:true};}
     const p=db.packages.find(p=>p.user_id===user.id&&p.status==='paid'&&p.remaining>0);
     if(!p)throw Error('Necesitas saldo de un paquete confirmado.');
