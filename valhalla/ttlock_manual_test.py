@@ -79,7 +79,8 @@ def main():
     try:
         subject, body = email_content(code, start)
         mailer.send_message(email_to, subject, body,
-                            idempotency_key="ttlock-manual-" + test_id)
+                            idempotency_key="ttlock-manual-" + test_id,
+                            html=access_email_html(code, start))
     except Exception:
         record(db_path, test_id, "email_failed")
         print("CODIGO GUARDADO; EMAIL FALLIDO. No generes otro.")
