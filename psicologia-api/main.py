@@ -1,0 +1,130 @@
+"""Consulta privada de Google Calendar para la agenda demostrativa de Psicología.
+
+Configurar únicamente en Render GOOGLE_CALENDAR_ICS_URL (URL privada iCal de Google).
+Esta aplicación NO expone descripciones, asistentes ni títulos de eventos.
+No guarda reservas ni acepta pagos.
+"""
+import os
+import time
+import threading
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from urllib.request import Request, urlopen
+from urllib.parse import urlparse
+
+from flask import Flask, jsonify, request, make_response
+from icalendar import Calendar
+import recurring_ical_events
+
+app = Flask(__name__)
+TZ = ZoneInfo("America/Santiago")
+SLOT_DURATION_MINUTES = 60
+OPEN_MINUTES = 9 * 60
+CLOSE_MINUTES = 20 * 60
+CACHE_TTL_SECONDS = 120
+ALLOWED_SITE = "https://psicologia-carlos-demo.onrender.com"
+MAX_FEED_SIZE = 4_000_000
+_feed_cache = {"at": 0.0, "events": []}
+_lock = threading.Lock()
+
+
+def _to_local(value):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=TZ) if value.tzinfo is None else value.astimezone(TZ)
+    return datetime(value.year, value.month, value.day, tzinfo=TZ)
+
+
+def _load_busy_intervals():
+    url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "calendar.google.com" or not parsed.path.startswith("/calendar/ical/"):
+        raise ValueError("URL iCal inválida: debe pertenecer a Google Calendar")
+    now = time.monotonic()
+    with _lock:
+        if now - _feed_cache["at"] < CACHE_TTL_SECONDS and _feed_cache["events"]:
+            return _feed_cache["events"]
+        req = Request(url, headers={"User-Agent": "PsychologyCalendarAvailability/1.0"})
+        with urlopen(req, timeout=12) as response:
+            # No seguir URLs arbitrarias por redirección.
+            if urlparse(response.geturl()).hostname != "calendar.google.com":
+                raise ValueError("Redirección de calendario no permitida")
+            raw = response.read(MAX_FEED_SIZE + 1)
+        if len(raw) > MAX_FEED_SIZE:
+            raise ValueError("Calendario demasiado grande")
+        cal = Calendar.from_ical(raw)
+        # Se consultan los próximos 70 días; Google iCal admite recurrencias.
+        start = datetime.now(TZ).date() - timedelta(days=1)
+        end = start + timedelta(days=72)
+        start_dt = datetime(start.year, start.month, start.day, tzinfo=TZ)
+        end_dt = datetime(end.year, end.month, end.day, tzinfo=TZ)
+        events = recurring_ical_events.of(cal).between(start_dt, end_dt)
+        intervals = []
+        for event in events:
+            if str(event.get("STATUS", "")).upper() == "CANCELLED":
+                continue
+            if str(event.get("TRANSP", "OPAQUE")).upper() == "TRANSPARENT":
+                continue
+            if "DTSTART" not in event:
+                continue
+            s = _to_local(event.decoded("DTSTART"))
+            if "DTEND" in event:
+                e = _to_local(event.decoded("DTEND"))
+            elif "DURATION" in event:
+                e = s + event.decoded("DURATION")
+            else:
+                e = s + (timedelta(days=1) if isinstance(event.decoded("DTSTART"), date) and not isinstance(event.decoded("DTSTART"), datetime) else timedelta(hours=1))
+            if e > s:
+                intervals.append((s, e))
+        _feed_cache.update(at=now, events=intervals)
+        return intervals
+
+
+@app.after_request
+def _cors(response):
+    if request.headers.get("Origin") == ALLOWED_SITE:
+        response.headers["Access-Control-Allow-Origin"] = ALLOWED_SITE
+        response.headers["Vary"] = "Origin"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.get("/health")
+def health():
+    return jsonify(status="ok", calendar_configured=bool(os.environ.get("GOOGLE_CALENDAR_ICS_URL")))
+
+
+@app.get("/api/availability")
+def availability():
+    try:
+        first = date.fromisoformat(request.args.get("from", ""))
+        last = date.fromisoformat(request.args.get("to", ""))
+        today = datetime.now(TZ).date()
+        if first < today - timedelta(days=1) or last < first or last > today + timedelta(days=60) or (last-first).days > 21:
+            return jsonify(error="El rango permitido es de hasta 22 días, dentro de los próximos 60 días."), 400
+        intervals = _load_busy_intervals()
+        if intervals is None:
+            return jsonify(status="not_configured", configured=False, blocked={}, duration_minutes=SLOT_DURATION_MINUTES)
+        blocked = {}
+        day = first
+        while day <= last:
+            items = []
+            for minute in range(OPEN_MINUTES, CLOSE_MINUTES - SLOT_DURATION_MINUTES + 1, 15):
+                start = datetime(day.year, day.month, day.day, minute // 60, minute % 60, tzinfo=TZ)
+                end = start + timedelta(minutes=SLOT_DURATION_MINUTES)
+                if any(start < ev_end and ev_start < end for ev_start, ev_end in intervals):
+                    items.append(start.strftime("%H:%M"))
+            blocked[day.isoformat()] = items
+            day += timedelta(days=1)
+        return jsonify(status="ok", configured=True, blocked=blocked, duration_minutes=SLOT_DURATION_MINUTES, timezone="America/Santiago")
+    except ValueError:
+        return jsonify(error="Fechas o configuración inválidas"), 400
+    except Exception:
+        app.logger.exception("No se pudo consultar Google Calendar")
+        return jsonify(error="No fue posible verificar disponibilidad. Reintentar más tarde."), 503
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
