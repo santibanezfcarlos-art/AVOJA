@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, jsonify, request, redirect
 from icalendar import Calendar
 import recurring_ical_events
 
@@ -89,6 +89,12 @@ def _cors(response):
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@app.get("/")
+def index():
+    """Al abrir la API en el navegador, mostrar el sitio web de Psicología."""
+    return redirect(ALLOWED_SITE + "/", code=302)
 
 
 @app.get("/health")
