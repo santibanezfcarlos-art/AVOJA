@@ -97,3 +97,6 @@ a.brand{text-decoration:none}
 
 /* Selected icon model: green outlines on soft sage tiles. */
 .sidebar .nav-icon{width:40px;height:40px;min-width:40px;display:grid;place-items:center;flex-shrink:0;color:#255e51;background:#e9f1e6;border-radius:12px}.sidebar .nav-icon svg{display:block;width:24px;height:24px}.sidebar .nav-item{padding:10px 12px;gap:12px}.sidebar .nav-item.active .nav-icon{background:#dbe9cc}.sidebar .nav-label{min-width:0}@media(max-width:720px){.sidebar .nav-item{padding:4px;min-height:48px}.sidebar.menu-open .nav-item{padding:8px;gap:14px}.sidebar .nav-icon svg{width:23px;height:23px}}
+
+/* Keep the mobile logo centered on the phone, independent of side actions. */
+@media(max-width:720px){.topbar{position:relative;min-height:100px;height:100px}.topbar>.brand{position:absolute;left:calc(50% - 29px);top:50%;transform:translate(-50%,-50%);margin:0}.topbar .mobile-menu-toggle{width:44px;min-width:44px;min-height:56px;padding:6px 3px;flex-direction:column;gap:2px;border:1px solid #dce5d8;border-radius:12px;background:#e9f1e6;color:#255e51}.mobile-menu-toggle svg{display:block;flex-shrink:0}.mobile-menu-toggle span{font-size:10px;line-height:14px;font-weight:600}.topbar .topbar-right{margin-left:auto}.mobile-menu-toggle:hover{background:#dbe9cc}}
