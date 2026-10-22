@@ -1,225 +1,227 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#173b36">
-  <meta name="robots" content="noindex,nofollow">
-  <title>Agenda online | Psicología Carlos Santibáñez</title>
-  <style>
-    :root{--ink:#173b36;--ink-soft:#58746b;--muted:#6b7773;--bg:#f5f7f2;--paper:#fff;--line:#dce5df;--green:#2c6a4f;--green-bg:#e9f4eb;--soft:#f1f5f0;--amber:#80602d;--amber-bg:#fdf4df;--shadow:0 15px 45px rgba(25,60,44,.07)}
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-    button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #8ab7aa;outline-offset:3px}
-    .shell{max-width:1140px;margin:auto;padding:0 24px}
-    .topbar{background:white;border-bottom:1px solid var(--line)}
-    .topbar .shell{min-height:81px;display:flex;align-items:center;justify-content:space-between;gap:14px}
-    .brand{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;background:var(--ink);color:#fff;border-radius:13px;display:grid;place-items:center;font-size:16px;font-weight:750;letter-spacing:-1px}
-    .brand-name{font-weight:750;font-size:14px;line-height:1.15}.brand-sub{font-size:12px;color:var(--muted)}
-    .mode{display:flex;align-items:center;gap:7px;background:#f2f6f2;border:1px solid var(--line);border-radius:50px;padding:7px 12px;font-size:12px;font-weight:680;color:var(--ink-soft)}
-    .mode-dot{width:7px;height:7px;border-radius:100%;background:#d39a35}
-    .intro{padding:38px 0 24px}
-    .eyebrow{text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:750;font-size:11px;margin:0 0 7px}
-    h1{font-size:clamp(28px,4vw,38px);line-height:1.16;letter-spacing:-1.3px;margin:0 0 10px}
-    .intro p:last-child{color:var(--ink-soft);margin:0;max-width:760px}
-    .layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(285px,.85fr);gap:22px;align-items:start;padding-bottom:24px}
-    .panel{border:1px solid var(--line);box-shadow:var(--shadow);border-radius:18px;background:#fff}
-    .calendar{padding:26px}
-    .panel-heading{display:flex;justify-content:space-between;align-items:start;gap:10px}
-    h2{font-size:19px;letter-spacing:-.45px;line-height:1.3;margin:0 0 5px}
-    .small{font-size:12px;color:var(--muted);margin:0}
-    .legend{display:flex;gap:14px;font-size:11px;color:var(--ink-soft);margin-top:12px;flex-wrap:wrap}
-    .key{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:#dfe5df}.key.yes{background:#77aa87}.key.pick{background:#1d5c45}
-    .navigation{margin-top:25px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-    .period{font-weight:760;font-size:14px;text-transform:capitalize}
-    .nav-actions{display:flex;gap:7px}
-    .arrow{background:white;border:1px solid var(--line);border-radius:9px;width:34px;height:34px;font-size:19px;color:var(--ink)}
-    .arrow:hover:enabled{background:var(--soft)}button:disabled{cursor:not-allowed}
-    .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}
-    .day{border:1px solid transparent;background:transparent;border-radius:12px;min-height:74px;padding:7px 2px;color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-    .day:hover:enabled{background:var(--soft)}.day.active{background:#e7f1e9;border-color:#2d6d54}
-    .day.disabled{color:#b3bcb5;opacity:.8}.day-label{font-size:11px}.day-num{font-size:20px;font-weight:800;line-height:1.2}
-    .day-indicator{width:5px;height:5px;background:#5c9a76;border-radius:100%}
-    .rule{border:0;border-top:1px solid var(--line);margin:25px 0 22px}
-    .slots-head{display:flex;align-items:start;justify-content:space-between;gap:9px;flex-wrap:wrap;margin-bottom:17px}
-    .slots-head h3{font-size:16px;margin:0 0 3px;letter-spacing:-.35px}
-    .capacity{background:var(--green-bg);color:var(--green);font-weight:700;font-size:11px;padding:7px 11px;border-radius:50px;white-space:nowrap}
-    .slot-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
-    .slot{border:1px solid var(--line);background:#fff;padding:13px 7px;border-radius:11px;min-height:70px;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center}
-    .slot-time{font-weight:780;font-size:17px}.slot-state{font-size:11px;color:var(--green)}
-    .slot:hover:enabled{background:var(--green-bg);border-color:#78aa88}.slot.selected{background:var(--ink);border-color:var(--ink);color:white}.slot.selected .slot-state{color:#c1e7d0}
-    .slot.unavailable{background:#f2f4f2;border-color:#eef0ee;color:#b1b9b4}.slot.unavailable .slot-state{color:#aab5ae}
-    .empty{background:var(--soft);color:var(--ink-soft);border-radius:12px;padding:20px;text-align:center;font-size:13px}
-    .demo-note{font-size:12px;color:var(--amber);border-radius:10px;background:var(--amber-bg);padding:11px 13px;margin:18px 0 0}
-    .summary{padding:27px;position:sticky;top:22px}
-    .step{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--green);font-weight:800;margin:0 0 9px}
-    .sum-title{font-size:21px;font-weight:790;letter-spacing:-.5px;margin:0 0 14px}
-    .feature{display:flex;gap:10px;align-items:flex-start;margin:10px 0;font-size:13px;color:var(--ink-soft)}
-    .feature-icon{display:grid;place-items:center;background:var(--green-bg);color:var(--green);border-radius:7px;width:25px;height:25px;flex:0 0 25px;font-weight:800}
-    .separator{height:1px;background:var(--line);margin:20px 0}
-    .detail-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin:13px 0}.detail-row span:first-child{color:var(--muted)}.detail-row strong{text-align:right;max-width:64%}
-    .price-row{border-top:1px solid var(--line);padding-top:15px;margin-top:15px;display:flex;align-items:center;justify-content:space-between}
-    .price-row strong{font-size:25px;letter-spacing:-.7px}.price-row span{color:var(--ink-soft);font-size:13px}
-    .hold{background:var(--amber-bg);border-radius:9px;padding:11px 12px;color:var(--amber);font-size:12px;margin-top:17px}
-    .primary{background:var(--ink);border:1px solid var(--ink);color:#fff;border-radius:11px;min-height:49px;padding:12px 16px;font-weight:750;width:100%;margin-top:17px}
-    .primary:hover:enabled{background:#255547}.primary:disabled{opacity:.46}
-    .secondary{background:transparent;border:0;text-decoration:underline;text-underline-offset:3px;color:var(--ink-soft);font-size:12px;padding:12px 2px}
-    .footnote{font-size:11px;color:var(--muted);line-height:1.6;margin:12px 0 0}
-    .notice{font-size:12px;padding:12px;border-radius:10px;margin-top:12px;background:var(--green-bg);color:var(--green);display:none}
-    .notice.visible{display:block}.footer{display:flex;align-items:center;justify-content:space-between;gap:18px;color:var(--muted);font-size:12px;padding-bottom:38px}
-    .reset{border:0;background:transparent;color:var(--ink-soft);font-size:12px;text-decoration:underline;cursor:pointer;padding:5px}
-    @media(max-width:850px){.layout{grid-template-columns:1fr}.summary{position:static}.calendar,.summary{padding:23px}}
-    @media(max-width:500px){.shell{padding:0 15px}.topbar .shell{min-height:72px}.mode{font-size:10px;padding:6px 8px}.intro{padding:27px 0 19px}.week{gap:2px}.day{min-height:67px}.day-num{font-size:17px}.calendar,.summary{padding:17px;border-radius:14px}.slot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.legend{gap:9px}.footer{align-items:start;flex-direction:column}}
-    @media(prefers-reduced-motion:no-preference){.day,.slot,.primary{transition:background-color .15s ease,border-color .15s ease}}
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agenda online · Psicología Carlos Santibáñez</title>
+<style>
+:root{--ink:#143e35;--green:#307653;--bg:#f4f7f3;--line:#dbe6df;--muted:#70807b;--light:#e7f2eb}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;color:var(--ink);background:var(--bg)}button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #6baa84;outline-offset:2px}
+header{background:white;border-bottom:1px solid var(--line)}.bar{max-width:1100px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:18px 25px;gap:12px}.brand{display:flex;align-items:center;gap:13px}.mark{display:grid;place-items:center;background:var(--ink);color:white;font-weight:700;border-radius:12px;width:43px;height:43px}.brand strong{font-size:15px}.brand small{display:block;color:var(--muted);font-size:12px}.tag{font-size:12px;border-radius:20px;background:#fff5e4;color:#795726;padding:8px 12px;font-weight:600}
+main{max-width:1100px;margin:auto;padding:30px 25px 60px}.eyebrow{font-size:11px;color:var(--green);font-weight:800;letter-spacing:2px;text-transform:uppercase}h1{font-size:clamp(27px,4vw,39px);letter-spacing:-1.3px;margin:8px 0}p.sub{color:#637a71;margin:7px 0 26px;max-width:720px;font-size:14px}.layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(290px,1fr);gap:21px;align-items:start}.card{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 30px #173e350b;padding:25px}h2{font-size:20px;letter-spacing:-.5px;margin:0 0 5px}h3{font-size:16px;margin:0 0 3px}.small{color:var(--muted);font-size:12px;margin:0}.nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:25px 0 13px}.nav span{font-size:14px;font-weight:800;text-transform:capitalize}.nav button{border:1px solid var(--line);border-radius:9px;background:white;width:35px;height:35px;font-size:19px;color:var(--ink)}.nav button:disabled{opacity:.25;cursor:default}.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.day{height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:12px;color:var(--ink);gap:3px}.day .dow{font-size:11px;color:var(--muted)}.day strong{font-size:20px}.day .dot{height:5px;width:5px;border-radius:50%;background:#5ba47d}.day.active{border-color:var(--green);background:var(--light)}.day:disabled{opacity:.28;cursor:default}.day:not(:disabled):hover{background:#eff6f0}.legend{font-size:12px;color:#6c8075;display:flex;align-items:center;gap:15px;margin-top:12px}.legend b{display:inline-block;border-radius:2px;width:9px;height:9px;background:#77a889;margin-right:5px}.legend b.gray{background:#d5dcd7}.rule{border:0;border-top:1px solid var(--line);margin:24px 0 20px}.heading{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}.pill{background:var(--light);color:var(--green);font-size:11px;font-weight:700;border-radius:20px;padding:7px 10px}.hours{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:17px}.hour{border:1px solid var(--line);border-radius:11px;background:white;min-height:73px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px}.hour strong{font-size:17px}.hour span{font-size:11px;color:var(--green)}.hour:not(:disabled):hover{background:var(--light);border-color:var(--green)}.hour.active{background:var(--ink);border-color:var(--ink);color:white}.hour.active span{color:#d3f0dc}.hour:disabled{background:#f3f5f3;color:#a0ada6;cursor:default}.hour:disabled span{color:#a3afa9}.note{background:#fdf4e3;color:#8a692e;font-size:12px;padding:12px 13px;border-radius:9px;line-height:1.45;margin:18px 0 0}
+.kicker{color:var(--green);font-size:11px;text-transform:uppercase;letter-spacing:1.2px;font-weight:800}.feature{display:flex;gap:9px;align-items:flex-start;margin:12px 0;font-size:13px;color:#5f7a6e}.check{width:24px;height:24px;flex:0 0 24px;border-radius:7px;background:var(--light);display:grid;place-items:center;color:var(--green);font-weight:800}.detail{display:flex;justify-content:space-between;gap:12px;margin:14px 0;font-size:13px}.detail>span{color:var(--muted)}.detail strong{text-align:right;max-width:65%}.price{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:17px;margin-top:18px}.price>span{color:var(--muted);font-size:13px}.price strong{font-size:25px}.primary{margin-top:20px;width:100%;border:0;background:var(--ink);color:white;border-radius:11px;font-size:14px;font-weight:700;padding:15px}.primary:disabled{opacity:.4;cursor:default}.hold{background:#fff4df;padding:11px;border-radius:9px;color:#8a6322;font-size:12px;margin-top:16px}.reset{border:0;background:transparent;text-decoration:underline;color:var(--muted);padding:10px 0;font-size:12px}.msg{background:var(--light);border-radius:9px;padding:12px;color:var(--ink);font-size:12px;margin-top:12px;line-height:1.5}.foot{font-size:11px;color:var(--muted);line-height:1.6}.footer{color:var(--muted);font-size:12px;margin-top:18px}.empty{padding:20px;background:#f0f4f1;border-radius:10px;color:var(--muted);font-size:13px}
+@media(max-width:780px){.layout{grid-template-columns:1fr}}@media(max-width:490px){main{padding:26px 14px}.bar{padding:13px 14px}.card{padding:16px}.hours{grid-template-columns:repeat(2,minmax(0,1fr))}.week{gap:2px}.day{height:70px}.day strong{font-size:17px}.tag{font-size:10px;padding:7px}.brand strong{font-size:13px}}
+
+/* Panel de administración — misma identidad visual que la agenda */
+[hidden]{display:none!important}
+.tabs{display:flex;gap:8px;margin:0 0 19px;flex-wrap:wrap}
+.tab{background:white;border:1px solid var(--line);color:var(--ink);border-radius:11px;padding:11px 17px;font-size:13px;font-weight:700}
+.tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.admin-view{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:21px;align-items:start}
+.admin-column{display:flex;flex-direction:column;gap:20px}
+.admin-head{display:flex;align-items:start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.admin-warning{background:#fff5e4;border:1px solid #f0d9b3;color:#825d26;padding:13px 15px;border-radius:11px;font-size:12px;line-height:1.55;margin:0 0 19px}
+.admin-field{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 10px}
+.admin-field label{font-weight:700;font-size:12px;color:#4b675b}
+.admin-field input{min-height:39px;border-radius:9px;border:1px solid var(--line);padding:8px 11px;background:#fff;color:var(--ink);font:inherit}
+.weekday-options{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:18px}
+.weekday-option{border:1px solid var(--line);border-radius:10px;background:white;min-height:58px;padding:8px 2px;color:var(--ink);font-weight:700;font-size:12px}
+.weekday-option span{display:block;font-size:10px;color:var(--muted);font-weight:500}
+.weekday-option.active{border-color:var(--green);background:var(--light)}
+.weekday-option.off{color:#9aaba1}
+.weekday-option.off span{color:#aab7af}
+.admin-line{margin:19px 0 11px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.admin-line h3{margin:0}
+.switch-btn{border:1px solid #b7d3c1;background:var(--light);color:#2e6246;border-radius:20px;padding:7px 11px;font-weight:750;font-size:12px}
+.switch-btn.off{border-color:var(--line);background:#f4f5f3;color:#6f7d74}
+.chips{display:flex;gap:8px;flex-wrap:wrap;min-height:40px;margin:10px 0 5px}
+.chip{background:var(--light);border:1px solid #bcd8c7;border-radius:9px;padding:9px 12px;font-weight:700;color:var(--ink);font-size:13px}
+.chip span{font-size:11px;opacity:.7;margin-left:5px}
+.chip:hover:enabled{background:#d8e9de}
+.chip.blocked{color:#8b9690;border-color:var(--line);background:#f4f5f3;text-decoration:line-through}
+.chip.reserved{background:#e7eeea;cursor:not-allowed;border-color:#d2ddd5;color:#718778}
+.helper{font-size:12px;color:var(--muted);line-height:1.55;margin:7px 0}
+.inline-add{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.inline-add input{height:41px;background:#fff;color:var(--ink);border-radius:9px;border:1px solid var(--line);padding:9px 11px;font:inherit}
+.small-btn{background:var(--ink);color:white;border:1px solid var(--ink);border-radius:9px;padding:10px 14px;font-size:12px;font-weight:730;min-height:41px}
+.small-btn.ghost{background:white;color:var(--ink);border-color:var(--line)}
+.small-btn.danger{background:#fff6f3;color:#984c3f;border-color:#edd1cc}
+.small-btn:disabled{opacity:.45;cursor:not-allowed}
+.date-config{background:#f8faf8;border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-top:15px}
+.date-config strong{display:block;font-size:13px}
+.booked-line{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding:12px 0}
+.booked-line strong{font-size:14px}
+.booked-line small{display:block;font-size:11px;color:var(--muted)}
+.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:15px}
+.metric{padding:13px 7px;border:1px solid var(--line);border-radius:10px;text-align:center;background:#f8faf8}
+.metric strong{display:block;font-size:23px}.metric span{display:block;font-size:10px;color:var(--muted)}
+.state{color:var(--green);font-weight:700;font-size:12px}
+.message-admin{border-radius:9px;background:var(--light);padding:11px 13px;font-size:12px;color:var(--ink);margin:12px 0 0}
+.footer .reset{margin:0 4px}
+@media(max-width:880px){.admin-view{grid-template-columns:1fr}}
+@media(max-width:490px){.weekday-options{gap:3px}.weekday-option{font-size:11px;min-height:54px}.weekday-option span{font-size:9px}.metric-grid{gap:4px}.metric{padding:9px 4px}}
+</style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="shell">
-      <div class="brand"><div class="logo" aria-hidden="true">CS</div><div><div class="brand-name">Carlos Santibáñez</div><div class="brand-sub">Psicología · Atención online</div></div></div>
-      <div class="mode"><span class="mode-dot"></span> Prototipo de agenda</div>
-    </div>
-  </header>
-  <main class="shell">
-    <section class="intro">
-      <p class="eyebrow">Agenda de atención psicológica</p>
-      <h1>Reserva tu próxima sesión</h1>
-      <p>Elige el día y la hora que más te acomoden para una atención psicológica online. La reserva definitiva requerirá pago anticipado cuando habilitemos el sistema.</p>
-    </section>
-    <div class="layout">
-      <section class="panel calendar" aria-label="Calendario de sesiones">
-        <div class="panel-heading"><div><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar los horarios.</p></div></div>
-        <div class="navigation">
-          <div class="period" id="period" aria-live="polite"></div>
-          <div class="nav-actions"><button type="button" class="arrow" id="prev" aria-label="Semana anterior">‹</button><button type="button" class="arrow" id="next" aria-label="Semana siguiente">›</button></div>
-        </div>
-        <div class="week" id="week" aria-label="Días de la semana"></div>
-        <div class="legend"><span><i class="key yes"></i> Disponible</span><span><i class="key pick"></i> Seleccionado</span><span><i class="key"></i> No disponible</span></div>
-        <hr class="rule">
-        <div class="slots-head">
-          <div><h3 id="day-title">Horarios disponibles</h3><p class="small" id="day-info"></p></div>
-          <span class="capacity" id="capacity"></span>
-        </div>
-        <div id="slots" class="slot-grid" role="group" aria-label="Horarios para reservar"></div>
-        <p class="demo-note">Vista demostrativa: los días y horarios son ilustrativos y no representan disponibilidad real. Ninguna selección constituye una reserva pagada.</p>
+<header><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez</strong><small>Psicología · Atención online</small></div></div><span class="tag">● Versión de prueba</span></div></header>
+<main><div class="eyebrow">Agenda de atención psicológica</div><h1>Reserva tu próxima sesión</h1><p class="sub">Selecciona el día y la hora que más te acomoden para tu atención psicológica online. Puedes probar el calendario sin efectuar pagos reales.</p>
+<div class="tabs" role="tablist" aria-label="Vista del calendario"><button class="tab active" type="button" id="tabPublic" role="tab" aria-selected="true" aria-controls="patientView">Agenda del paciente</button><button class="tab" type="button" id="tabAdmin" role="tab" aria-selected="false" aria-controls="adminView">Administración de prueba</button></div>
+<div class="layout" id="patientView" role="tabpanel" aria-labelledby="tabPublic"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note">Demostración: la disponibilidad mostrada es ilustrativa. Las reservas de prueba no son visibles en otros dispositivos y no bloquean horas reales.</p></section>
+<aside class="card"><div class="kicker">Paso 1 de 2 · Seleccionar horario</div><h2 style="margin-top:8px">Tu sesión online</h2><div class="feature"><span class="check">✓</span><span>Atención psicológica individual, modalidad 100% online.</span></div><div class="feature"><span class="check">✓</span><span>Máximo de 3 atenciones confirmadas por día.</span></div><hr class="rule"><div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div><div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div><div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div><div class="price"><span>Sesión particular</span><strong>$30.000</strong></div><div class="hold" id="hold" hidden></div><button type="button" class="primary" id="confirm" disabled>Simular reserva</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">No se procesan pagos, bonos Fonasa ni boletas en este prototipo. Una confirmación aquí solo sirve para probar el calendario.</p></aside></div>
+<section id="adminView" class="admin-section" role="tabpanel" aria-labelledby="tabAdmin" hidden>
+  <p class="admin-warning"><strong>Panel de administración — demostración local.</strong> Esta pantalla no tiene autenticación. No es segura para uso público y ningún cambio se sincroniza entre dispositivos. Antes de publicar, se deberá implementar acceso privado, base de datos y control de reservas en el servidor.</p>
+  <div class="admin-view">
+    <div class="admin-column">
+      <section class="card" aria-label="Horario semanal">
+        <div class="admin-head"><div><h2>Horario semanal</h2><p class="small">Define qué días y horarios ofrecerás regularmente.</p></div><span class="pill">Máximo 3 sesiones/día</span></div>
+        <div class="weekday-options" id="weekdayOptions" role="group" aria-label="Elegir día de la semana"></div>
+        <div class="admin-line"><h3 id="weekdayTitle">Horario del día</h3><button type="button" class="switch-btn" id="weeklyToggle"></button></div>
+        <p class="helper">Haz clic en una hora para quitarla de este día. Las reservas de prueba existentes no se eliminan.</p>
+        <div class="chips" id="weeklyChips"></div>
+        <form class="inline-add" id="weeklyAddForm"><label class="small" for="weeklyTime">Agregar hora</label><input required id="weeklyTime" type="time" step="900" value="18:00"><button class="small-btn" type="submit">+ Agregar hora</button></form>
+        <p class="helper">El horario semanal se aplicará a todas las fechas que no tengan una configuración especial.</p>
       </section>
-      <aside class="panel summary" aria-label="Resumen de la reserva">
-        <p class="step">Paso 1 de 2 · Elegir horario</p>
-        <div class="sum-title">Tu sesión online</div>
-        <div class="feature"><span class="feature-icon" aria-hidden="true">✓</span><span>Atención psicológica individual, modalidad 100% online.</span></div>
-        <div class="feature"><span class="feature-icon" aria-hidden="true">✓</span><span>Máximo 3 atenciones por día para respetar la disponibilidad profesional.</span></div>
-        <div class="separator"></div>
-        <div class="detail-row"><span>Fecha</span><strong id="chosen-date">Selecciona una fecha</strong></div>
-        <div class="detail-row"><span>Hora (Chile)</span><strong id="chosen-hour">Sin seleccionar</strong></div>
-        <div class="detail-row"><span>Modalidad</span><strong>Videollamada</strong></div>
-        <div class="price-row"><span>Valor particular</span><strong>$30.000</strong></div>
-        <div class="hold" id="hold" hidden></div>
-        <button type="button" class="primary" id="confirm" disabled>Simular confirmación de reserva</button>
-        <button type="button" class="secondary" id="cancel" hidden>Cancelar selección</button>
-        <div class="notice" role="status" id="notice" aria-live="polite"></div>
-        <p class="footnote">Esta versión no procesa pagos, bonos Fonasa ni boletas. La confirmación es una simulación que se guarda únicamente en este navegador.</p>
-      </aside>
+      <section class="card" aria-label="Excepciones por fecha">
+        <h2>Modificar un día específico</h2><p class="small">Cierra un día, bloquea ciertas horas o agrega disponibilidad especial.</p>
+        <div class="admin-field"><label for="adminDate">Fecha a modificar</label><input type="date" id="adminDate"></div>
+        <div class="date-config"><div class="admin-line" style="margin:0"><div><strong id="specialDateTitle">Fecha seleccionada</strong><p class="small" id="specialDateStatus"></p></div><button type="button" class="switch-btn" id="closeDate"></button></div></div>
+        <p class="helper">Haz clic en las horas para habilitarlas o bloquearlas solo en esta fecha. Un cierre evita nuevas reservas, pero no cancela las existentes.</p>
+        <div class="chips" id="specialChips"></div>
+        <form class="inline-add" id="specialAddForm"><label class="small" for="specialTime">Agregar hora especial</label><input required type="time" id="specialTime" step="900" value="18:00"><button class="small-btn" type="submit">+ Agregar hora</button></form>
+        <button type="button" class="small-btn ghost" id="restoreDate" style="margin-top:14px">Restaurar horario semanal para esta fecha</button>
+      </section>
     </div>
-    <footer class="footer"><span>Psicología Carlos Santibáñez · Prototipo de calendario, aún no publicado para pacientes</span><button type="button" class="reset" id="reset">Borrar reservas de prueba</button></footer>
-  </main>
+    <div class="admin-column">
+      <section class="card" aria-label="Resumen de reservas de prueba">
+        <p class="kicker">Control de ocupación</p><h2>Reservas del día</h2><p class="small" id="adminBookedDate"></p>
+        <div class="metric-grid"><div class="metric"><strong id="metricBooked">0</strong><span>Reservadas</span></div><div class="metric"><strong id="metricFree">3</strong><span>Cupos restantes</span></div><div class="metric"><strong>3</strong><span>Máximo diario</span></div></div>
+        <div id="adminBookings" style="margin-top:17px"></div>
+        <p class="helper">Puedes liberar reservas simuladas aquí. En el sistema definitivo esta operación deberá requerir confirmación, autorización y registro.</p>
+      </section>
+      <section class="card" aria-label="Configuración de demostración">
+        <h2>Estado de la demostración</h2><p class="helper">Los cambios y reservas se guardan solamente en este navegador. No se piden datos de pacientes y no hay pagos reales.</p>
+        <div class="detail"><span>Sesión particular</span><strong>$30.000 CLP</strong></div>
+        <div class="detail"><span>Modalidad</span><strong>100 % online</strong></div>
+        <div class="detail"><span>Retención temporal</span><strong>10 minutos (local)</strong></div>
+        <div class="detail"><span>Zona horaria</span><strong>Chile continental</strong></div>
+        <button type="button" id="resetConfig" class="small-btn ghost" style="margin-top:12px">Restablecer disponibilidad inicial</button>
+        <button type="button" id="resetDemo" class="small-btn danger" style="margin-top:9px">Borrar todos los datos de prueba</button>
+      </section>
+      <p class="message-admin" id="adminMessage" hidden role="status"></p>
+    </div>
+  </div>
+</section><div class="footer">Vista de desarrollo · <button class="reset" id="clear">Eliminar reservas de prueba</button></div></main>
 <script>
-(function(){
-  'use strict';
-  var ZONE='America/Santiago', STORE='psicologia_calendario_demo_v1', MAX_DAILY=3, HOLD_MS=10*60*1000;
-  var DAYS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  var SHORT=['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
-  var HOURS={1:['09:00','10:00','11:00','15:00','16:00','17:00'],2:['09:00','10:00','11:00','15:00','16:00','17:00'],3:['09:00','10:00','11:00','15:00','16:00','17:00'],4:['09:00','10:00','11:00','15:00','16:00','17:00'],5:['09:00','10:00','11:00','15:00','16:00','17:00'],6:['10:00','11:00','12:00']};
-  var $=function(id){return document.getElementById(id);};
-  function chileParts(){var p=new Intl.DateTimeFormat('en-US',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());var o={};p.forEach(function(x){if(x.type!=='literal')o[x.type]=x.value;});return o;}
-  function todayISO(){var p=chileParts();return p.year+'-'+p.month+'-'+p.day;}
-  function dateUTC(iso){return new Date(iso+'T12:00:00Z');}
-  function isoOf(d){return d.toISOString().slice(0,10);}
-  function shift(iso,n){var d=dateUTC(iso);d.setUTCDate(d.getUTCDate()+n);return isoOf(d);}
-  function monday(iso){var d=dateUTC(iso).getUTCDay();return shift(iso,-((d+6)%7));}
-  function displayDate(iso,opts){return new Intl.DateTimeFormat('es-CL',Object.assign({timeZone:'UTC'},opts)).format(dateUTC(iso));}
-  function periodLabel(first){var end=shift(first,6);return displayDate(first,{day:'numeric',month:'short'})+' – '+displayDate(end,{day:'numeric',month:'short',year:'numeric'});}
-  function load(){try{var value=JSON.parse(localStorage.getItem(STORE)||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch(e){return {};}}
-  function save(){try{localStorage.setItem(STORE,JSON.stringify(bookings));}catch(e){announce('No se pudo guardar la simulación en este navegador.');}}
-  var bookings=load(), today=todayISO(), chosen=today, weekStart=monday(today), hold=null;
-  function dayBookings(iso){return Array.isArray(bookings[iso])?bookings[iso]:[];}
-  function inPast(iso,time){if(iso<todayISO())return true;if(iso>todayISO())return false;var p=chileParts();return time<=p.hour+':'+p.minute;}
-  function timesFor(iso){return HOURS[dateUTC(iso).getUTCDay()]||[];}
-  function selectableDate(iso){return iso>=todayISO()&&timesFor(iso).length>0;}
-  function announce(msg){$('notice').textContent=msg;$('notice').classList.add('visible');}
-  function clearNotice(){$('notice').textContent='';$('notice').classList.remove('visible');}
-  function cancelHold(){hold=null;$('hold').hidden=true;$('cancel').hidden=true;renderSlots();renderSummary();}
-  function selectDate(iso){if(!selectableDate(iso))return;chosen=iso;hold=null;clearNotice();render();}
-  function selectTime(time){
-    if(inPast(chosen,time)||dayBookings(chosen).length>=MAX_DAILY||dayBookings(chosen).includes(time))return;
-    hold={date:chosen,time:time,expires:Date.now()+HOLD_MS};
-    clearNotice();renderSlots();renderSummary();
-  }
-  function renderWeek(){
-    $('period').textContent=periodLabel(weekStart);
-    $('prev').disabled=weekStart<=monday(todayISO());
-    var w=$('week');w.innerHTML='';
-    for(var i=0;i<7;i++){
-      var iso=shift(weekStart,i),d=dateUTC(iso),button=document.createElement('button');
-      var allowed=selectableDate(iso);
-      button.type='button';button.className='day'+(iso===chosen?' active':'')+(!allowed?' disabled':'');
-      button.disabled=!allowed;button.setAttribute('aria-label',displayDate(iso,{weekday:'long',day:'numeric',month:'long'}));
-      button.setAttribute('aria-pressed',String(iso===chosen));
-      var dayLabel=document.createElement('span');dayLabel.className='day-label';dayLabel.textContent=SHORT[d.getUTCDay()];
-      var num=document.createElement('span');num.className='day-num';num.textContent=String(d.getUTCDate());
-      button.append(dayLabel,num);
-      if(allowed){var dot=document.createElement('span');dot.className='day-indicator';button.appendChild(dot);}
-      (function(x){button.addEventListener('click',function(){selectDate(x);});})(iso);
-      w.appendChild(button);
-    }
-  }
-  function renderSlots(){
-    var available=timesFor(chosen),reserved=dayBookings(chosen),full=reserved.length>=MAX_DAILY;
-    $('day-title').textContent=displayDate(chosen,{weekday:'long',day:'numeric',month:'long'});
-    $('day-info').textContent='Horarios expresados en la zona horaria de Chile';
-    $('capacity').textContent=reserved.length+' de '+MAX_DAILY+' cupos de prueba ocupados';
-    var container=$('slots');container.innerHTML='';
-    if(!available.length){container.className='';var msg=document.createElement('div');msg.className='empty';msg.textContent='No hay horarios configurados para este día en la demostración.';container.appendChild(msg);return;}
-    container.className='slot-grid';
-    available.forEach(function(time){
-      var taken=reserved.includes(time),past=inPast(chosen,time),selected=!!hold&&hold.date===chosen&&hold.time===time;
-      var unavailable=taken||past||full;
-      var b=document.createElement('button');b.type='button';b.className='slot'+(selected?' selected':'')+(unavailable?' unavailable':'');
-      b.disabled=unavailable;b.setAttribute('aria-pressed',String(selected));
-      var t=document.createElement('span');t.className='slot-time';t.textContent=time;
-      var s=document.createElement('span');s.className='slot-state';s.textContent=taken?'Reservado':past?'Horario pasado':full?'Cupos agotados':selected?'Seleccionado':'Disponible';
-      b.append(t,s);b.addEventListener('click',function(){selectTime(time);});container.appendChild(b);
-    });
-  }
-  function renderSummary(){
-    $('chosen-date').textContent=hold?displayDate(hold.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Selecciona una fecha';
-    $('chosen-hour').textContent=hold?hold.time:'Sin seleccionar';
-    $('confirm').disabled=!hold;
-    $('cancel').hidden=!hold;
-    updateHold();
-  }
-  function updateHold(){
-    if(!hold){$('hold').hidden=true;return;}
-    var remain=hold.expires-Date.now();
-    if(remain<=0){hold=null;renderSlots();renderSummary();announce('La retención de prueba expiró. Selecciona un horario nuevamente.');return;}
-    var m=Math.floor(remain/60000),s=Math.floor((remain%60000)/1000);
-    $('hold').hidden=false;
-    $('hold').textContent='Retención temporal de prueba: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'. Solo aplica en este navegador.';
-  }
-  function render(){today=todayISO();renderWeek();renderSlots();renderSummary();}
-  $('prev').addEventListener('click',function(){if(weekStart>monday(todayISO())){weekStart=shift(weekStart,-7);chosen=selectableDate(weekStart)?weekStart:todayISO();hold=null;clearNotice();render();}});
-  $('next').addEventListener('click',function(){weekStart=shift(weekStart,7);chosen=weekStart;hold=null;clearNotice();render();});
-  $('cancel').addEventListener('click',function(){cancelHold();clearNotice();});
-  $('confirm').addEventListener('click',function(){
-    if(!hold)return;
-    if(Date.now()>=hold.expires){updateHold();return;}
-    var iso=hold.date,time=hold.time,existing=dayBookings(iso);
-    if(existing.length>=MAX_DAILY||existing.includes(time)||inPast(iso,time)){cancelHold();announce('Ese horario ya no está disponible en la demostración.');return;}
-    bookings[iso]=existing.concat(time);save();hold=null;render();announce('Reserva simulada para '+displayDate(iso,{day:'numeric',month:'long'})+' a las '+time+'. No se realizó ningún cobro ni se reservó una hora real.');
-  });
-  $('reset').addEventListener('click',function(){bookings={};try{localStorage.removeItem(STORE);}catch(e){}hold=null;render();announce('Se borraron las reservas simuladas de este navegador.');});
-  window.setInterval(function(){if(hold)updateHold();if(todayISO()!==today){weekStart=monday(todayISO());chosen=todayISO();hold=null;render();}},1000);
-  if(!selectableDate(chosen)){for(var i=1;i<8;i++){if(selectableDate(shift(today,i))){chosen=shift(today,i);break;}}}
-  render();
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id), ZONE='America/Santiago', KEY_BOOK='psico_demo_local_v2', KEY_SETTINGS='psico_demo_admin_config_v1', MAX=3;
+const WEEK=['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
+const WEEK_FULL=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DEFAULT={weekly:{0:[],1:['09:00','10:00','11:00','15:00','16:00','17:00'],2:['09:00','10:00','11:00','15:00','16:00','17:00'],3:['09:00','10:00','11:00','15:00','16:00','17:00'],4:['09:00','10:00','11:00','15:00','16:00','17:00'],5:['09:00','10:00','11:00','15:00','16:00','17:00'],6:['10:00','11:00','12:00']},closedWeekdays:[],exceptions:{}};
+function clone(x){return JSON.parse(JSON.stringify(x))}
+function load(key,fallback){try{const x=JSON.parse(localStorage.getItem(key)||'null');return x&&typeof x==='object'&&!Array.isArray(x)?x:clone(fallback)}catch(e){return clone(fallback)}}
+function save(key,obj){try{localStorage.setItem(key,JSON.stringify(obj))}catch(e){adminMessage('El navegador no permitió guardar los cambios.');}}
+function nowParts(){const d=new Intl.DateTimeFormat('en-US',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()),p={};d.forEach(q=>{if(q.type!=='literal')p[q.type]=q.value});return p}
+function todayISO(){const p=nowParts();return p.year+'-'+p.month+'-'+p.day}
+function dateObj(iso){return new Date(iso+'T12:00:00Z')}
+function iso(d){return d.toISOString().substring(0,10)}
+function plus(isoDate,n){const d=dateObj(isoDate);d.setUTCDate(d.getUTCDate()+n);return iso(d)}
+function monday(isoDate){return plus(isoDate,-((dateObj(isoDate).getUTCDay()+6)%7))}
+function textDate(isoDate,opt){return new Intl.DateTimeFormat('es-CL',{timeZone:'UTC',...opt}).format(dateObj(isoDate))}
+function dayIndex(isoDate){return dateObj(isoDate).getUTCDay()}
+function goodHour(h){return /^([01]\d|2[0-3]):[0-5]\d$/.test(h)}
+function normalize(a){return [...new Set((Array.isArray(a)?a:[]).filter(x=>typeof x==='string'&&goodHour(x)))].sort()}
+function booked(isoDate){return Array.isArray(reservations[isoDate])?normalize(reservations[isoDate]):[]}
+function baseSchedule(isoDate){const wd=dayIndex(isoDate);return settings.closedWeekdays.includes(wd)?[]:normalize(settings.weekly[wd])}
+function schedule(isoDate){const ex=settings.exceptions[isoDate];return ex?ex.closed?[]:normalize(ex.slots):baseSchedule(isoDate)}
+function past(isoDate,time){const t=todayISO();if(isoDate<t)return true;if(isoDate>t)return false;const p=nowParts();return time<=p.hour+':'+p.minute}
+function availableDay(isoDate){return isoDate>=todayISO()&&schedule(isoDate).some(h=>!past(isoDate,h))}
+function publicDayHasCups(isoDate){return availableDay(isoDate)&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>!past(isoDate,h)&&!booked(isoDate).includes(h))}
+function message(t){$('message').textContent=t;$('message').hidden=false}
+function clearMessage(){$('message').hidden=true}
+function adminMessage(t){$('adminMessage').textContent=t;$('adminMessage').hidden=false}
+let reservations=load(KEY_BOOK,{}),settings=load(KEY_SETTINGS,DEFAULT);
+for(const i of [0,1,2,3,4,5,6])settings.weekly[i]=normalize(settings.weekly[i]);
+if(!Array.isArray(settings.closedWeekdays))settings.closedWeekdays=[];
+if(!settings.exceptions||typeof settings.exceptions!=='object')settings.exceptions={};
+let chosen=todayISO(),start=monday(chosen),hold=null,weekday=1,adminDate=todayISO(),activeTab='public';
+function getAvailable(startDate){for(let i=0;i<30;i++){const x=plus(startDate,i);if(publicDayHasCups(x))return x}return startDate}
+chosen=getAvailable(chosen);
+function render(){
+ $('period').textContent=textDate(start,{day:'numeric',month:'short'})+' – '+textDate(plus(start,6),{day:'numeric',month:'short',year:'numeric'});
+ $('prev').disabled=start<=monday(todayISO());$('week').replaceChildren();
+ for(let i=0;i<7;i++){
+  const date=plus(start,i),day=dateObj(date),valid=availableDay(date),b=document.createElement('button');b.type='button';b.className='day'+(date===chosen?' active':'');b.disabled=!valid;b.setAttribute('aria-pressed',String(date===chosen));b.setAttribute('aria-label',textDate(date,{weekday:'long',day:'numeric',month:'long'}));
+  const label=document.createElement('span');label.className='dow';label.textContent=WEEK[day.getUTCDay()];const n=document.createElement('strong');n.textContent=day.getUTCDate();b.append(label,n);
+  if(valid){const dot=document.createElement('span');dot.className='dot';b.append(dot)}
+  b.onclick=()=>{chosen=date;hold=null;clearMessage();render()};$('week').append(b)
+ }
+ $('dateHeading').textContent=textDate(chosen,{weekday:'long',day:'numeric',month:'long'});
+ const taken=booked(chosen),slots=schedule(chosen);$('capacity').textContent=taken.length+' de '+MAX+' cupos de prueba';$('hours').replaceChildren();
+ if(!slots.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No hay horarios habilitados para este día.';$('hours').append(empty)}
+ else for(const time of slots){const reserved=taken.includes(time),exhausted=taken.length>=MAX,isPast=past(chosen,time),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=reserved?'Reservado':isPast?'Hora pasada':exhausted?'Sin cupos':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{hold={date:chosen,time,expires:Date.now()+600000};clearMessage();render()};$('hours').append(b)}
+ $('selectedDate').textContent=hold?textDate(hold.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Selecciona una fecha';$('selectedTime').textContent=hold?hold.time:'Sin seleccionar';$('confirm').disabled=!hold;$('cancel').hidden=!hold;tick();
+}
+function tick(){if(!hold){$('hold').hidden=true;return}const remaining=hold.expires-Date.now();if(remaining<=0){hold=null;render();message('La selección de prueba expiró. Elige otra hora.');return}const m=Math.floor(remaining/60000),s=Math.floor(remaining%60000/1000);$('hold').hidden=false;$('hold').textContent='Selección temporal: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' restantes. Solo en este navegador.'}
+function renderAdmin(){
+ $('weekdayOptions').replaceChildren();
+ for(const i of [1,2,3,4,5,6,0]){
+  const off=settings.closedWeekdays.includes(i),b=document.createElement('button');b.type='button';b.className='weekday-option'+(weekday===i?' active':'')+(off?' off':'');b.setAttribute('aria-pressed',String(weekday===i));b.textContent=WEEK[i];
+  const sub=document.createElement('span');sub.textContent=off?'Cerrado':normalize(settings.weekly[i]).length+' horas';b.append(sub);b.onclick=()=>{weekday=i;renderAdmin()};$('weekdayOptions').append(b);
+ }
+ const woff=settings.closedWeekdays.includes(weekday),whours=normalize(settings.weekly[weekday]);$('weekdayTitle').textContent=WEEK_FULL[weekday];
+ $('weeklyToggle').textContent=woff?'Día cerrado · Abrir':'Día abierto · Cerrar';$('weeklyToggle').classList.toggle('off',woff);
+ $('weeklyChips').replaceChildren();
+ if(!whours.length)emptyChip($('weeklyChips'),'Sin horas configuradas. Puedes agregar una abajo.');
+ whours.forEach(h=>{
+  const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=h;
+  const hint=document.createElement('span');hint.textContent='×';b.append(hint);b.title='Quitar '+h+' de '+WEEK_FULL[weekday];
+  b.onclick=()=>{settings.weekly[weekday]=whours.filter(x=>x!==h);persistSettings('Hora '+h+' retirada del horario semanal de '+WEEK_FULL[weekday]+'.');};$('weeklyChips').append(b);
+ });
+ $('adminDate').value=adminDate;
+ const ex=settings.exceptions[adminDate],isClosed=ex?ex.closed:settings.closedWeekdays.includes(dayIndex(adminDate));
+ $('specialDateTitle').textContent=textDate(adminDate,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+ $('specialDateStatus').textContent=ex?'Configuración especial guardada':'Usando horario semanal habitual';
+ $('closeDate').textContent=isClosed?'Día cerrado · Abrir':'Día abierto · Cerrar';$('closeDate').classList.toggle('off',isClosed);
+ $('specialChips').replaceChildren();const special=ex?normalize(ex.slots):normalize(settings.weekly[dayIndex(adminDate)]);
+ if(!special.length)emptyChip($('specialChips'),'Esta fecha no tiene horas configuradas. Puedes agregar una.');
+ special.forEach(h=>{
+  const taken=booked(adminDate).includes(h),b=document.createElement('button');b.type='button';b.className='chip'+(taken?' reserved':'')+(isClosed?' blocked':'');b.textContent=h;
+  const span=document.createElement('span');span.textContent=taken?'●':'×';b.append(span);b.disabled=taken;
+  b.title=taken?'Ya tiene una reserva de prueba':'Quitar hora solo de esta fecha';
+  b.onclick=()=>{const x=ensureException(adminDate);x.slots=normalize(x.slots).filter(z=>z!==h);persistSettings('Hora '+h+' bloqueada solamente el '+adminDate+'.');};$('specialChips').append(b);
+ });
+ $('adminBookedDate').textContent=textDate(adminDate,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+ const taken=booked(adminDate);$('metricBooked').textContent=taken.length;$('metricFree').textContent=Math.max(0,MAX-taken.length);
+ $('adminBookings').replaceChildren();
+ if(!taken.length)emptyChip($('adminBookings'),'No hay reservas simuladas para esta fecha.');
+ taken.forEach(h=>{
+  const line=document.createElement('div');line.className='booked-line';const desc=document.createElement('div');const t=document.createElement('strong');t.textContent=h+' h';const small=document.createElement('small');small.textContent='Reserva de demostración · sin paciente';desc.append(t,small);
+  const b=document.createElement('button');b.type='button';b.className='small-btn ghost';b.textContent='Liberar';b.setAttribute('aria-label','Liberar reserva de prueba '+h);
+  b.onclick=()=>{if(!window.confirm('¿Liberar la reserva simulada del '+adminDate+' a las '+h+'?'))return;reservations[adminDate]=taken.filter(x=>x!==h);save(KEY_BOOK,reservations);renderAdmin();render();adminMessage('Reserva simulada de las '+h+' liberada.');};line.append(desc,b);$('adminBookings').append(line);
+ });
+}
+function emptyChip(parent,txt){const e=document.createElement('p');e.className='helper';e.textContent=txt;parent.append(e)}
+function ensureException(d){if(!settings.exceptions[d])settings.exceptions[d]={closed:settings.closedWeekdays.includes(dayIndex(d)),slots:normalize(settings.weekly[dayIndex(d)])};return settings.exceptions[d]}
+function persistSettings(msg){save(KEY_SETTINGS,settings);if(hold&&(!schedule(hold.date).includes(hold.time)||booked(hold.date).length>=MAX))hold=null;renderAdmin();render();adminMessage(msg)}
+function showTab(which){activeTab=which;const isAdmin=which==='admin';$('patientView').hidden=isAdmin;$('adminView').hidden=!isAdmin;
+ $('tabPublic').classList.toggle('active',!isAdmin);$('tabAdmin').classList.toggle('active',isAdmin);
+ $('tabPublic').setAttribute('aria-selected',String(!isAdmin));$('tabAdmin').setAttribute('aria-selected',String(isAdmin));if(isAdmin)renderAdmin();else render();}
+$('tabPublic').onclick=()=>showTab('public');$('tabAdmin').onclick=()=>showTab('admin');
+$('prev').onclick=()=>{if(start>monday(todayISO())){start=plus(start,-7);chosen=start<todayISO()?todayISO():start;hold=null;clearMessage();render()}};
+$('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage();render()};
+$('cancel').onclick=()=>{hold=null;clearMessage();render()};
+$('confirm').onclick=()=>{if(!hold)return;if(hold.expires<Date.now()){tick();return}const {date,time}=hold,r=booked(date);if(!schedule(date).includes(time)||r.includes(time)||r.length>=MAX||past(date,time)){hold=null;render();message('Ya no está disponible ese horario.');return}reservations[date]=[...r,time];save(KEY_BOOK,reservations);hold=null;render();message('Reserva simulada: '+textDate(date,{day:'numeric',month:'long'})+' a las '+time+'. No se ha cobrado ni reservado una atención real.')};
+$('clear').onclick=()=>{if(!window.confirm('¿Eliminar todas las reservas simuladas?'))return;reservations={};save(KEY_BOOK,reservations);hold=null;render();renderAdmin();message('Se borraron las reservas de prueba.')};
+$('weeklyToggle').onclick=()=>{settings.closedWeekdays= settings.closedWeekdays.includes(weekday)?settings.closedWeekdays.filter(x=>x!==weekday):[...settings.closedWeekdays,weekday];persistSettings('Disponibilidad semanal actualizada para '+WEEK_FULL[weekday]+'.')};
+$('weeklyAddForm').onsubmit=e=>{e.preventDefault();const h=$('weeklyTime').value;if(!goodHour(h))return adminMessage('Introduce una hora válida.');settings.weekly[weekday]=normalize([...settings.weekly[weekday],h]);persistSettings('Hora '+h+' agregada a '+WEEK_FULL[weekday]+'.')};
+$('adminDate').onchange=()=>{const value=$('adminDate').value;if(/^\d{4}-\d\d-\d\d$/.test(value)){adminDate=value;renderAdmin()}};
+$('closeDate').onclick=()=>{const x=ensureException(adminDate);x.closed=!x.closed;persistSettings('Estado del '+adminDate+' actualizado.')};
+$('specialAddForm').onsubmit=e=>{e.preventDefault();const h=$('specialTime').value;if(!goodHour(h))return adminMessage('Introduce una hora válida.');const x=ensureException(adminDate);x.slots=normalize([...x.slots,h]);persistSettings('Hora '+h+' agregada exclusivamente el '+adminDate+'.')};
+$('restoreDate').onclick=()=>{delete settings.exceptions[adminDate];persistSettings('Se restauró el horario semanal para '+adminDate+'.')};
+$('resetConfig').onclick=()=>{if(!window.confirm('¿Restaurar el horario semanal y eliminar todas las excepciones de prueba? Las reservas simuladas se conservarán.'))return;settings=clone(DEFAULT);persistSettings('Disponibilidad de prueba restablecida a la configuración inicial.')};
+$('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración y las reservas de esta demostración?'))return;reservations={};settings=clone(DEFAULT);save(KEY_BOOK,reservations);save(KEY_SETTINGS,settings);hold=null;render();renderAdmin();adminMessage('Se borraron todos los datos locales de prueba.')};
+setInterval(()=>{if(hold)tick()},1000);
+render();renderAdmin();
 })();
 </script>
 </body>
