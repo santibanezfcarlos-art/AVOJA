@@ -17,6 +17,18 @@ from icalendar import Calendar
 import recurring_ical_events
 
 app = Flask(__name__)
+class CalendarConfigurationError(Exception):
+    """Error seguro de configuración; no divulgar URL ni token de iCal."""
+    pass
+
+def valid_calendar_url(url):
+    if not url:
+        return False
+    parts = urlparse(url.strip())
+    return (parts.scheme == "https" and parts.hostname == "calendar.google.com"
+            and parts.port in (None, 443)
+            and parts.path.startswith("/calendar/ical/") and parts.path.endswith(".ics"))
+
 TZ = ZoneInfo("America/Santiago")
 SLOT_DURATION_MINUTES = 60
 OPEN_MINUTES = 9 * 60
@@ -38,18 +50,17 @@ def _load_busy_intervals():
     url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
     if not url:
         return None
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname != "calendar.google.com" or not parsed.path.startswith("/calendar/ical/"):
-        raise ValueError("URL iCal inválida: debe pertenecer a Google Calendar")
+    if not valid_calendar_url(url):
+        raise CalendarConfigurationError("Formato de dirección iCal incorrecto")
     now = time.monotonic()
     with _lock:
-        if now - _feed_cache["at"] < CACHE_TTL_SECONDS and _feed_cache["events"]:
+        if now - _feed_cache["at"] < CACHE_TTL_SECONDS:
             return _feed_cache["events"]
         req = Request(url, headers={"User-Agent": "PsychologyCalendarAvailability/1.0"})
         with urlopen(req, timeout=12) as response:
             # No seguir URLs arbitrarias por redirección.
             if urlparse(response.geturl()).hostname != "calendar.google.com":
-                raise ValueError("Redirección de calendario no permitida")
+                raise CalendarConfigurationError("Redirección de calendario no permitida")
             raw = response.read(MAX_FEED_SIZE + 1)
         if len(raw) > MAX_FEED_SIZE:
             raise ValueError("Calendario demasiado grande")
@@ -99,37 +110,50 @@ def index():
 
 @app.get("/health")
 def health():
-    return jsonify(status="ok", calendar_configured=bool(os.environ.get("GOOGLE_CALENDAR_ICS_URL")))
+    url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
+    return jsonify(status="ok", calendar_configured=bool(url), calendar_url_format_valid=valid_calendar_url(url))
 
 
 @app.get("/api/availability")
 def availability():
+    # Los parámetros del paciente no deben confundirse con errores del calendario.
     try:
         first = date.fromisoformat(request.args.get("from", ""))
         last = date.fromisoformat(request.args.get("to", ""))
-        today = datetime.now(TZ).date()
-        if first < today - timedelta(days=1) or last < first or last > today + timedelta(days=60) or (last-first).days > 21:
-            return jsonify(error="El rango permitido es de hasta 22 días, dentro de los próximos 60 días."), 400
+    except (TypeError, ValueError):
+        return jsonify(error="Formato de fecha no válido"), 400
+
+    today = datetime.now(TZ).date()
+    if first < today - timedelta(days=1) or last < first or last > today + timedelta(days=60) or (last - first).days > 21:
+        return jsonify(error="Rango de fechas no permitido"), 400
+
+    try:
         intervals = _load_busy_intervals()
-        if intervals is None:
-            return jsonify(status="not_configured", configured=False, blocked={}, duration_minutes=SLOT_DURATION_MINUTES)
-        blocked = {}
-        day = first
-        while day <= last:
-            items = []
-            for minute in range(OPEN_MINUTES, CLOSE_MINUTES - SLOT_DURATION_MINUTES + 1, 15):
-                start = datetime(day.year, day.month, day.day, minute // 60, minute % 60, tzinfo=TZ)
-                end = start + timedelta(minutes=SLOT_DURATION_MINUTES)
-                if any(start < ev_end and ev_start < end for ev_start, ev_end in intervals):
-                    items.append(start.strftime("%H:%M"))
-            blocked[day.isoformat()] = items
-            day += timedelta(days=1)
-        return jsonify(status="ok", configured=True, blocked=blocked, duration_minutes=SLOT_DURATION_MINUTES, timezone="America/Santiago")
-    except ValueError:
-        return jsonify(error="Fechas o configuración inválidas"), 400
-    except Exception:
-        app.logger.exception("No se pudo consultar Google Calendar")
+    except CalendarConfigurationError:
+        app.logger.warning("GOOGLE_CALENDAR_ICS_URL no tiene un formato iCal válido. No se registran detalles.")
+        return jsonify(status="not_configured", reason="calendar_url_invalid", configured=False, blocked={}, duration_minutes=SLOT_DURATION_MINUTES)
+    except Exception as exc:
+        # No registrar URL privada ni detalles de eventos.
+        app.logger.error("Fallo al procesar la agenda iCal: %s", type(exc).__name__)
         return jsonify(error="No fue posible verificar disponibilidad. Reintentar más tarde."), 503
+
+    if intervals is None:
+        return jsonify(status="not_configured", reason="calendar_url_missing", configured=False, blocked={}, duration_minutes=SLOT_DURATION_MINUTES)
+
+    blocked = {}
+    day = first
+    while day <= last:
+        items = []
+        for minute in range(OPEN_MINUTES, CLOSE_MINUTES - SLOT_DURATION_MINUTES + 1, 15):
+            start = datetime(day.year, day.month, day.day, minute // 60, minute % 60, tzinfo=TZ)
+            end = start + timedelta(minutes=SLOT_DURATION_MINUTES)
+            if any(start < ev_end and ev_start < end for ev_start, ev_end in intervals):
+                items.append(start.strftime("%H:%M"))
+        blocked[day.isoformat()] = items
+        day += timedelta(days=1)
+
+    return jsonify(status="ok", configured=True, blocked=blocked,
+                   duration_minutes=SLOT_DURATION_MINUTES, timezone="America/Santiago")
 
 
 if __name__ == "__main__":
