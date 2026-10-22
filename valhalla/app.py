@@ -145,6 +145,11 @@ class Store:
         with self.connection() as c:
             c.executescript('''
             PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS skedu_daily_contacts (
+                reference TEXT PRIMARY KEY, booking_date TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL,
+                box INTEGER NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL, original_status TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1, actor_id INTEGER NOT NULL REFERENCES users(id), updated_at TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS skedu_daily_contacts_day ON skedu_daily_contacts(booking_date,active);
             CREATE TABLE IF NOT EXISTS blocked_emails (
                 email TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1,
                 actor_id INTEGER NOT NULL REFERENCES users(id), note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
@@ -362,13 +367,59 @@ class Store:
             rows = c.execute("""SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b
                 JOIN users u ON u.id=b.user_id WHERE b.status='confirmed' AND b.start>=? AND b.start<?
                 ORDER BY b.start,b.box,b.id""",(stamp(start),stamp(end))).fetchall()
+            external=c.execute('SELECT * FROM skedu_daily_contacts WHERE booking_date=? AND active=1 ORDER BY start,box,reference',(date,)).fetchall()
         contacts = {}
         for row in rows:
-            person = contacts.setdefault(row['user_id'],{'user_id':row['user_id'],'name':row['name'],'email':row['email'],'bookings':[]})
+            email=row['email'].strip().lower()
+            person = contacts.setdefault(email,{'user_id':row['user_id'],'name':row['name'],'email':email,'bookings':[],'skedu_bookings':[]})
             person['bookings'].append(booking_details({'id':row['id'],'box':row['box'],'start':row['start']}))
+        for row in external:
+            email=row['email'].strip().lower()
+            person=contacts.setdefault(email,{'user_id':None,'name':row['name'],'email':email,'bookings':[],'skedu_bookings':[]})
+            person['skedu_bookings'].append({key:row[key] for key in ('reference','box','start','end','original_status')})
         people = sorted(contacts.values(),key=lambda person:(person['name'].casefold(),person['email']))
         return {'date':date,'timezone':'America/Santiago','contacts':people,'emails':[person['email'] for person in people],
-                'total_professionals':len(people),'total_bookings':len(rows)}
+                'total_professionals':len(people),'total_bookings':len(rows),'total_skedu_bookings':len(external)}
+
+    def import_skedu_contacts(self,actor,body,preview=False):
+        from skedu_contacts import read_skedu_contacts
+        with self.connection() as c:self.require_owner(c,actor)
+        if type(body.get('include_unconfirmed',False)) is not bool:
+            raise Problem('Indica si las reservas no confirmadas siguen vigentes.')
+        if not preview and body.get('confirmed') is not True:
+            raise Problem('Confirma la incorporación al listado y al envío automático del código de acceso.')
+        try:records,metadata=read_skedu_contacts(body.get('content'),body.get('include_unconfirmed',False))
+        except Exception as error:
+            if isinstance(error,ValueError):raise Problem(str(error)) from error
+            raise Problem('No se pudo leer este Excel. Usa el archivo XLSX original de Skedu.') from error
+        days={}
+        for row in records:
+            if not row['active']:continue
+            summary=days.setdefault(row['date'],{'date':row['date'],'bookings':0,'emails':set()})
+            summary['bookings']+=1;summary['emails'].add(row['email'])
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            if not preview:
+                for row in records:
+                    c.execute('''INSERT INTO skedu_daily_contacts(reference,booking_date,name,email,box,start,end,original_status,active,actor_id,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(reference) DO UPDATE SET booking_date=excluded.booking_date,name=excluded.name,
+                        email=excluded.email,box=excluded.box,start=excluded.start,end=excluded.end,original_status=excluded.original_status,
+                        active=excluded.active,actor_id=excluded.actor_id,updated_at=excluded.updated_at''',
+                        (row['reference'],row['date'],row['name'],row['email'],row['box'],row['start'],row['end'],row['original_status'],row['active'],actor,stamp(now())))
+                self.log(c,actor,'skedu_contacts_imported',len(records))
+        return dict(metadata,preview=preview,total_bookings=sum(day['bookings'] for day in days.values()),
+                    days=[{'date':day['date'],'bookings':day['bookings'],'contacts':len(day['emails'])} for day in sorted(days.values(),key=lambda day:day['date'])])
+
+    def remove_skedu_contacts(self,actor,body):
+        references=body.get('references')
+        if body.get('confirmed') is not True or not isinstance(references,list) or not 1<=len(references)<=5000 or any(not isinstance(ref,str) or len(ref)>200 for ref in references):
+            raise Problem('Confirma qué reservas de Skedu deseas quitar del listado y de futuros envíos de acceso.')
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            for reference in references:
+                c.execute('UPDATE skedu_daily_contacts SET active=0,actor_id=?,updated_at=? WHERE reference=?',(actor,stamp(now()),reference))
+            self.log(c,actor,'skedu_contacts_removed',len(references))
+        return {'ok':True}
 
     def mail_event(self, uid, kind, provider, status, category='', http_status=None):
         with self.connection(True) as c:
@@ -1533,6 +1584,14 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/admin/packages/archive':
                 self.admin(user)
                 self.respond(store.archive_package(user['id'],body))
+                return
+            elif self.path in ('/api/admin/daily-contacts/skedu/preview','/api/admin/daily-contacts/skedu/import'):
+                self.admin(user)
+                self.respond(store.import_skedu_contacts(user['id'],body,preview=self.path.endswith('/preview')))
+                return
+            elif self.path == '/api/admin/daily-contacts/skedu/remove':
+                self.admin(user)
+                self.respond(store.remove_skedu_contacts(user['id'],body))
                 return
             elif self.path == '/api/admin/manual-credits':
                 self.admin(user)

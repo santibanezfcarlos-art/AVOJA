@@ -24,6 +24,9 @@ def recipients_for_day(db_path, day):
               AND b.start >= ? AND b.start < ?
             ORDER BY b.start, b.id
         """, (start_utc, end_utc)).fetchall()
+        # Older standalone databases need no migration to keep their native selection working.
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='skedu_daily_contacts'").fetchone():
+            rows += db.execute('SELECT email FROM skedu_daily_contacts WHERE booking_date=? AND active=1 ORDER BY start,reference',(day.isoformat(),)).fetchall()
     # Deduplicate by actual address, not booking ID, retaining first occurrence.
     seen = set()
     recipients = []

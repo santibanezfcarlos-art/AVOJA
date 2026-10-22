@@ -38,3 +38,12 @@ Los clientes migrados ven «Validación anterior» y Documentación explica que 
 La tabla de migraciones muestra saldo inicial importado, referencia, observación, fecha, operador y cuenta vinculada. El saldo actual, con las sesiones gastadas, se consulta en Paquetes. La importación no transfiere paquetes entre profesionales ni confirma pagos Webpay. Una carga duplicada se rechaza, no se suma otra vez.
 
 No hay un botón para borrar migraciones o corregir saldos a ciegas. Si hubo un error, conserva el respaldo y concilia el ajuste antes de aplicar una corrección auditada. No edites SQLite manualmente en producción ni repitas la carga con otro correo para compensar.
+
+
+## Correos de acceso de reservas que permanecen en Skedu
+
+Administración → Correos del día → Incorporar agendamientos desde Excel de Skedu permite subir el XLSX original, revisar el resumen por fecha y confirmar su incorporación. Se lee exclusivamente la segunda hoja, con las columnas Fecha, Box, Inicio, Término, Cliente, Correo, Confirmación e ID reserva. El archivo no se guarda; se conservan únicamente los datos de contacto y agendamiento necesarios, sin teléfonos ni información de planes o pagos.
+
+La opción para incluir “No confirmada” permite reconocerlas como agendamientos vigentes por decisión de administración. Las canceladas/anuladas quedan inactivas. Cada reserva se identifica por su ID de Skedu: repetir la importación actualiza esos registros y no los duplica. Una fila ausente en un archivo posterior no elimina el registro anterior; para retirarlo se puede importar su estado cancelado o usar “Quitar de Skedu para este día”.
+
+Estos contactos se suman al listado para copiar y a la selección del envío automático TTLock existente, deduplicados por correo y según la fecha local de Chile, aunque aún no tengan una cuenta creada. No crean reservas de la plataforma, no bloquean boxes, no consumen sesiones y no activan avisos de carga de horas. La importación no envía mensajes ni genera códigos. Debe completarse antes del envío automático previsto; no reenvía automáticamente códigos ya emitidos. El envío depende de la configuración TTLock/Resend existente y conserva su control de destinatarios y de intentos repetidos.
