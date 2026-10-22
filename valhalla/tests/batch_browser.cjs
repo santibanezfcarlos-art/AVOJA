@@ -12,8 +12,27 @@ const me=async()=>await(await page.request.get(base+'/api/me')).json();let state
 const day=(n)=>new Date(new Date(state.today+'T12:00:00Z').getTime()+n*86400000).toISOString().slice(0,10);
 async function date(n){if(await page.locator('#schedule-date').inputValue()===day(n))return;const response=page.waitForResponse(response=>response.url().includes('/api/availability?date='+day(n)));await page.locator('#schedule-date').fill(day(n));await response;}
 async function select(n,hour,box){await date(n);const data=await(await page.request.get(base+'/api/availability?date='+day(n))).json();const slot=data.slots.find(s=>s.label===hour);const count=await page.locator('.batch-list>.row').count();await page.locator(`[data-slot="${slot.start}"][data-box="${box}"]`).click();await page.waitForFunction(count=>document.querySelectorAll('.batch-list>.row').length===count,count+1);await page.getByRole('button',{name:'Revisar y confirmar horas',exact:true}).waitFor();}
-await page.locator('[data-view="availability"]').click();await page.getByRole('button',{name:'Seleccionar varias horas',exact:true}).click();
-await select(2,'07:00',1);await select(2,'08:00',1);await select(3,'22:00',3);
+await page.getByRole('button',{name:'Abrir menú',exact:true}).click();
+assert.equal(await page.getByRole('button',{name:'Abrir menú',exact:true}).getAttribute('aria-expanded'),'true');
+await page.getByRole('button',{name:'Cerrar menú',exact:true}).first().press('Escape');
+assert.equal(await page.getByRole('button',{name:'Abrir menú',exact:true}).getAttribute('aria-expanded'),'false');
+await page.getByRole('button',{name:'Abrir menú',exact:true}).click();
+assert.equal(await page.locator('.sidebar').evaluate(el=>el.getBoundingClientRect().left),0);
+await page.getByRole('button',{name:'Disponibilidad',exact:true}).click();
+await page.locator('.week-day').first().waitFor();assert.equal(await page.locator('.week-day').count(),7);
+const initialDate=await page.locator('#schedule-date').inputValue();
+await page.getByRole('button',{name:'Semana siguiente',exact:true}).click();
+await page.waitForFunction(initial=>document.querySelector('#schedule-date')?.value!==initial,initialDate);
+await date(2);
+const firstDay=await(await page.request.get(base+'/api/availability?date='+day(2))).json();
+const first=firstDay.slots.find(slot=>slot.label==='07:00');
+await page.locator(`[data-slot="${first.start}"][data-box="1"]`).click();
+await page.locator('#choose-more-hours').click();
+await page.waitForFunction(()=>document.querySelectorAll('.batch-list>.row').length===1);
+assert.equal((await me()).bookings.length,0);
+await page.screenshot({path:'/tmp/valhalla-week-mobile.png',fullPage:true});
+await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'/tmp/valhalla-week-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});
+await select(2,'08:00',1);await select(3,'22:00',3);
 assert.equal(await page.locator('.batch-list>.row').count(),3);await page.getByRole('button',{name:'Revisar y confirmar horas',exact:true}).click();await acceptBookingRules(page);
 const later=page.locator('#book-rest-later');assert.equal(await later.isChecked(),true);await later.uncheck();assert.equal(await page.locator('#modal-confirm').isDisabled(),true);await later.check();await page.locator('#modal-confirm').click();await page.getByRole('heading',{name:'Tu agenda, en orden',exact:true}).waitFor();state=await me();assert.equal(state.bookings.length,3);assert.equal(state.packages[0].remaining,2);assert.equal(await page.locator('.booking-confirmation .confirmation-reservation').count(),3);assert.match(await page.locator('.confirmation-balance').innerText(),/2 sesiones/);
 await page.getByRole('button',{name:'Nueva reserva →',exact:true}).click();await page.getByRole('button',{name:'Seleccionar varias horas',exact:true}).click();await select(3,'09:00',2);await select(3,'10:00',3);await page.getByRole('button',{name:'Revisar y confirmar horas',exact:true}).click();await acceptBookingRules(page);assert.equal(await page.locator('#book-rest-later').count(),0);await page.locator('#modal-confirm').click();await page.getByRole('heading',{name:'Tu agenda, en orden',exact:true}).waitFor();state=await me();assert.equal(state.bookings.length,5);assert.equal(state.packages[0].remaining,0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
