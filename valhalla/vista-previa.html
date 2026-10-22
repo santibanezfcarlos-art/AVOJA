@@ -577,9 +577,24 @@ function paymentList(admin=false) {
 function sendToWebpay(checkout) {
   const target=new URL(checkout.url);
   if(target.protocol!=='https:'||target.hostname!==(checkout.mode==='production'?'webpay3g.transbank.cl':'webpay3gint.transbank.cl')||!['integration','production'].includes(checkout.mode)||target.pathname!=='/webpayserver/initTransaction'||target.username||target.password||target.search||target.hash)throw new Error('Destino de pago inválido.');
+  try{sessionStorage.setItem('valhalla-webpay-checkout',String(checkout.payment_id));}catch{}
   const form=document.createElement('form');form.method='POST';form.action=checkout.url;
   const token=document.createElement('input');token.type='hidden';token.name='token_ws';token.value=checkout.token;form.appendChild(token);document.body.appendChild(form);form.submit();
 }
+let checkoutReturnBusy=false;
+async function discardReturnedCheckout(){
+  if(!state||checkoutReturnBusy)return;
+  let aid;try{aid=Number(sessionStorage.getItem('valhalla-webpay-checkout'));}catch{return;}
+  if(!Number.isSafeInteger(aid)||aid<=0)return;
+  checkoutReturnBusy=true;
+  try{
+    const result=await api('webpay/abandon',{id:aid});
+    try{if(Number(sessionStorage.getItem('valhalla-webpay-checkout'))===aid)sessionStorage.removeItem('valhalla-webpay-checkout');}catch{}
+    if(result.archived){if(modal.open)modal.close();await reload();toast('Compra anterior descartada. Puedes iniciar una nueva compra.');}
+  }catch{} // New purchases also retire abandoned attempts if the browser cannot report a return.
+  finally{checkoutReturnBusy=false;}
+}
+window.addEventListener('pageshow',discardReturnedCheckout);
 function discountsAdmin(){
   return `<h2>Códigos de descuento</h2><p class="section-intro">Personaliza un código y su porcentaje (1% a 99%). Se aplica a cualquier plan, una vez por compra. Puedes desactivarlo para futuras compras.</p><form id="discount-form" class="form-stack"><label>Código personalizado<input name="code" required minlength="3" maxlength="40" pattern="[A-Za-z0-9_-]{3,40}" placeholder="Ej. BIENVENIDA20"></label><label>Porcentaje de descuento<input name="percent" type="number" min="1" max="99" step="1" required placeholder="Ej. 20"></label><p class="error" id="discount-admin-error" role="alert"></p><button class="btn" type="submit">Guardar código</button></form><div class="table-wrap"><table><thead><tr><th>Código</th><th>Descuento</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${(adminData.discount_codes||[]).map(d=>`<tr><td>${escapeHTML(d.code)}</td><td>${d.percent}%</td><td>${d.active?'Activo':'Desactivado'}</td><td><button class="btn ghost small" data-discount-edit="${escapeHTML(d.code)}">Editar</button> <button class="btn ghost small" data-discount-toggle="${escapeHTML(d.code)}">${d.active?'Desactivar':'Activar'}</button></td></tr>`).join('')}</tbody></table></div>`;
 }
@@ -599,12 +614,12 @@ function purchaseModal(plan, resumeId=null){
   let appliedCode=existingPlan?.discount_code||'';
   const shownPrice=existingPayment?.amount??plan.price;
   let quotedPrice=shownPrice;
-  const key=resumeId?'resume-'+resumeId:crypto.randomUUID();
+  const key=crypto.randomUUID();
   const acceptance=()=>({accepted:document.querySelector('#purchase-rules-accepted')?.checked===true,version:rules.version});
   showModal(live?(validation?'Validación de producción · $50':'Comprar horas · Webpay'):bank?'Comprar plan · Webpay de pruebas':'Solicitar paquete',`<p>${validation?'Compra de validación · no acredita sesiones':plan.hours+' sesiones'} · ${money(shownPrice)}. ${live?'Se realizará un cobro real con tu tarjeta.':bank?'Continuarás al sitio de pruebas de Transbank. No habrá cargos reales.':'Esta operación es simulada y no genera un cobro real.'}</p><section class="purchase-rules" aria-label="Normas de uso"><h3>Normas de Valhalla Office</h3><ol>${rules.items.map(item=>`<li><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.text)}</p></li>`).join('')}</ol><p><a href="/normas" target="_blank" rel="noopener">Abrir las normas en otra pestaña</a></p></section><label class="identity-confirmation"><input type="checkbox" id="purchase-rules-accepted">He leído y acepto las 12 normas de uso de Valhalla Office para esta compra.</label><section class="discount-checkout"><h3>¿Tienes un código de descuento?</h3>${validation?'<p>La validación tiene un monto fijo de $50 y no admite descuentos.</p>':resumeId?'<p>Esta compra conserva el precio y el código con los que fue iniciada.</p>':'<label>Agrega tu código antes de comprar<input id="purchase-discount-code" maxlength="40" autocomplete="off" placeholder="Ej. BIENVENIDA20"></label><button type="button" class="btn secondary" id="apply-discount">Aplicar código</button>'}<p id="discount-result" role="status" aria-live="polite">${appliedCode?`Código ${escapeHTML(appliedCode)} aplicado. `:''}Total a pagar: <strong>${money(shownPrice)}</strong></p><p class="error" id="discount-error" role="alert"></p></section>`,live?(validation?'Pagar $50 con tarjeta real':'Pagar con Webpay'):bank?'Ir a Webpay de pruebas':'Solicitar sin cobro',async()=>{
     const input=document.querySelector('#purchase-discount-code');if(input&&input.value.trim().toUpperCase()!==appliedCode)throw new Error('Aplica el código para revisar el precio antes de comprar, o deja el campo vacío.');
     const rules_acceptance=acceptance();if(!rules_acceptance.accepted)throw new Error('Debes aceptar las normas para continuar.');
-    if(bank)sendToWebpay(await api('webpay/create',{catalog_id:plan.id,idempotency_key:key,rules_acceptance,discount_code:appliedCode,expected_price:quotedPrice}));
+    if(bank)sendToWebpay(await api('webpay/create',{catalog_id:plan.id,idempotency_key:key,rules_acceptance,discount_code:appliedCode,expected_price:quotedPrice,resume_payment_id:resumeId}));
     else{await api('packages',{catalog_id:plan.id,rules_acceptance,discount_code:appliedCode,expected_price:quotedPrice});toast('Solicitud registrada. Pago simulado pendiente de confirmación.');}
   });
   const checkbox=document.querySelector('#purchase-rules-accepted'),button=document.querySelector('#modal-confirm');button.disabled=true;checkbox.onchange=()=>button.disabled=!checkbox.checked;
@@ -977,6 +992,7 @@ async function startApp() {
   catch{auth(false,googleResult==='admin_password');}
   const googleMessages={success:'Ingresaste con Google.',profile_required:'Completa tu profesión o especialidad en Mi perfil. Para reservar también necesitas tu identidad validada y saldo.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Google. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Google. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Google está disponible para cuentas profesionales.',error:'No se pudo completar el acceso con Google. Vuelve a intentarlo desde el inicio.'};
   if(googleResult&&googleMessages[googleResult])toast(googleMessages[googleResult]);
+  await discardReturnedCheckout();
 }
 // Keep contact available across login, registration and account views.
 const whatsappContact=document.createElement('a');

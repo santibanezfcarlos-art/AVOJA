@@ -69,6 +69,39 @@ class ProductionPayments(unittest.TestCase):
             self.assertEqual(json.loads(receipts[0]['payload'])['hours'],5)
             self.assertEqual(json.loads(receipts[0]['payload'])['source'],'production')
         with self.assertRaises(PaymentError):self.service.create(self.uid,'1','paused-live-purchase-12345',self.rules)
+    def test_abandoned_production_checkout_allows_new_purchase_and_late_payment_is_not_lost(self):
+        self.enable()
+        first=self.service.create(self.uid,'5','abandoned-first-live-12345',self.rules)
+        self.assertTrue(self.service.abandon(self.uid,first['payment_id'])['archived'])
+        self.assertFalse(self.service.abandon(self.uid,first['payment_id'])['archived'])
+        with self.store.connection() as c:
+            user=c.execute('SELECT * FROM users WHERE id=?',(self.uid,)).fetchone()
+        # state needs a session CSRF, which is unrelated to credit validation.
+        state=self.store.state(dict(user)|{'csrf':'synthetic'})
+        self.assertEqual(state['payments'],[]);self.assertEqual(state['packages'],[])
+        with self.assertRaises(PaymentError):self.service.abandon(self.admin,first['payment_id'])
+        second=self.service.create(self.uid,'10','abandoned-second-live-1234',self.rules)
+        self.assertNotEqual(first['token'],second['token'])
+        self.service.returned({'token_ws':first['token']});self.service.returned({'token_ws':first['token']})
+        self.assertFalse(self.service.abandon(self.uid,first['payment_id'])['archived'])
+        with self.store.connection() as c:
+            old=c.execute('SELECT p.* FROM packages p JOIN payment_attempts a ON a.package_id=p.id WHERE a.id=?',(first['payment_id'],)).fetchone()
+            self.assertEqual((old['status'],old['remaining'],old['archived_at']),('paid',5,''))
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM notification_outbox WHERE user_id=? AND kind='hours_credited'",(self.uid,)).fetchone()[0],1)
+        self.service.returned({'token_ws':second['token']})
+        with self.store.connection() as c:self.assertEqual(c.execute("SELECT SUM(remaining) FROM packages WHERE user_id=? AND status='paid'",(self.uid,)).fetchone()[0],15)
+
+    def test_new_checkout_replaces_old_without_explicit_abandon_and_invalid_quote_keeps_old(self):
+        self.enable()
+        first=self.service.create(self.uid,'5','replace-first-live-123456',self.rules)
+        with self.assertRaises(PaymentError):self.service.create(self.uid,'10','replace-invalid-quote-1234',self.rules,'',1)
+        with self.store.connection() as c:self.assertEqual(c.execute('SELECT archived FROM payment_attempts WHERE id=?',(first['payment_id'],)).fetchone()[0],0)
+        second=self.service.create(self.uid,'5','replace-second-live-12345',self.rules)
+        with self.store.connection() as c:
+            self.assertEqual(c.execute('SELECT archived FROM payment_attempts WHERE id=?',(first['payment_id'],)).fetchone()[0],1)
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM payment_attempts WHERE user_id=? AND archived=0 AND state='ready'",(self.uid,)).fetchone()[0],1)
+        self.assertNotEqual(first['payment_id'],second['payment_id'])
+
     def test_pending_integration_does_not_block_production_or_switch_its_host(self):
         sandbox=PaymentService(self.store,FakeGateway());sandbox.create(self.uid,'1','pending-sandbox-before-live',self.rules)
         self.enable();checkout=self.service.create(self.uid,'1','new-live-after-sandbox-123',self.rules)

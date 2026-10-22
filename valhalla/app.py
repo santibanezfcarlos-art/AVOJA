@@ -1549,7 +1549,12 @@ class Handler(BaseHTTPRequestHandler):
                 service = getattr(self.server,'webpay',None)
                 if not service:
                     raise PaymentError('Webpay no está habilitado.',409)
-                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key'),body.get('rules_acceptance'),body.get('discount_code',''),body.get('expected_price')))
+                self.respond(service.create(user['id'],body.get('catalog_id'),body.get('idempotency_key'),body.get('rules_acceptance'),body.get('discount_code',''),body.get('expected_price'),body.get('resume_payment_id')))
+                return
+            elif self.path == '/api/webpay/abandon':
+                service=getattr(self.server,'webpay',None)
+                if not service:raise PaymentError('Webpay no está habilitado.',409)
+                self.respond(service.abandon(user['id'],body.get('id')))
                 return
             elif self.path == '/api/webpay/reconcile':
                 service = getattr(self.server,'webpay',None)

@@ -152,16 +152,34 @@ class PaymentService:
     def mode(self):
         return self.gateway.mode
 
+    def _archive_abandoned(self,c,row):
+        from app import stamp,now
+        if row['archived'] or row['state'] in ('approved','rejected'):return False
+        reason='Compra Webpay abandonada; no bloquea nuevas compras.'
+        changed=c.execute("UPDATE packages SET archived_at=?,archive_reason=?,archived_by=? WHERE id=? AND status='pending' AND remaining=0 AND archived_at=''",(stamp(now()),reason,row['user_id'],row['package_id'])).rowcount
+        if not changed:return False
+        c.execute('UPDATE payment_attempts SET archived=1 WHERE id=?',(row['id'],))
+        c.execute('INSERT INTO package_archive_events(package_id,actor_id,reason,created_at) VALUES(?,?,?,?)',(row['package_id'],row['user_id'],reason,stamp(now())))
+        self.store.log(c,row['user_id'],'webpay_checkout_abandoned',row['id'])
+        return True
+
+    def abandon(self,uid,aid):
+        if type(aid) is not int:raise PaymentError('Compra inválida.',400)
+        with self.store.connection(True) as c:
+            row=c.execute('SELECT * FROM payment_attempts WHERE id=? AND user_id=?',(aid,uid)).fetchone()
+            if not row:raise PaymentError('Compra no encontrada.',404)
+            return {'archived':self._archive_abandoned(c,row),'payment_id':aid}
+
     def checkout(self, row):
         if row['archived'] or row['state'] != 'ready' or row['environment'] != self.mode:
             raise PaymentError('Hay un pago pendiente de conciliación. Consulta su estado; no inicies otro cobro.', 409)
         return {'payment_id':row['id'], 'token':row['token'], 'url':row['checkout_url'], 'mode':self.mode}
 
-    def create(self, uid, catalog, key, rules_acceptance=None, discount_code='', expected_price=None):
+    def create(self, uid, catalog, key, rules_acceptance=None, discount_code='', expected_price=None, resume_payment_id=None):
         with self.configuration_lock:
-            return self._create(uid,catalog,key,rules_acceptance,discount_code,expected_price)
+            return self._create(uid,catalog,key,rules_acceptance,discount_code,expected_price,resume_payment_id)
 
-    def _create(self, uid, catalog, key, rules_acceptance, discount_code, expected_price):
+    def _create(self, uid, catalog, key, rules_acceptance, discount_code, expected_price, resume_payment_id):
         from rules import validate_acceptance
         if not validate_acceptance(rules_acceptance):
             raise PaymentError('Debes leer y aceptar las normas vigentes antes de comprar.',400)
@@ -181,6 +199,14 @@ class PaymentService:
             if validation:
                 if self.mode!='production' or user['role']!='admin' or user['email']!=ADMIN_EMAIL or discount_code:raise PaymentError('La validación de $50 es exclusiva del administrador en producción, sin descuentos.',403)
             elif self.mode=='production' and not c.execute('SELECT 1 FROM webpay_live_settings WHERE id=1 AND sales_enabled=1 AND commerce_code=?',(self.gateway.commerce_code,)).fetchone():raise PaymentError('Las compras están temporalmente pausadas. Contacta a administración.',409)
+            if resume_payment_id is not None:
+                if type(resume_payment_id) is not int:raise PaymentError('Compra inválida.',400)
+                pending=c.execute('SELECT * FROM payment_attempts WHERE id=? AND user_id=?',(resume_payment_id,uid)).fetchone()
+                if not pending:raise PaymentError('Compra no encontrada.',404)
+                snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()
+                if pending['hours']!=hours or snapshot['discount_code']!=str(discount_code).strip().upper() or (expected_price is not None and expected_price!=pending['amount']):
+                    raise PaymentError('Esta compra corresponde a otro plan o precio.',409)
+                return self.checkout(pending)
             previous = c.execute('SELECT * FROM payment_attempts WHERE user_id=? AND idempotency_key=?', (uid,key)).fetchone()
             if previous:
                 snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(previous['package_id'],)).fetchone()
@@ -189,20 +215,12 @@ class PaymentService:
                 if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(previous['package_id'],)).fetchone():
                     self.store.record_purchase_acceptance(c,uid,previous['package_id'],rules_acceptance)
                 return checkout
-            # Explicit resume retains the original quote, even after a promotion ends.
-            pending = c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND environment=? AND state IN ('creating','ready','uncertain','review') AND archived=0", (uid,self.mode)).fetchone()
-            if pending and pending['state']=='ready' and pending['hours']==hours and expected_price==pending['amount']:
-                snapshot=c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()
-                if snapshot['discount_code']==str(discount_code).strip().upper():
-                    return self.checkout(pending)
             quote={'code':'','percent':0,'original_price':50,'price':50} if validation else self.store.discount_quote(c,catalog,discount_code);price=quote['price']
             if expected_price is not None and expected_price!=price:raise PaymentError('El precio cambió. Aplica nuevamente el código antes de comprar.',409)
-            if pending:
-                if pending['state']=='ready' and pending['hours']==hours and pending['amount']==price and c.execute('SELECT discount_code FROM packages WHERE id=?',(pending['package_id'],)).fetchone()['discount_code']==quote['code']:
-                    if not c.execute('SELECT 1 FROM purchase_acceptances WHERE package_id=?',(pending['package_id'],)).fetchone():
-                        self.store.record_purchase_acceptance(c,uid,pending['package_id'],rules_acceptance)
-                    return self.checkout(pending)
-                raise PaymentError('Ya tienes un pago pendiente. Retómalo o consulta su estado en Comprar horas.', 409)
+            # A new intent retires abandoned checkouts without deleting their bank ledger.
+            # Archived attempts still reconcile and can credit a late authorization exactly once.
+            for pending in c.execute("SELECT * FROM payment_attempts WHERE user_id=? AND environment=? AND state IN ('creating','ready','uncertain','review') AND archived=0",(uid,self.mode)).fetchall():
+                self._archive_abandoned(c,pending)
             source='webpay_validation' if validation else 'webpay_production' if self.mode=='production' else 'webpay_integration'
             pid = c.execute("INSERT INTO packages(user_id,hours,remaining,price,created_at,source) VALUES(?,?,0,?,?,?)", (uid,hours,price,stamp(now()),source)).lastrowid
             self.store.record_discount(c,pid,quote)

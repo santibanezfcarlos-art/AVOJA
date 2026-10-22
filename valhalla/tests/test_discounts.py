@@ -58,8 +58,8 @@ class Discounts(unittest.TestCase):
     def test_retries_preserve_snapshot_after_code_disabled_and_reject_changed_code(self):
         first=self.pay.create(self.uid,'5','discount-bank-key-12345',self.rules,'BIENVENIDA20');self.save(active=False)
         self.assertEqual(self.pay.create(self.uid,'5','discount-bank-key-12345',self.rules,'BIENVENIDA20')['token'],first['token'])
-        self.assertEqual(self.pay.create(self.uid,'5','resume-new-request-123456',self.rules,'BIENVENIDA20',23192)['token'],first['token'])
+        self.assertEqual(self.pay.create(self.uid,'5','resume-new-request-123456',self.rules,'BIENVENIDA20',23192,resume_payment_id=first['payment_id'])['token'],first['token'])
         with self.assertRaises(PaymentError):self.pay.create(self.uid,'5','discount-bank-key-12345',self.rules,'')
         self.save(percent=30)
-        with self.assertRaises(PaymentError):self.pay.create(self.uid,'5','discount-another-key-12345',self.rules,'BIENVENIDA20')
+        with self.assertRaises(PaymentError):self.pay.create(self.uid,'5','discount-another-key-12345',self.rules,'BIENVENIDA20',23192)
         self.assertEqual(self.gateway.create_calls,1)

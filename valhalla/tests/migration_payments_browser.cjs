@@ -56,6 +56,15 @@ const base=process.env.VALHALLA_TEST_URL;
     assert.equal(await page.locator('#modal-confirm').isDisabled(),true);await page.locator('#purchase-rules-accepted').check();
     await page.getByRole('button',{name:'Ir a Webpay de pruebas',exact:true}).click();
     await page.getByRole('heading',{name:'Checkout ficticio de pruebas aisladas',exact:true}).waitFor();
+    // Browser Back must retire the abandoned checkout and permit a fresh purchase.
+    const firstAttempt=(await(await page.request.get(base+'/api/me')).json()).payments[0].id;
+    await page.goBack();
+    await page.waitForFunction(async()=>{const data=await(await fetch('/api/me')).json();return data.payments.length===0;});
+    await page.locator('[data-view="packages"]').click();await page.locator('[data-buy="5"]').click();
+    await page.locator('#purchase-rules-accepted').check();await page.getByRole('button',{name:'Ir a Webpay de pruebas',exact:true}).click();
+    await page.getByRole('heading',{name:'Checkout ficticio de pruebas aisladas',exact:true}).waitFor();
+    const secondAttempt=(await(await page.request.get(base+'/api/me')).json()).payments[0].id;
+    assert.notEqual(firstAttempt,secondAttempt);
     await page.getByRole('button',{name:'Aprobar pago ficticio',exact:true}).click();
     await page.getByRole('heading',{name:'Comprar horas',exact:true}).waitFor();
     state=await me();assert.equal(state.payments[0].state,'approved');assert.equal(state.packages.reduce((n,p)=>n+(p.status==='paid'?p.remaining:0),0),14);

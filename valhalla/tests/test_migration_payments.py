@@ -137,13 +137,14 @@ class MigrationAndPayments(unittest.TestCase):
         self.store.import_legacy_csv(self.admin,{'csv':self.csv()['csv'].replace(',',';'),'identity_confirmed':True})
         self.assertEqual(self.state()['packages'][0]['remaining'],10)
 
-    def test_create_catalog_price_and_retries_reuse_attempt(self):
+    def test_create_same_request_reuses_attempt_explicit_resume_and_new_plan_replaces(self):
         checkout=self.create_payment()
-        for key in ('test-idempotency-key-001','test-idempotency-key-002'):
-            self.assertEqual(self.payments.create(self.uid,'5',key, rules_acceptance={'accepted':True,'version':RULES_VERSION}),checkout)
-        with self.assertRaises(PaymentError):self.payments.create(self.uid,'10','test-idempotency-key-003', rules_acceptance={'accepted':True,'version':RULES_VERSION})
-        self.assertEqual(self.gateway.create_calls,1)
-        self.assertEqual(self.state()['packages'][0]['remaining'],0);self.assertEqual(self.state()['packages'][0]['price'],28990)
+        self.assertEqual(self.payments.create(self.uid,'5','test-idempotency-key-001',rules_acceptance={'accepted':True,'version':RULES_VERSION}),checkout)
+        self.assertEqual(self.payments.create(self.uid,'5','test-idempotency-key-002',rules_acceptance={'accepted':True,'version':RULES_VERSION},resume_payment_id=checkout['payment_id']),checkout)
+        replacement=self.payments.create(self.uid,'10','test-idempotency-key-003',rules_acceptance={'accepted':True,'version':RULES_VERSION})
+        self.assertNotEqual(replacement['payment_id'],checkout['payment_id']);self.assertEqual(self.gateway.create_calls,2)
+        self.assertEqual(len(self.state()['payments']),1);self.assertEqual(len(self.state()['packages']),1)
+        self.assertEqual(self.state()['packages'][0]['remaining'],0)
         self.assertNotIn(checkout['token'],json.dumps(self.store.admin_state()))
 
     def test_approval_credits_once_and_repeat_does_not_restore_spent_hours(self):
@@ -181,10 +182,11 @@ class MigrationAndPayments(unittest.TestCase):
         self.assertEqual(self.payments.reconcile(checkout['payment_id'],uid=self.uid)['state'],'approved')
         self.assertEqual(self.state()['packages'][0]['remaining'],5);self.assertEqual(self.gateway.commit_calls,1)
 
-    def test_pending_network_error_does_not_credit_or_allow_new_payment(self):
+    def test_pending_network_error_does_not_credit_or_block_new_payment(self):
         checkout=self.create_payment();self.gateway.status_error=True
         with self.assertRaises(PaymentError):self.payments.reconcile(checkout['payment_id'],uid=self.uid)
-        with self.assertRaises(PaymentError):self.payments.create(self.uid,'5','another-idempotency-key', rules_acceptance={'accepted':True,'version':RULES_VERSION})
+        replacement=self.payments.create(self.uid,'5','another-idempotency-key', rules_acceptance={'accepted':True,'version':RULES_VERSION})
+        self.assertNotEqual(replacement['payment_id'],checkout['payment_id'])
         self.assertEqual(self.state()['packages'][0]['remaining'],0)
         self.gateway.status_error=False
         self.assertEqual(self.payments.reconcile(checkout['payment_id'],uid=self.uid)['state'],'ready')
@@ -278,6 +280,12 @@ class NewEndpointPermissions(unittest.TestCase):
             self.assertEqual(self.request(path,{},csrf=False)[0],403)
             self.assertEqual(self.request(path,{})[0],403)
         self.assertEqual(self.store.admin_state()['migrations'],[])
+    def test_abandon_endpoint_requires_session_csrf_and_ownership(self):
+        self.assertEqual(self.request('/api/webpay/abandon',{'id':1},authenticated=False)[0],401)
+        self.assertEqual(self.request('/api/webpay/abandon',{'id':1},csrf=False)[0],403)
+        self.assertEqual(self.request('/api/webpay/abandon',{'id':999999})[0],404)
+        self.assertEqual(self.request('/api/webpay/abandon',{'id':True})[0],400)
+
     def test_payment_permissions_server_price_and_no_manual_approval(self):
         body={'rules_acceptance':{'accepted':True,'version':RULES_VERSION},'catalog_id':'5','idempotency_key':'http-test-idempotency-key','amount':1,'hours':999,'user_id':999}
         self.assertEqual(self.request('/api/webpay/create',body,authenticated=False)[0],401)
