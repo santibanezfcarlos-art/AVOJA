@@ -313,3 +313,8 @@ Administración → Usuarios mantiene tres acciones diferentes:
 - **Eliminar cuenta** retira el perfil del listado y revoca acceso y enlaces. Sin planes, movimientos o reservas, retira los datos de perfil, desvincula Google, elimina documentos y libera el correo; conserva un ID retirado para que el historial de auditoría nunca apunte a otra persona. Si hay actividad, conserva identidad e historial financiero/de reservas para administración y mantiene la cuenta sin acceso. Eliminar no cancela reservas ni devuelve cobros; los pagos pendientes siguen conciliándose.
 
 Las acciones requieren administrador propietario, sesión y CSRF, confirmación de la cuenta seleccionada y dejan constancia de operador, fecha y motivo opcional. La cuenta propietaria administradora está protegida de bloqueo y eliminación. Los usuarios eliminados no pueden reactivarse con Activar. Las revisiones de bloqueo se hacen dentro de las transacciones de registro, Google, compra y reserva para evitar operaciones nuevas después del bloqueo.
+
+
+### Acceso con Microsoft
+
+Inicio y registro con cuentas personales Hotmail/Outlook/Live/MSN mediante Microsoft Entra. Consulta [MICROSOFT.md](MICROSOFT.md) para registrar la aplicación Web y configurar las credenciales en Render. El botón permanece oculto hasta completar la configuración. No modifica el acceso administrador ni las integraciones de Google y Webpay.

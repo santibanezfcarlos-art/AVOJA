@@ -14,15 +14,23 @@ let contactsDate='',dailyContacts=null;
 let paymentsMonth='';
 let showArchivedPlans=false;
 let officeGallery = [];
-let googleEnabled = false;
+let googleEnabled = false, microsoftEnabled = false;
 const googleResult = new URLSearchParams(location.search).get('google_result');
-let completingGoogleProfile=googleResult==='profile_required',profileSavedForDocuments=false;
+const microsoftResult = new URLSearchParams(location.search).get('microsoft_result');
+let completingGoogleProfile=googleResult==='profile_required'||microsoftResult==='profile_required',profileSavedForDocuments=false;
 if(googleResult){const clean=new URL(location.href);clean.searchParams.delete('google_result');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
+if(microsoftResult){const clean=new URL(location.href);clean.searchParams.delete('microsoft_result');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
 async function continueWithGoogle(link=false){
   const button=document.querySelector(link?'#link-google':'#google-access');if(button)button.disabled=true;
   try{const result=await api(link?'google/link':'google/start',{});const target=new URL(result.authorization_url);if(target.origin!=='https://accounts.google.com')throw new Error('No se pudo abrir Google.');location.assign(target.href);}
   catch(e){toast(e.message);if(button)button.disabled=false;}
 }
+async function continueWithMicrosoft(link=false){
+  const button=document.querySelector(link?'#link-microsoft':'#microsoft-access');if(button)button.disabled=true;
+  try{const result=await api(link?'microsoft/link':'microsoft/start',{});const target=new URL(result.authorization_url);if(target.origin!=='https://login.microsoftonline.com'||target.pathname!=='/consumers/oauth2/v2.0/authorize')throw new Error('No se pudo abrir Microsoft.');location.assign(target.href);}
+  catch(e){toast(e.message);if(button)button.disabled=false;}
+}
+const microsoftIcon='<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="#f25022" d="M1 1h10v10H1z"/><path fill="#7fba00" d="M13 1h10v10H13z"/><path fill="#00a4ef" d="M1 13h10v10H1z"/><path fill="#ffb900" d="M13 13h10v10H13z"/></svg>';
 const canBookParallel = () => state?.user.owner_booking_privileges===true;
 const adminMode = () => state?.user.role==='admin' && activeProfile==='admin';
 let disposeWelcomeCarousel = () => {};
@@ -109,7 +117,9 @@ function auth(register = false, administrator = false) {
   disposeWelcomeCarousel();
   root.innerHTML = `<div class="auth"><section class="auth-story">${brand}<div><div class="eyebrow">UN LUGAR PARA CRECER</div><h1>Sigue tu vocación.<br><em>Nosotros ponemos el espacio.</em></h1><p>Tres boxes para atender a tu ritmo, una recepción para tus pacientes y un entorno pensado para que crezcas como profesional.</p><div class="welcome-benefits"><span>3 boxes profesionales</span><span>Paquetes de horas</span><span>Box infantil</span></div>${welcomeCarousel()}<a class="welcome-gallery-link" href="#office-gallery-title">Recorre todos nuestros espacios <span aria-hidden="true">↓</span></a></div><footer>COLO COLO 222 · OFICINA 710</footer></section>
     <section class="auth-form"><div class="auth-inner"><span class="demo-label">TU ESPACIO PROFESIONAL</span><h2>${administrator ? 'Acceso administrador' : register ? 'Crea tu cuenta profesional' : 'Bienvenido a tu espacio'}</h2><p class="muted">${administrator ? 'Ingresa con tu correo autorizado y tu contraseña privada.' : register ? 'Regístrate y envía tu documentación para comenzar.' : 'Organiza tus atenciones, con todo en un solo lugar.'}</p>
-    ${googleEnabled&&!administrator?'<button type="button" class="btn google-signin full" id="google-access"><svg class="google-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.87 23.87 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Ingresar con Google</span></button><p class="muted">O continúa con tu correo y contraseña.</p>':''}
+    ${googleEnabled&&!administrator?'<button type="button" class="btn google-signin full" id="google-access"><svg class="google-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.87 23.87 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Ingresar con Google</span></button>':''}
+    ${microsoftEnabled&&!administrator?`<button type="button" class="btn microsoft-signin full" id="microsoft-access">${microsoftIcon}<span>Ingresar con Microsoft</span></button>`:''}
+    ${(googleEnabled||microsoftEnabled)&&!administrator?'<p class="muted social-signin-note">O continúa con tu correo y contraseña.</p>':''}
     <form id="auth-form" class="form-stack">${register ? '<label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" placeholder="Ej. Psicología"></label>' : ''}
     <label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="200" placeholder="tu@correo.cl" ${administrator?'':'aria-describedby="email-provider-help"'}></label>${administrator?'':'<p id="email-provider-help" class="muted caption-text">Puedes usar Gmail, Hotmail, Outlook u otro correo. La contraseña es la que creaste para Valhalla.</p>'}<label>Contraseña<input name="password" type="password" autocomplete="${register?'new-password':'current-password'}" required minlength="${register?10:1}" maxlength="200" placeholder="${register?'Mínimo 10 caracteres':'Tu contraseña'}"></label>
     ${register?'<label>Confirmar contraseña<input name="password_confirmation" type="password" autocomplete="new-password" required minlength="10" maxlength="200" placeholder="Repite tu contraseña"></label>':''}
@@ -120,6 +130,7 @@ function auth(register = false, administrator = false) {
   bindGallery();
   bindWelcomeCarousel();
   const googleButton=document.querySelector('#google-access');if(googleButton)googleButton.onclick=()=>continueWithGoogle();
+  const microsoftButton=document.querySelector('#microsoft-access');if(microsoftButton)microsoftButton.onclick=()=>continueWithMicrosoft();
   const forgot=document.querySelector('#forgot-password');if(forgot)forgot.onclick=()=>passwordRecovery(false,administrator);
   document.querySelector('#auth-switch').onclick = () => administrator ? auth() : auth(!register);
   document.querySelector('#professional-access').onclick = () => auth(true);
@@ -274,7 +285,7 @@ function packages() {
 }
 function profile() {
   return head('Mi perfil profesional',state.user.profile_required?'Antes de continuar, completa tu profesión o especialidad. Tus horas ya cargadas se conservan en tu cuenta.':'Tu cuenta conserva el mismo correo, saldo y reservas al cambiar de perfil.')+
-    `<section class="card"><form id="profile-form" class="form-stack"><label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100" value="${escapeHTML(state.user.name)}"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" value="${escapeHTML(state.user.specialty)}" placeholder="Ej. Psicología"></label><label>Correo de la cuenta<input type="email" value="${escapeHTML(state.user.email)}" disabled></label><p class="data-note">Cambiar tu nombre requiere una nueva revisión del carnet. Tu correo y permisos se conservan.</p>${googleEnabled&&state.user.role==='professional'?`<div class="notice"><strong>Acceso con Google</strong><p>${state.user.google_linked?'Tu cuenta está vinculada. Puedes iniciar sesión con Google.':'Vincula la cuenta de Google que utiliza este mismo correo. Conservarás tus reservas y saldo.'}</p>${state.user.google_linked?'':'<button class="btn secondary small" type="button" id="link-google">Vincular Google</button>'}</div>`:''}<p id="profile-error" class="error" role="alert"></p><button class="btn" type="submit">Guardar perfil</button></form></section>`;
+    `<section class="card"><form id="profile-form" class="form-stack"><label>Nombre completo<input name="name" autocomplete="name" required minlength="2" maxlength="100" value="${escapeHTML(state.user.name)}"></label><label>Profesión o especialidad<input name="specialty" required minlength="2" maxlength="100" value="${escapeHTML(state.user.specialty)}" placeholder="Ej. Psicología"></label><label>Correo de la cuenta<input type="email" value="${escapeHTML(state.user.email)}" disabled></label><p class="data-note">Cambiar tu nombre requiere una nueva revisión del carnet. Tu correo y permisos se conservan.</p>${googleEnabled&&state.user.role==='professional'?`<div class="notice"><strong>Acceso con Google</strong><p>${state.user.google_linked?'Tu cuenta está vinculada. Puedes iniciar sesión con Google.':'Vincula la cuenta de Google que utiliza este mismo correo. Conservarás tus reservas y saldo.'}</p>${state.user.google_linked?'':'<button class="btn secondary small" type="button" id="link-google">Vincular Google</button>'}</div>`:''}${microsoftEnabled&&state.user.role==='professional'?`<div class="notice"><strong>Acceso con Microsoft</strong><p>${state.user.microsoft_linked?'Tu cuenta está vinculada. Puedes iniciar sesión con Microsoft.':'Vincula tu cuenta personal Hotmail u Outlook con este mismo correo. Conservarás tus reservas y saldo.'}</p>${state.user.microsoft_linked?'':'<button class="btn secondary small" type="button" id="link-microsoft">Vincular Microsoft</button>'}</div>`:''}<p id="profile-error" class="error" role="alert"></p><button class="btn" type="submit">Guardar perfil</button></form></section>`;
 }
 function documentLinks(document) {
   const files=document.files||[{filename:document.filename,download_url:'/api/documents/'+document.id}];
@@ -649,6 +660,7 @@ function bind() {
   const refreshAgenda=document.querySelector('#refresh-agenda');if(refreshAgenda)refreshAgenda.onclick=()=>render().catch(e=>toast(e.message));
   bindGallery();
   const linkGoogle=document.querySelector('#link-google');if(linkGoogle)linkGoogle.onclick=()=>continueWithGoogle(true);
+  const microsoftLink=document.querySelector('#link-microsoft');if(microsoftLink)microsoftLink.onclick=()=>continueWithMicrosoft(true);
   const profileForm=document.querySelector('#profile-form');if(profileForm)profileForm.onsubmit=async event=>{
     event.preventDefault();const button=profileForm.querySelector('button[type=submit]');button.disabled=true;
     const nextDocuments=state.user.role==='professional'&&(state.user.profile_required||completingGoogleProfile||(state.user.google_linked&&!state.user.specialty?.trim()));
@@ -739,12 +751,15 @@ function emailConfirmation() {
 async function startApp() {
   if(passwordResetToken){passwordRecovery(true);return;}
   if(emailConfirmationToken){emailConfirmation();return;}
-  try{googleEnabled=Boolean((await api('google/config')).enabled);}catch{googleEnabled=false;}
+  const providers=await Promise.all([api('google/config').catch(()=>({enabled:false})),api('microsoft/config').catch(()=>({enabled:false}))]);
+  googleEnabled=Boolean(providers[0].enabled);microsoftEnabled=Boolean(providers[1].enabled);
   try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
-  try{const data=await api('me');state=data;selectedDate=data.earliest_booking_date||data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Comprar horas.');}if(googleResult==='profile_required')view='profile';if(data.user.role==='admin'){adminData=await api('admin');view='admin';selectedDate=data.today;}applyBookingsDeepLink();await render();}
-  catch{auth(false,googleResult==='admin_password');}
+  try{const data=await api('me');state=data;selectedDate=data.earliest_booking_date||data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Comprar horas.');}if(googleResult==='profile_required'||microsoftResult==='profile_required')view='profile';if(data.user.role==='admin'){adminData=await api('admin');view='admin';selectedDate=data.today;}applyBookingsDeepLink();await render();}
+  catch{auth(false,googleResult==='admin_password'||microsoftResult==='admin_password');}
   const googleMessages={success:'Ingresaste con Google.',profile_required:'Completa tu profesión o especialidad en Mi perfil. Para reservar también necesitas tu identidad validada y saldo.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Google. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Google. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Google está disponible para cuentas profesionales.',error:'No se pudo completar el acceso con Google. Vuelve a intentarlo desde el inicio.'};
   if(googleResult&&googleMessages[googleResult])toast(googleMessages[googleResult]);
+  const microsoftMessages={success:'Ingresaste con Microsoft.',profile_required:'Completa tu profesión o especialidad para continuar.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Microsoft. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Microsoft. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Microsoft está disponible para cuentas profesionales.',unsupported_email:'Usa una cuenta personal Hotmail, Outlook, Live o MSN. Para otros correos puedes registrarte con una contraseña de Valhalla.',error:'No se pudo completar el acceso con Microsoft. Vuelve a intentarlo desde el inicio.'};
+  if(microsoftResult&&microsoftMessages[microsoftResult])toast(microsoftMessages[microsoftResult]);
   await discardReturnedCheckout();
 }
 // Keep contact available across login, registration and account views.

@@ -67,15 +67,21 @@ def validate_identity(identity):
     return {'sub':subject, 'email':email, 'email_verified':True, 'name': name if len(name)>=2 else 'Profesional'}
 
 
-def begin(store, session_token=''):
+def provider_tables(provider):
+    if provider not in ('google','microsoft'):raise GoogleError()
+    return provider+'_accounts',provider+'_auth_states'
+
+
+def begin(store, session_token='', provider='google'):
+    _,state_table=provider_tables(provider)
     state, browser, verifier = (secrets.token_urlsafe(32) for _ in range(3))
     with store.connection(True) as c:
-        c.execute('DELETE FROM google_auth_states WHERE expires<=?', (time.time(),))
+        c.execute('DELETE FROM '+state_table+' WHERE expires<=?', (time.time(),))
         if session_token:
             user = c.execute("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?", (session_token,time.time())).fetchone()
             if not user or not user['active'] or user['role']!='professional':
                 raise GoogleError()
-        c.execute('INSERT INTO google_auth_states VALUES(?,?,?,?,?)', (digest(state), digest(browser), verifier, time.time()+600, session_token))
+        c.execute('INSERT INTO '+state_table+' VALUES(?,?,?,?,?)', (digest(state), digest(browser), verifier, time.time()+600, session_token))
     return state, browser, verifier
 
 
@@ -83,18 +89,20 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def consume(store, state, browser):
+def consume(store, state, browser, provider='google'):
+    _,state_table=provider_tables(provider)
     if not state or not browser or len(state)>200 or len(browser)>200:
         raise GoogleError()
     with store.connection(True) as c:
-        row = c.execute('SELECT * FROM google_auth_states WHERE state_hash=?', (digest(state),)).fetchone()
+        row = c.execute('SELECT * FROM '+state_table+' WHERE state_hash=?', (digest(state),)).fetchone()
         if not row or row['expires']<=time.time() or not hmac.compare_digest(row['browser_hash'],digest(browser)):
             raise GoogleError()
-        c.execute('DELETE FROM google_auth_states WHERE state_hash=?',(digest(state),))
+        c.execute('DELETE FROM '+state_table+' WHERE state_hash=?',(digest(state),))
         return dict(row)
 
 
-def authenticate(store, identity, link_session=''):
+def authenticate(store, identity, link_session='', provider='google'):
+    account_table,_=provider_tables(provider)
     from app import ADMIN_EMAIL, LEGACY_DEMO_EMAILS, password_hash
     person = validate_identity(identity)
     email, subject = person['email'], person['sub']
@@ -102,7 +110,7 @@ def authenticate(store, identity, link_session=''):
         raise GoogleError('admin_password')
     with store.connection(True) as c:
         if store.email_blocked(c,email):raise GoogleError()
-        linked = c.execute('SELECT * FROM google_accounts WHERE subject=?',(subject,)).fetchone()
+        linked = c.execute('SELECT * FROM '+account_table+' WHERE subject=?',(subject,)).fetchone()
         existing = c.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
         if existing and existing['deleted_at']:raise GoogleError()
         if link_session:
@@ -111,7 +119,7 @@ def authenticate(store, identity, link_session=''):
                 raise GoogleError()
             if linked and linked['user_id']!=existing['id']:
                 raise GoogleError()
-            other = c.execute('SELECT subject FROM google_accounts WHERE user_id=?',(existing['id'],)).fetchone()
+            other = c.execute('SELECT subject FROM '+account_table+' WHERE user_id=?',(existing['id'],)).fetchone()
             if other and other['subject']!=subject:
                 raise GoogleError()
         elif linked:
@@ -132,9 +140,9 @@ def authenticate(store, identity, link_session=''):
         if not existing['active'] or existing['role']!='professional':
             raise GoogleError()
         uid = existing['id']
-        c.execute('INSERT OR IGNORE INTO google_accounts VALUES(?,?,?)',(subject,uid,email))
+        c.execute('INSERT OR IGNORE INTO '+account_table+' VALUES(?,?,?)',(subject,uid,email))
         c.execute('UPDATE users SET email_verified=1 WHERE id=?',(uid,))
-        store.log(c,uid,'google_linked' if link_session else 'google_login',uid)
+        store.log(c,uid,provider+'_linked' if link_session else provider+'_login',uid)
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         c.execute('DELETE FROM sessions WHERE expires<=?',(time.time(),))
         c.execute('INSERT INTO sessions VALUES(?,?,?,?)',(token,uid,csrf,time.time()+28800))

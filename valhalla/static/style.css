@@ -104,3 +104,5 @@ a.brand{text-decoration:none}
 .skedu-import{border-top:1px solid var(--line);padding-top:22px}.skedu-import summary{cursor:pointer;font-weight:650;color:var(--green)}.skedu-import>p{margin:16px 0}.skedu-import form{max-width:760px}.skedu-import input[type=file]{max-width:100%}
 
 .daily-contacts-table td small{display:block;margin-top:4px}.daily-contacts-table td>div+div{margin-top:10px}
+
+.btn.microsoft-signin{background:#fff;color:#3c4043;border:1px solid #dadce0;gap:12px;margin-top:10px}.microsoft-signin svg{display:block;flex-shrink:0}.social-signin-note{margin:16px 0;font-size:.85rem}

@@ -23,6 +23,7 @@ from mailer import EmailDelivery, EmailDeliveryError
 from payments import PaymentService, WebpayGateway, PaymentError
 from notifications import NotificationDispatcher, booking_links
 import google_auth
+import microsoft_auth
 from rules import purchase_rules, validate_acceptance, RULES_VERSION, RULES_TEXT
 
 ROOT = Path(__file__).resolve().parent
@@ -212,6 +213,11 @@ class Store:
             CREATE TABLE IF NOT EXISTS webpay_settings (
               id INTEGER PRIMARY KEY CHECK(id=1), commerce_code TEXT NOT NULL DEFAULT '',
               sandbox_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS microsoft_accounts (
+              subject TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id), email TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS microsoft_auth_states (
+              state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, verifier TEXT NOT NULL,
+              expires REAL NOT NULL, link_session TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS google_accounts (
               subject TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id), email TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS google_auth_states (
@@ -522,6 +528,7 @@ class Store:
                         c.execute('DELETE FROM document_attachments WHERE document_id IN (SELECT id FROM documents WHERE user_id=?)',(uid,))
                         c.execute('DELETE FROM documents WHERE user_id=?',(uid,))
                     c.execute('DELETE FROM google_accounts WHERE user_id=?',(uid,))
+                    c.execute('DELETE FROM microsoft_accounts WHERE user_id=?',(uid,))
                     c.execute("UPDATE notification_outbox SET status='superseded' WHERE user_id=? AND status IN ('pending','retry','processing')",(uid,))
                 for table in ('sessions','email_verifications','password_resets'):
                     c.execute('DELETE FROM '+table+' WHERE user_id=?',(uid,))
@@ -735,6 +742,7 @@ class Store:
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
             profile['profile_required'] = user['role']=='professional' and not 2<=len(user['specialty'].strip())<=100
+            profile['microsoft_linked'] = bool(c.execute('SELECT 1 FROM microsoft_accounts WHERE user_id=?',(user['id'],)).fetchone())
             profile['google_linked'] = bool(c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(user['id'],)).fetchone())
             profile['verified'] = int(self.professional_verified(c, user['id']))
             profile['identity_approved'] = self.identity_verified(c,user['id'])
@@ -1355,10 +1363,61 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', '0')
         self.end_headers()
 
+    def start_microsoft(self, link_session=''):
+        gateway = getattr(self.server, 'microsoft', None)
+        if not gateway or not gateway.configured:
+            raise Problem('El acceso con Microsoft todavía no está habilitado.', 503)
+        if 'https://' + self.headers.get('Host', '') != gateway.origin:
+            raise Problem('Para continuar con Microsoft, abre ' + gateway.origin + '.', 400)
+        try:
+            state, browser, verifier = microsoft_auth.begin(self.server.store, link_session)
+        except microsoft_auth.MicrosoftError:
+            raise Problem('No se pudo vincular esta cuenta con Microsoft.', 403)
+        self.respond({'authorization_url':gateway.authorization_url(state, verifier)}, cookie=f'microsoft_flow={browser}; HttpOnly; SameSite=Lax; Secure; Path=/api/microsoft; Max-Age=600')
+
+    def microsoft_callback(self, query):
+        from urllib.parse import parse_qs
+        token, result = None, 'error'
+        try:
+            gateway = getattr(self.server, 'microsoft', None)
+            if not gateway or not gateway.configured or len(query)>8192:
+                raise microsoft_auth.MicrosoftError()
+            fields = parse_qs(query, max_num_fields=10)
+            if any(len(v)!=1 for v in fields.values()):
+                raise microsoft_auth.MicrosoftError()
+            cookies = SimpleCookie(self.headers.get('Cookie',''))
+            browser = cookies['microsoft_flow'].value if 'microsoft_flow' in cookies else ''
+            flow = microsoft_auth.consume(self.server.store, fields.get('state',[''])[0], browser)
+            if 'error' in fields:
+                raise microsoft_auth.MicrosoftError('cancelled')
+            code = fields.get('code',[''])[0]
+            if not code or len(code)>4096:
+                raise microsoft_auth.MicrosoftError()
+            identity = gateway.exchange(code, flow['verifier'])
+            token, result = microsoft_auth.authenticate(self.server.store, identity, flow['link_session'])
+        except microsoft_auth.MicrosoftError as error:
+            result = error.result
+        except (ValueError, KeyError, CookieError, sqlite3.Error):
+            result = 'error'
+        self.send_response(303)
+        self.headers_common()
+        self.send_header('Location', '/?microsoft_result=' + result)
+        self.send_header('Set-Cookie', 'microsoft_flow=; HttpOnly; SameSite=Lax; Secure; Path=/api/microsoft; Max-Age=0')
+        if token:
+            self.send_header('Set-Cookie', f'session={token}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=28800')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         route = urlparse(self.path)
         try:
+            if route.path == '/api/microsoft/config':
+                self.respond({'enabled': bool(getattr(getattr(self.server, 'microsoft', None), 'configured', False))})
+                return
+            if route.path == '/api/microsoft/callback':
+                self.microsoft_callback(route.query)
+                return
             if route.path == '/api/google/config':
                 self.respond({'enabled': bool(getattr(getattr(self.server, 'google', None), 'configured', False))})
                 return
@@ -1473,6 +1532,9 @@ class Handler(BaseHTTPRequestHandler):
             if origin and origin not in ('http://' + self.headers.get('Host', ''), 'https://' + self.headers.get('Host', '')):
                 raise Problem('Origen no permitido.', 403)
             body = self.body()
+            if self.path == '/api/microsoft/start':
+                self.start_microsoft()
+                return
             if self.path == '/api/google/start':
                 self.start_google()
                 return
@@ -1521,6 +1583,9 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token', ''), user['csrf']):
                 raise Problem('Recarga la página antes de continuar.', 403)
             store = self.server.store
+            if self.path == '/api/microsoft/link':
+                self.start_microsoft(self.cookie())
+                return
             if self.path == '/api/google/link':
                 self.start_google(self.cookie())
                 return
@@ -1667,6 +1732,7 @@ def main():
     server.secure_cookie = args.secure_cookie
     server.email_delivery = EmailDelivery()
     server.google = google_auth.GoogleOAuth()
+    server.microsoft = microsoft_auth.MicrosoftOAuth()
     try:
         server.webpay = PaymentService(store, WebpayGateway())
         server.webpay.restore_configuration()
