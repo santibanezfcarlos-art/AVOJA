@@ -318,3 +318,12 @@ Las acciones requieren administrador propietario, sesión y CSRF, confirmación 
 ### Acceso con Microsoft
 
 Inicio y registro con cuentas personales Hotmail/Outlook/Live/MSN mediante Microsoft Entra. Consulta [MICROSOFT.md](MICROSOFT.md) para registrar la aplicación Web y configurar las credenciales en Render. El botón permanece oculto hasta completar la configuración. No modifica el acceso administrador ni las integraciones de Google y Webpay.
+
+
+### Gestión de oficina delegada
+
+La cuenta profesional designada de Ángela Contreras (`angelacs7@hotmail.com`) recibe inicialmente acceso de gestión por solicitud del titular, sin cambiar su rol ni su saldo. El permiso se provisiona una sola vez al configurar el acceso del propietario y solo se hace efectivo con la cuenta activa y el correo confirmado. Si todavía no tiene cuenta, se aplicará cuando se registre y confirme ese mismo correo. La revocación se conserva al reiniciar o desplegar; eliminar la cuenta también revoca el permiso.
+
+En su sesión puede alternar **Gestión de oficina** y **Perfil profesional**. Gestión permite consultar ocupantes del calendario, pagos, fichas con saldos y reservas, y cargar sesiones propias o de otros profesionales, con responsable e historial. Conserva las reglas profesionales para sus propias reservas. No concede acceso a documentos privados de otras personas, credenciales de correo o Transbank, descuentos, migraciones, correos del día, aprobación de documentos, eliminación/bloqueo de usuarios, ajustes de planes ni permisos.
+
+Solo el propietario puede usar **Administración → Usuarios → Dar acceso de gestión / Retirar gestión**. Los endpoints de consulta y carga validan el permiso en la base de datos en cada petición; el permiso no se acepta desde datos del navegador ni desde la edición del perfil.

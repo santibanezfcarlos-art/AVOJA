@@ -44,7 +44,7 @@ def main():
         store=Store(Path(directory)/'test.sqlite3');store.configure_access(private)
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.store=store;server.email_delivery=delivery
         script=sys.argv[1] if len(sys.argv)>1 else 'browser.cjs'
-        if script not in ('browser.cjs','migration_payments_browser.cjs','google_browser.cjs','transbank_browser.cjs','batch_browser.cjs','manual_credits_browser.cjs','confirmation_browser.cjs','live_updates_browser.cjs','balance_archive_browser.cjs','discounts_browser.cjs','personal_approval_browser.cjs','booking_rules_browser.cjs','production_browser.cjs','owner_privileges_browser.cjs','user_access_browser.cjs','skedu_contacts_browser.cjs','microsoft_browser.cjs'):
+        if script not in ('browser.cjs','migration_payments_browser.cjs','google_browser.cjs','transbank_browser.cjs','batch_browser.cjs','manual_credits_browser.cjs','confirmation_browser.cjs','live_updates_browser.cjs','balance_archive_browser.cjs','discounts_browser.cjs','personal_approval_browser.cjs','booking_rules_browser.cjs','production_browser.cjs','owner_privileges_browser.cjs','user_access_browser.cjs','skedu_contacts_browser.cjs','microsoft_browser.cjs','management_browser.cjs'):
             raise ValueError('Unknown browser suite')
         if script=='transbank_browser.cjs':
             from payments import PaymentService, WebpayGateway
@@ -59,6 +59,18 @@ def main():
             from test_migration_payments import FakeGateway
             from payments import PaymentService
             server.webpay=PaymentService(store,FakeGateway())
+        if script=='management_browser.cjs':
+            from app import DEFAULT_MANAGEMENT_EMAIL,ADMIN_EMAIL,CHILE,stamp,now
+            from datetime import timedelta
+            manager_password='SyntheticManagerBrowser2026!'
+            manager=store.register({'name':'Angela Contreras','email':DEFAULT_MANAGEMENT_EMAIL,'specialty':'Psicología','password':manager_password})
+            token,_=store.issue_email_token(manager);store.confirm_email(token)
+            other=store.register({'name':'Profesional Oficina','email':'office-test@example.cl','specialty':'Psicología','password':'SyntheticOfficeBrowser2026!'})
+            token,_=store.issue_email_token(other);store.confirm_email(token)
+            with store.connection() as c:owner=c.execute('SELECT id FROM users WHERE email=?',(ADMIN_EMAIL,)).fetchone()[0]
+            store.import_legacy(owner,{'name':'Profesional Oficina','email':'office-test@example.cl','specialty':'Psicología','reference':'management-office-test','sessions':5,'identity_confirmed':True})
+            booking_day=(now().astimezone(CHILE)+timedelta(days=2)).replace(hour=10,minute=0,second=0,microsecond=0)
+            store.reserve(other,{'box':1,'start':stamp(booking_day)})
         mailbox=ThreadingHTTPServer(('127.0.0.1',0),Mailbox)
         from notifications import NotificationDispatcher
         stop_notifications=threading.Event();notifier=NotificationDispatcher(store,delivery)
@@ -72,6 +84,11 @@ def main():
         env=os.environ.copy();env['VALHALLA_TEST_ADMIN_PASSWORD']=private
         env['VALHALLA_TEST_URL']=f'http://127.0.0.1:{server.server_port}'
         env['VALHALLA_TEST_MAILBOX_URL']=f'http://127.0.0.1:{mailbox.server_port}'
+        if script=='management_browser.cjs':
+            env['VALHALLA_TEST_MANAGER_PASSWORD']=manager_password
+            env['VALHALLA_TEST_MANAGER_ID']=str(manager)
+            env['VALHALLA_TEST_OTHER_ID']=str(other)
+            env['VALHALLA_TEST_BOOKING_DAY']=booking_day.date().isoformat()
         if script=='skedu_contacts_browser.cjs':
             sys.path.insert(0,str(root/'tests'))
             from test_skedu_contacts import workbook_bytes

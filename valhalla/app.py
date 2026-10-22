@@ -36,6 +36,7 @@ MIN_BOOKING_NOTICE = timedelta(hours=24)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_BODY = 14_100_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
+DEFAULT_MANAGEMENT_EMAIL = "angelacs7@hotmail.com"
 LEGACY_DEMO_EMAILS = ("admin@valhalla.demo", "profesional@valhalla.demo")
 
 
@@ -151,6 +152,9 @@ class Store:
                 box INTEGER NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL, original_status TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1, actor_id INTEGER NOT NULL REFERENCES users(id), updated_at TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS skedu_daily_contacts_day ON skedu_daily_contacts(booking_date,active);
+            CREATE TABLE IF NOT EXISTS management_grants (
+                email TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1,
+                actor_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS blocked_emails (
                 email TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1,
                 actor_id INTEGER NOT NULL REFERENCES users(id), note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
@@ -464,9 +468,34 @@ class Store:
                               ('Administración Valhalla', ADMIN_EMAIL, password_hash(admin_password)))
 
             c.execute("UPDATE users SET email_verified=1 WHERE email=? AND role='admin'", (ADMIN_EMAIL,))
+            owner=c.execute("SELECT id FROM users WHERE email=? AND role='admin' AND active=1",(ADMIN_EMAIL,)).fetchone()
+            if owner:
+                # Initial grant requested by the owner; an explicit revocation survives every restart.
+                c.execute('INSERT OR IGNORE INTO management_grants(email,actor_id,created_at) VALUES(?,?,?)',(DEFAULT_MANAGEMENT_EMAIL,owner['id'],stamp(now())))
             # Cached flags never replace approval of both required documents.
             for row in c.execute('SELECT id FROM users').fetchall():
                 c.execute('UPDATE users SET verified=? WHERE id=?',(int(self.professional_verified(c,row['id'])),row['id']))
+
+    def management_access(self,c,uid):
+        user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
+        if not user or not user['active'] or user['deleted_at'] or self.email_blocked(c,user['email']):return False
+        if user['role']=='admin' and user['email']==ADMIN_EMAIL:return True
+        return bool(user['role']=='professional' and user['email_verified'] and c.execute('SELECT 1 FROM management_grants WHERE email=? AND active=1',(user['email'],)).fetchone())
+
+    def require_management(self,c,actor):
+        if not self.management_access(c,actor):raise Problem('Acceso reservado a administración y gestión autorizada.',403)
+
+    def set_management_access(self,actor,body):
+        uid,enabled=body.get('user_id'),body.get('enabled')
+        if type(uid) is not int or type(enabled) is not bool or body.get('confirmed') is not True:
+            raise Problem('Confirma el cambio de acceso de gestión.')
+        with self.connection(True) as c:
+            self.require_owner(c,actor)
+            person=c.execute("SELECT * FROM users WHERE id=? AND role='professional' AND deleted_at=''",(uid,)).fetchone()
+            if not person:raise Problem('Selecciona una cuenta profesional existente.',404)
+            c.execute('INSERT INTO management_grants(email,active,actor_id,created_at) VALUES(?,?,?,?) ON CONFLICT(email) DO UPDATE SET active=excluded.active,actor_id=excluded.actor_id,created_at=excluded.created_at',(person['email'],int(enabled),actor,stamp(now())))
+            self.log(c,actor,'management_access_granted' if enabled else 'management_access_revoked',uid)
+        return {'ok':True}
 
     def personally_approved(self,c,uid):
         return bool(c.execute("SELECT 1 FROM personal_approvals p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.revoked_at='' AND p.approved_name=u.name",(uid,)).fetchone())
@@ -529,6 +558,7 @@ class Store:
                         c.execute('DELETE FROM documents WHERE user_id=?',(uid,))
                     c.execute('DELETE FROM google_accounts WHERE user_id=?',(uid,))
                     c.execute('DELETE FROM microsoft_accounts WHERE user_id=?',(uid,))
+                    c.execute('UPDATE management_grants SET active=0,actor_id=?,created_at=? WHERE email=?',(actor,stamp(now()),email))
                     c.execute("UPDATE notification_outbox SET status='superseded' WHERE user_id=? AND status IN ('pending','retry','processing')",(uid,))
                 for table in ('sessions','email_verifications','password_resets'):
                     c.execute('DELETE FROM '+table+' WHERE user_id=?',(uid,))
@@ -555,7 +585,7 @@ class Store:
             encoded = row['password'] if row else password_hash('invalid', '0' * 32)
             if not password_matches(password, encoded) or not row or not row['active'] or row['deleted_at'] or self.email_blocked(c,row['email']) or row['email'] in LEGACY_DEMO_EMAILS or (row['role'] == 'admin' and row['email'] != ADMIN_EMAIL):
                 raise Problem('Correo o contraseña incorrectos, o cuenta desactivada.', 401)
-            if body.get('portal') == 'admin' and (row['role'] != 'admin' or row['email'] != ADMIN_EMAIL):
+            if body.get('portal') == 'admin' and not self.management_access(c,row['id']):
                 raise Problem('Este acceso está reservado para la cuenta administradora autorizada.', 403)
             token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
             c.execute('DELETE FROM sessions WHERE expires <= ?', (time.time(),))
@@ -741,6 +771,7 @@ class Store:
     def state(self, user):
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
+            profile['management_access'] = self.management_access(c,user['id'])
             profile['profile_required'] = user['role']=='professional' and not 2<=len(user['specialty'].strip())<=100
             profile['microsoft_linked'] = bool(c.execute('SELECT 1 FROM microsoft_accounts WHERE user_id=?',(user['id'],)).fetchone())
             profile['google_linked'] = bool(c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(user['id'],)).fetchone())
@@ -900,9 +931,7 @@ class Store:
         fingerprint=hashlib.sha256(json.dumps([uid,hours,amount,method,reference,note,received_on]).encode()).hexdigest()
         try:
             with self.connection(True) as c:
-                administrator=c.execute('SELECT * FROM users WHERE id=?',(actor,)).fetchone()
-                if not administrator or administrator['role']!='admin' or administrator['email']!=ADMIN_EMAIL or not administrator['active']:
-                    raise Problem('Acceso exclusivo de administración.',403)
+                self.require_management(c,actor)
                 previous=c.execute('SELECT package_id,fingerprint FROM manual_credits WHERE actor_id=? AND request_key=?',(actor,key)).fetchone()
                 if previous:
                     if previous['fingerprint']!=fingerprint:
@@ -1127,17 +1156,23 @@ class Store:
             person=c.execute('SELECT name,email FROM users WHERE id=?',(uid,)).fetchone()
             self.queue_notification(c,uid,'admin_document',cursor.lastrowid,ADMIN_EMAIL,dict(person)|{'document_id':cursor.lastrowid,'document_kind':kind,'file_count':len(prepared)})
 
-    def admin_state(self):
+    def admin_state(self,actor=None):
         with self.connection() as c:
-            return {'blocked_emails':[dict(r) for r in c.execute('SELECT b.*,u.name AS operator_name FROM blocked_emails b JOIN users u ON u.id=b.actor_id WHERE b.active=1 ORDER BY b.created_at DESC')], 'user_access_events':[dict(r) for r in c.execute('SELECT e.*,u.name AS operator_name FROM user_access_events e JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'personal_approvals':[dict(r) for r in c.execute('SELECT p.*,u.name AS operator_name FROM personal_approvals p JOIN users u ON u.id=p.actor_id ORDER BY p.id DESC')], 'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
+            if actor is not None:self.require_management(c,actor)
+            data = {'blocked_emails':[dict(r) for r in c.execute('SELECT b.*,u.name AS operator_name FROM blocked_emails b JOIN users u ON u.id=b.actor_id WHERE b.active=1 ORDER BY b.created_at DESC')], 'user_access_events':[dict(r) for r in c.execute('SELECT e.*,u.name AS operator_name FROM user_access_events e JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'personal_approvals':[dict(r) for r in c.execute('SELECT p.*,u.name AS operator_name FROM personal_approvals p JOIN users u ON u.id=p.actor_id ORDER BY p.id DESC')], 'discount_codes':[dict(row) for row in c.execute('SELECT * FROM discount_codes ORDER BY created_at DESC,code')], 'package_archive_events':[dict(row) for row in c.execute('SELECT e.*,p.user_id,u.name AS operator_name FROM package_archive_events e JOIN packages p ON p.id=e.package_id JOIN users u ON u.id=e.actor_id ORDER BY e.id DESC')], 'session_adjustments':[dict(row) for row in c.execute('SELECT j.*,u.name,actor.name AS operator_name FROM session_adjustments j JOIN users u ON u.id=j.user_id JOIN users actor ON actor.id=j.actor_id ORDER BY j.id DESC')], 'manual_credits':[dict(row) for row in c.execute('SELECT m.id,m.package_id,m.user_id,m.method,m.amount,m.reference,m.note,m.created_at,m.received_on,p.hours,p.remaining,u.name,u.email,actor.name AS operator_name FROM manual_credits m JOIN packages p ON p.id=m.package_id JOIN users u ON u.id=m.user_id JOIN users actor ON actor.id=m.actor_id ORDER BY m.id DESC')], 'notification_queue': [dict(r) for r in c.execute('SELECT n.id,n.kind,n.status,n.attempts,n.created_at,u.name FROM notification_outbox n JOIN users u ON u.id=n.user_id ORDER BY n.id DESC LIMIT 30')],
                     'mail_events': [dict(r) for r in c.execute('SELECT e.id,e.kind,e.provider,e.status,e.category,e.http_status,e.created_at,u.name FROM mail_events e LEFT JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 30')],
                     'payments': [dict(r) for r in c.execute('SELECT p.id,p.package_id,p.user_id,p.buy_order,p.amount,p.hours,p.environment,p.state,p.created_at,p.approved_at,p.archived,u.name FROM payment_attempts p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC')],
                     'migrations': [dict(r) for r in c.execute('SELECT l.*,u.name AS operator_name FROM legacy_imports l JOIN users u ON u.id=l.actor_id ORDER BY l.id DESC')],
-                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id']),'owner_booking_privileges':self.can_book_parallel(c,r['id']),'blocked_email':self.email_blocked(c,r['email'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified,deleted_at FROM users ORDER BY id')],
+                    'users': [dict(r) | {'verified':int(self.professional_verified(c,r['id'])),'personally_approved':self.personally_approved(c,r['id']),'owner_booking_privileges':self.can_book_parallel(c,r['id']),'management_granted':bool(c.execute('SELECT 1 FROM management_grants WHERE email=? AND active=1',(r['email'],)).fetchone()),'blocked_email':self.email_blocked(c,r['email'])} for r in c.execute('SELECT id,name,email,specialty,role,verified,active,email_verified,deleted_at FROM users ORDER BY id')],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT d.id,d.user_id,d.filename,d.status,d.note,d.created_at,d.kind,u.name FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.id DESC')],
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,u.name,a.version AS rules_version,a.accepted_at AS rules_accepted_at,m.method AS manual_method FROM packages p JOIN users u ON u.id=p.user_id LEFT JOIN purchase_acceptances a ON a.package_id=p.id LEFT JOIN manual_credits m ON m.package_id=p.id ORDER BY p.id DESC')],
                     'bookings': [booking_details(r) for r in c.execute('SELECT b.*,u.name FROM bookings b JOIN users u ON u.id=b.user_id ORDER BY b.start')],
                     'audit': [dict(r) for r in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 30')]}
+
+            if actor is not None and not self.can_book_parallel(c,actor):
+                allowed={'users','packages','bookings','payments','manual_credits','session_adjustments','package_archive_events'}
+                data={key:(value if key in allowed else []) for key,value in data.items()}
+            return data
 
     def admin_action(self, actor, body):
         action, target = body.get('action'), body.get('id')
@@ -1299,9 +1334,10 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             raise Problem('Solicitud JSON inválida.')
 
-    def admin(self, user):
-        if user['role'] != 'admin' or user['email'] != ADMIN_EMAIL:
-            raise Problem('Acceso exclusivo de administración.', 403)
+    def admin(self, user, management=False):
+        with self.server.store.connection() as c:
+            if management:self.server.store.require_management(c,user['id'])
+            else:self.server.store.require_owner(c,user['id'])
 
     def webpay_return(self, fields):
         service = getattr(self.server, 'webpay', None)
@@ -1471,15 +1507,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.admin(user)
                 self.respond(self.server.store.daily_contacts(parse_qs(route.query).get('date',[''])[0]))
             elif route.path == '/api/admin/availability':
-                self.admin(user)
+                self.admin(user,management=True)
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True,uid=user['id']))
             elif route.path == '/api/availability':
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0],uid=user['id']))
             elif route.path == '/api/admin':
-                self.admin(user)
-                data=self.server.store.admin_state()
-                data['email_config']=self.email_diagnostics()
-                data['webpay_config']=self.server.webpay.configuration() if getattr(self.server,'webpay',None) else {'mode':'disabled','commerce_code':'','sandbox_enabled':False,'production_available':False}
+                self.admin(user,management=True)
+                data=self.server.store.admin_state(user['id'])
+                if user['role']=='admin':
+                    data['email_config']=self.email_diagnostics()
+                    data['webpay_config']=self.server.webpay.configuration() if getattr(self.server,'webpay',None) else {'mode':'disabled','commerce_code':'','sandbox_enabled':False,'production_available':False}
                 self.respond(data)
             elif route.path.startswith('/api/documents/'):
                 match = re.fullmatch(r'/api/documents/(\d+)(?:/files/(\d+))?', route.path)
@@ -1627,6 +1664,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise PaymentError('Pago inválido.',400)
                 self.respond(service.reconcile(body['id'],uid=user['id']))
                 return
+            elif self.path == '/api/admin/management-access':
+                self.admin(user)
+                self.respond(store.set_management_access(user['id'],body));return
             elif self.path == '/api/admin/users/access':
                 self.admin(user)
                 self.respond(store.manage_user_access(user['id'],body));return
@@ -1664,7 +1704,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(store.remove_skedu_contacts(user['id'],body))
                 return
             elif self.path == '/api/admin/manual-credits':
-                self.admin(user)
+                self.admin(user,management=True)
                 self.respond(store.manual_credit(user['id'],body))
                 return
             elif self.path == '/api/packages/accept-rules':

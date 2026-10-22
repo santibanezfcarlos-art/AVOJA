@@ -1,0 +1,23 @@
+const {chromium}=require('playwright');const assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});try{
+const page=await browser.newPage({viewport:{width:390,height:844}}),owner=await browser.newPage(),base=process.env.VALHALLA_TEST_URL;const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const manager=Number(process.env.VALHALLA_TEST_MANAGER_ID),other=Number(process.env.VALHALLA_TEST_OTHER_ID);
+await page.goto(base);await page.getByLabel('Correo electrónico',{exact:true}).fill('angelacs7@hotmail.com');await page.getByLabel('Contraseña',{exact:true}).fill(process.env.VALHALLA_TEST_MANAGER_PASSWORD);await page.getByRole('button',{name:/Iniciar sesión/}).click();
+await page.getByRole('button',{name:'Gestión de oficina',exact:true}).click();await page.getByRole('heading',{name:'Gestión de oficina',exact:true}).waitFor();
+assert.deepEqual(await page.locator('.tabs .tab').allTextContents(),['Pagos','Cargar horas','Usuarios','Reservas']);
+await page.locator('[data-tab="users"]').click();await page.locator(`[data-user-detail="${other}"]`).click();await page.getByRole('heading',{name:'Ficha de Profesional Oficina',exact:true}).waitFor();
+assert.equal(await page.locator('[data-user-balance]').innerText(),'4');assert.equal(await page.locator('[data-adjust-plan]').count(),0);assert.equal(await page.locator('[data-user-access]').count(),0);
+await page.getByRole('button',{name:'Cerrar ficha',exact:true}).click();
+await page.locator('[data-view="availability"]').click();await page.locator('#schedule-date').fill(process.env.VALHALLA_TEST_BOOKING_DAY);await page.locator(`.admin-occupied [data-user-detail="${other}"]`).waitFor();
+await page.locator(`.admin-occupied [data-user-detail="${other}"]`).click();await page.getByRole('heading',{name:'Ficha de Profesional Oficina',exact:true}).waitFor();await page.getByRole('button',{name:'Cerrar ficha',exact:true}).click();
+await page.locator('[data-view="admin"]').click();await page.locator('[data-tab="manual_credits"]').click();
+async function credit(uid,hours,method){const form=page.locator('#manual-credit-form');await form.locator('[name="user_id"]').selectOption(String(uid));await form.locator('[name="hours"]').fill(String(hours));await form.locator('[name="method"]').selectOption(method);if(method!=='courtesy'){await form.locator('[name="amount"]').fill('15000');await form.locator('[name="reference"]').fill('MGMT-BROWSER-PAYMENT');}await form.locator('[name="confirmed"]').check();await form.getByRole('button',{name:/Revisar carga/}).click();await page.getByRole('button',{name:'Confirmar carga de horas',exact:true}).click();await page.locator('#modal').waitFor({state:'hidden'});}
+await credit(manager,2,'courtesy');await credit(other,3,'transfer');
+await page.locator('[data-tab="payments"]').click();await page.getByText('MGMT-BROWSER-PAYMENT',{exact:true}).waitFor();assert.equal(await page.locator('[data-payment-admin="true"]').count(),0);
+await page.getByRole('button',{name:'Perfil profesional',exact:true}).click();await page.getByRole('heading',{name:/Hola, Angela/}).waitFor();let state=await(await page.request.get(base+'/api/me')).json();assert.equal(state.packages.reduce((n,p)=>n+p.remaining,0),2);assert.equal(state.user.role,'professional');assert.equal(state.user.owner_booking_privileges,false);
+await owner.goto(base);await owner.getByRole('button',{name:'Acceso administrador',exact:true}).click();await owner.getByLabel('Correo electrónico',{exact:true}).fill('santibanezf.carlos@gmail.com');await owner.getByLabel('Contraseña',{exact:true}).fill(process.env.VALHALLA_TEST_ADMIN_PASSWORD);await owner.getByRole('button',{name:/Iniciar sesión/}).click();await owner.getByRole('heading',{name:'Administración',exact:true}).waitFor();await owner.locator('[data-tab="users"]').click();
+await owner.locator(`[data-management-access="${manager}"]`).click();await owner.getByRole('button',{name:'Retirar acceso',exact:true}).click();await owner.locator('#modal').waitFor({state:'hidden'});
+assert.equal((await page.request.get(base+'/api/admin')).status(),403);
+await page.reload();await page.getByRole('heading',{name:/Hola, Angela/}).waitFor();assert.equal(await page.getByRole('button',{name:'Gestión de oficina',exact:true}).count(),0);
+assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);console.log('PASS: manager calendar occupants, profile balances, self/other credits, payment consultation, professional switch and owner revocation on mobile.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
