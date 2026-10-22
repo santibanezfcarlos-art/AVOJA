@@ -38,6 +38,11 @@ ALLOWED_SITE = "https://psicologia-carlos-demo.onrender.com"
 MAX_FEED_SIZE = 4_000_000
 _feed_cache = {"at": 0.0, "events": []}
 _lock = threading.Lock()
+# Estado seguro de configuración, sin incluir URL, token ni eventos en los registros.
+_calendar_feed_url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
+app.logger.warning("Calendar iCal configurado=%s formato_valido=%s",
+                   bool(_calendar_feed_url), valid_calendar_url(_calendar_feed_url))
+
 
 
 def _to_local(value):
