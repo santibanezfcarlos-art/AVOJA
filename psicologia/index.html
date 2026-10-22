@@ -139,7 +139,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 <div id="appPage" hidden><div class="app-crumb"><a href="#inicio">Inicio</a><span aria-hidden="true">/</span><span id="appBread">Reserva tu hora</span></div>
 <div class="app-head"><div><div class="eyebrow">Agenda de atención psicológica</div><h1>Reserva tu próxima sesión</h1><p class="sub">Selecciona el día y la hora para tu atención psicológica online. En esta demostración puedes probar el calendario sin realizar pagos.</p></div><span class="app-trial">● Vista de prueba — sin pagos reales</span></div>
 <div class="tabs" role="tablist" aria-label="Vista del calendario"><button class="tab active" type="button" id="tabPublic" role="tab" aria-selected="true" aria-controls="patientView">Agenda del paciente</button><button class="tab" type="button" id="tabAdmin" role="tab" aria-selected="false" aria-controls="adminView">Administración de prueba</button></div>
-<div class="layout" id="patientView" role="tabpanel" aria-labelledby="tabPublic"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note">Demostración: la disponibilidad mostrada es ilustrativa. Las reservas de prueba no son visibles en otros dispositivos y no bloquean horas reales.</p></section>
+<div class="layout" id="patientView" role="tabpanel" aria-labelledby="tabPublic"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note" id="calendarSyncStatus" role="status">Consultando Google Calendar…</p><p class="note">Horario permitido: 09:00–20:00, sesión de 60 minutos. Último inicio 19:00.</p><p class="note">Demostración: la disponibilidad mostrada es ilustrativa. Las reservas de prueba no son visibles en otros dispositivos y no bloquean horas reales.</p></section>
 <aside class="card"><div class="kicker">Paso 1 de 2 · Seleccionar horario</div><h2 style="margin-top:8px">Tu sesión online</h2><div class="feature"><span class="check">✓</span><span>Atención psicológica individual, modalidad 100% online.</span></div><div class="feature"><span class="check">✓</span><span>Máximo de 3 atenciones confirmadas por día.</span></div><hr class="rule"><div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div><div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div><div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div><div class="price"><span>Sesión particular</span><strong>$30.000</strong></div><div class="hold" id="hold" hidden></div><button type="button" class="primary" id="confirm" disabled>Simular reserva</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">No se procesan pagos, bonos Fonasa ni boletas en este prototipo. Una confirmación aquí solo sirve para probar el calendario.</p></aside></div>
 <section id="adminView" class="admin-section" role="tabpanel" aria-labelledby="tabAdmin" hidden>
   <p class="admin-warning"><strong>Panel de administración — demostración local.</strong> Esta pantalla no tiene autenticación. No es segura para uso público y ningún cambio se sincroniza entre dispositivos. Antes de publicar, se deberá implementar acceso privado, base de datos y control de reservas en el servidor.</p>
@@ -152,7 +152,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
         <p class="helper">Haz clic en una hora para quitarla de este día. Las reservas de prueba existentes no se eliminan.</p>
         <div class="chips" id="weeklyChips"></div>
         <form class="inline-add" id="weeklyAddForm"><label class="small" for="weeklyTime">Agregar hora</label><input required id="weeklyTime" type="time" step="900" value="18:00"><button class="small-btn" type="submit">+ Agregar hora</button></form>
-        <p class="helper">El horario semanal se aplicará a todas las fechas que no tengan una configuración especial.</p>
+        <p class="helper">El horario permitido es de 09:00 a 20:00; el último inicio es a las 19:00. El horario semanal se aplicará a todas las fechas que no tengan una configuración especial.</p>
       </section>
       <section class="card" aria-label="Excepciones por fecha">
         <h2>Modificar un día específico</h2><p class="small">Cierra un día, bloquea ciertas horas o agrega disponibilidad especial.</p>
@@ -194,7 +194,29 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 const $=id=>document.getElementById(id), ZONE='America/Santiago', KEY_BOOK='psico_demo_local_v2', KEY_SETTINGS='psico_demo_admin_config_v1', MAX=3;
 const WEEK=['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
 const WEEK_FULL=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-const DEFAULT={weekly:{0:[],1:['09:00','10:00','11:00','15:00','16:00','17:00'],2:['09:00','10:00','11:00','15:00','16:00','17:00'],3:['09:00','10:00','11:00','15:00','16:00','17:00'],4:['09:00','10:00','11:00','15:00','16:00','17:00'],5:['09:00','10:00','11:00','15:00','16:00','17:00'],6:['10:00','11:00','12:00']},closedWeekdays:[],exceptions:{}};
+const CAL_API='https://psicologia-carlos-calendar-api.onrender.com/api/availability';
+let calendarState='loading',calendarBlocked={},calendarSeq=0;
+function calendarBusy(date,time){return calendarState==='ready'&&(calendarBlocked[date]||[]).includes(time)}
+function cannotCheck(){return calendarState==='loading'||calendarState==='error'}
+function updateCalendarMessage(){
+ const el=document.getElementById('calendarSyncStatus');if(!el)return;
+ el.textContent=({'loading':'Comprobando las horas ocupadas en Google Calendar…','ready':'Google Calendar conectado: los horarios ocupados no pueden seleccionarse.','demo':'Google Calendar todavía no está conectado. Se muestran horarios de demostración.','error':'No se pudo consultar Google Calendar: los horarios quedan bloqueados temporalmente.'})[calendarState];
+}
+async function loadCalendar(){
+ const req=++calendarSeq,from=start<todayISO()?todayISO():start;
+ calendarState='loading';calendarBlocked={};render();
+ try{
+  const res=await fetch(CAL_API+'?from='+from+'&to='+plus(from,20),{cache:'no-store'});
+  if(!res.ok)throw Error('Sin conexión');
+  const data=await res.json();
+  if(req!==calendarSeq)return;
+  if(data.configured===true&&data.status==='ok'){calendarState='ready';calendarBlocked=data.blocked||{}}
+  else if(data.configured===false){calendarState='demo';calendarBlocked={}}
+  else throw Error('Respuesta inválida');
+ }catch(e){if(req!==calendarSeq)return;calendarState='error';calendarBlocked={}}
+ render();
+}
+const DEFAULT={weekly:{0:[],1:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],2:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],3:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],4:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],5:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],6:['10:00','11:00','12:00']},closedWeekdays:[],exceptions:{}};
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function load(key,fallback){try{const x=JSON.parse(localStorage.getItem(key)||'null');return x&&typeof x==='object'&&!Array.isArray(x)?x:clone(fallback)}catch(e){return clone(fallback)}}
 function save(key,obj){try{localStorage.setItem(key,JSON.stringify(obj))}catch(e){adminMessage('El navegador no permitió guardar los cambios.');}}
@@ -206,14 +228,14 @@ function plus(isoDate,n){const d=dateObj(isoDate);d.setUTCDate(d.getUTCDate()+n)
 function monday(isoDate){return plus(isoDate,-((dateObj(isoDate).getUTCDay()+6)%7))}
 function textDate(isoDate,opt){return new Intl.DateTimeFormat('es-CL',{timeZone:'UTC',...opt}).format(dateObj(isoDate))}
 function dayIndex(isoDate){return dateObj(isoDate).getUTCDay()}
-function goodHour(h){return /^([01]\d|2[0-3]):[0-5]\d$/.test(h)}
+function goodHour(h){if(!/^\d{2}:\d{2}$/.test(h))return false;const [hh,mm]=h.split(':').map(Number),mins=hh*60+mm;return mm%15===0&&mins>=540&&mins+60<=1200}
 function normalize(a){return [...new Set((Array.isArray(a)?a:[]).filter(x=>typeof x==='string'&&goodHour(x)))].sort()}
 function booked(isoDate){return Array.isArray(reservations[isoDate])?normalize(reservations[isoDate]):[]}
 function baseSchedule(isoDate){const wd=dayIndex(isoDate);return settings.closedWeekdays.includes(wd)?[]:normalize(settings.weekly[wd])}
 function schedule(isoDate){const ex=settings.exceptions[isoDate];return ex?ex.closed?[]:normalize(ex.slots):baseSchedule(isoDate)}
 function past(isoDate,time){const t=todayISO();if(isoDate<t)return true;if(isoDate>t)return false;const p=nowParts();return time<=p.hour+':'+p.minute}
-function availableDay(isoDate){return isoDate>=todayISO()&&schedule(isoDate).some(h=>!past(isoDate,h))}
-function publicDayHasCups(isoDate){return availableDay(isoDate)&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>!past(isoDate,h)&&!booked(isoDate).includes(h))}
+function availableDay(isoDate){return isoDate>=todayISO()&&schedule(isoDate).some(h=>!past(isoDate,h)&&!calendarBusy(isoDate,h))}
+function publicDayHasCups(isoDate){return availableDay(isoDate)&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>!past(isoDate,h)&&!booked(isoDate).includes(h)&&!calendarBusy(isoDate,h))}
 function message(t){$('message').textContent=t;$('message').hidden=false}
 function clearMessage(){$('message').hidden=true}
 function adminMessage(t){$('adminMessage').textContent=t;$('adminMessage').hidden=false}
@@ -236,8 +258,8 @@ function render(){
  $('dateHeading').textContent=textDate(chosen,{weekday:'long',day:'numeric',month:'long'});
  const taken=booked(chosen),slots=schedule(chosen);$('capacity').textContent=taken.length+' de '+MAX+' cupos de prueba';$('hours').replaceChildren();
  if(!slots.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No hay horarios habilitados para este día.';$('hours').append(empty)}
- else for(const time of slots){const reserved=taken.includes(time),exhausted=taken.length>=MAX,isPast=past(chosen,time),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=reserved?'Reservado':isPast?'Hora pasada':exhausted?'Sin cupos':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{hold={date:chosen,time,expires:Date.now()+600000};clearMessage();render()};$('hours').append(b)}
- $('selectedDate').textContent=hold?textDate(hold.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Selecciona una fecha';$('selectedTime').textContent=hold?hold.time:'Sin seleccionar';$('confirm').disabled=!hold;$('cancel').hidden=!hold;tick();
+ else for(const time of slots){const reserved=taken.includes(time),exhausted=taken.length>=MAX,isPast=past(chosen,time),isBusy=calendarBusy(chosen,time),notChecked=cannotCheck(),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast||isBusy||notChecked;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=reserved?'Reservado':isPast?'Hora pasada':exhausted?'Sin cupos':isBusy?'Ocupado en Calendar':notChecked?'Comprobando…':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{hold={date:chosen,time,expires:Date.now()+600000};clearMessage();render()};$('hours').append(b)}
+ updateCalendarMessage();$('selectedDate').textContent=hold?textDate(hold.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Selecciona una fecha';$('selectedTime').textContent=hold?hold.time:'Sin seleccionar';$('confirm').disabled=!hold||cannotCheck()||(hold&&calendarBusy(hold.date,hold.time));$('cancel').hidden=!hold;tick();
 }
 function tick(){if(!hold){$('hold').hidden=true;return}const remaining=hold.expires-Date.now();if(remaining<=0){hold=null;render();message('La selección de prueba expiró. Elige otra hora.');return}const m=Math.floor(remaining/60000),s=Math.floor(remaining%60000/1000);$('hold').hidden=false;$('hold').textContent='Selección temporal: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' restantes. Solo en este navegador.'}
 function renderAdmin(){
@@ -280,26 +302,27 @@ function renderAdmin(){
 }
 function emptyChip(parent,txt){const e=document.createElement('p');e.className='helper';e.textContent=txt;parent.append(e)}
 function ensureException(d){if(!settings.exceptions[d])settings.exceptions[d]={closed:settings.closedWeekdays.includes(dayIndex(d)),slots:normalize(settings.weekly[dayIndex(d)])};return settings.exceptions[d]}
-function persistSettings(msg){save(KEY_SETTINGS,settings);if(hold&&(!schedule(hold.date).includes(hold.time)||booked(hold.date).length>=MAX))hold=null;renderAdmin();render();adminMessage(msg)}
+function persistSettings(msg){save(KEY_SETTINGS,settings);if(hold&&(!schedule(hold.date).includes(hold.time)||booked(hold.date).length>=MAX||calendarBusy(hold.date,hold.time)))hold=null;renderAdmin();render();adminMessage(msg)}
 function showTab(which){activeTab=which;const isAdmin=which==='admin';$('patientView').hidden=isAdmin;$('adminView').hidden=!isAdmin;
  $('tabPublic').classList.toggle('active',!isAdmin);$('tabAdmin').classList.toggle('active',isAdmin);
  $('tabPublic').setAttribute('aria-selected',String(!isAdmin));$('tabAdmin').setAttribute('aria-selected',String(isAdmin));if(isAdmin)renderAdmin();else render();}
 $('tabPublic').onclick=()=>showTab('public');$('tabAdmin').onclick=()=>showTab('admin');
-$('prev').onclick=()=>{if(start>monday(todayISO())){start=plus(start,-7);chosen=start<todayISO()?todayISO():start;hold=null;clearMessage();render()}};
-$('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage();render()};
+$('prev').onclick=()=>{if(start>monday(todayISO())){start=plus(start,-7);chosen=start<todayISO()?todayISO():start;hold=null;clearMessage();loadCalendar()}};
+$('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage();loadCalendar()};
 $('cancel').onclick=()=>{hold=null;clearMessage();render()};
-$('confirm').onclick=()=>{if(!hold)return;if(hold.expires<Date.now()){tick();return}const {date,time}=hold,r=booked(date);if(!schedule(date).includes(time)||r.includes(time)||r.length>=MAX||past(date,time)){hold=null;render();message('Ya no está disponible ese horario.');return}reservations[date]=[...r,time];save(KEY_BOOK,reservations);hold=null;render();message('Reserva simulada: '+textDate(date,{day:'numeric',month:'long'})+' a las '+time+'. No se ha cobrado ni reservado una atención real.')};
+$('confirm').onclick=()=>{if(!hold)return;if(hold.expires<Date.now()){tick();return}const {date,time}=hold,r=booked(date);if(!schedule(date).includes(time)||r.includes(time)||r.length>=MAX||past(date,time)||calendarBusy(date,time)||cannotCheck()){hold=null;render();message('Ya no está disponible ese horario.');return}reservations[date]=[...r,time];save(KEY_BOOK,reservations);hold=null;render();message('Reserva simulada: '+textDate(date,{day:'numeric',month:'long'})+' a las '+time+'. No se ha cobrado ni reservado una atención real.')};
 $('clear').onclick=()=>{if(!window.confirm('¿Eliminar todas las reservas simuladas?'))return;reservations={};save(KEY_BOOK,reservations);hold=null;render();renderAdmin();message('Se borraron las reservas de prueba.')};
 $('weeklyToggle').onclick=()=>{settings.closedWeekdays= settings.closedWeekdays.includes(weekday)?settings.closedWeekdays.filter(x=>x!==weekday):[...settings.closedWeekdays,weekday];persistSettings('Disponibilidad semanal actualizada para '+WEEK_FULL[weekday]+'.')};
-$('weeklyAddForm').onsubmit=e=>{e.preventDefault();const h=$('weeklyTime').value;if(!goodHour(h))return adminMessage('Introduce una hora válida.');settings.weekly[weekday]=normalize([...settings.weekly[weekday],h]);persistSettings('Hora '+h+' agregada a '+WEEK_FULL[weekday]+'.')};
+$('weeklyAddForm').onsubmit=e=>{e.preventDefault();const h=$('weeklyTime').value;if(!goodHour(h))return adminMessage('Solo se admiten inicios entre 09:00 y 19:00, cada 15 minutos.');settings.weekly[weekday]=normalize([...settings.weekly[weekday],h]);persistSettings('Hora '+h+' agregada a '+WEEK_FULL[weekday]+'.')};
 $('adminDate').onchange=()=>{const value=$('adminDate').value;if(/^\d{4}-\d\d-\d\d$/.test(value)){adminDate=value;renderAdmin()}};
 $('closeDate').onclick=()=>{const x=ensureException(adminDate);x.closed=!x.closed;persistSettings('Estado del '+adminDate+' actualizado.')};
-$('specialAddForm').onsubmit=e=>{e.preventDefault();const h=$('specialTime').value;if(!goodHour(h))return adminMessage('Introduce una hora válida.');const x=ensureException(adminDate);x.slots=normalize([...x.slots,h]);persistSettings('Hora '+h+' agregada exclusivamente el '+adminDate+'.')};
+$('specialAddForm').onsubmit=e=>{e.preventDefault();const h=$('specialTime').value;if(!goodHour(h))return adminMessage('Solo se admiten inicios entre 09:00 y 19:00, cada 15 minutos.');const x=ensureException(adminDate);x.slots=normalize([...x.slots,h]);persistSettings('Hora '+h+' agregada exclusivamente el '+adminDate+'.')};
 $('restoreDate').onclick=()=>{delete settings.exceptions[adminDate];persistSettings('Se restauró el horario semanal para '+adminDate+'.')};
 $('resetConfig').onclick=()=>{if(!window.confirm('¿Restaurar el horario semanal y eliminar todas las excepciones de prueba? Las reservas simuladas se conservarán.'))return;settings=clone(DEFAULT);persistSettings('Disponibilidad de prueba restablecida a la configuración inicial.')};
 $('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración y las reservas de esta demostración?'))return;reservations={};settings=clone(DEFAULT);save(KEY_BOOK,reservations);save(KEY_SETTINGS,settings);hold=null;render();renderAdmin();adminMessage('Se borraron todos los datos locales de prueba.')};
 setInterval(()=>{if(hold)tick()},1000);
-render();renderAdmin();
+setInterval(()=>{if(!document.hidden&&calendarState!=='loading')loadCalendar()},120000);
+render();renderAdmin();loadCalendar();
 })();
 </script>
 
