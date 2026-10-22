@@ -35,6 +35,15 @@ const base=process.env.VALHALLA_TEST_URL;
   await page.getByText('Perfil profesional actualizado.',{exact:true}).waitFor();
   assert.equal(await page.locator('#profile-form').count(),1);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.route('**/api/me',async route=>{const response=await route.fetch();const data=await response.json();data.user.profile_required=true;data.user.identity_source='legacy';data.user.specialty='';await route.fulfill({response,json:data});});
+  await page.reload();await page.locator('#profile-form').waitFor();
+  await page.getByRole('button',{name:'Disponibilidad',exact:true}).click();
+  await page.locator('#profile-form').waitFor();
+  await page.unroute('**/api/me');
+  await page.getByLabel('Profesión o especialidad').fill('Kinesiología');
+  await page.getByRole('button',{name:'Guardar perfil',exact:true}).click();
+  await page.getByRole('heading',{name:/Hola, Google/}).waitFor();
+  assert.equal((await(await page.request.get(base+'/api/me')).json()).user.specialty,'Kinesiología');
   assert.deepEqual(errors,[]);console.log('Google UI: acceso, registro, administrador sin Google, vinculación, perfil y móvil OK');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

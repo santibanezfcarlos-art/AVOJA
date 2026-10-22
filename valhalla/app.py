@@ -550,8 +550,8 @@ class Store:
             raise Problem('Confirma que este cliente ya fue validado en el sistema anterior.')
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email) or len(email)>200 or email == ADMIN_EMAIL or email in LEGACY_DEMO_EMAILS:
             raise Problem('Indica el correo de un cliente profesional válido.')
-        if not 2<=len(name)<=100 or not 2<=len(specialty)<=100 or not 2<=len(reference)<=100 :
-            raise Problem('Completa nombre, especialidad y referencia del sistema anterior.')
+        if not 2<=len(name)<=100 or (specialty and not 2<=len(specialty)<=100) or not 2<=len(reference)<=100 :
+            raise Problem('Completa nombre y referencia del sistema anterior; si indicas especialidad, usa entre 2 y 100 caracteres.')
         if type(sessions) is not int or not 0<=sessions<=10000:
             raise Problem('Indica un saldo entero entre 0 y 10.000 sesiones.')
         with (nullcontext(connection) if connection is not None else self.connection(True)) as c:
@@ -683,6 +683,7 @@ class Store:
     def state(self, user):
         with self.connection() as c:
             profile = {k: user[k] for k in ('id', 'name', 'email', 'role', 'specialty', 'verified', 'active', 'email_verified')}
+            profile['profile_required'] = user['role']=='professional' and not 2<=len(user['specialty'].strip())<=100
             profile['google_linked'] = bool(c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(user['id'],)).fetchone())
             profile['verified'] = int(self.professional_verified(c, user['id']))
             profile['identity_approved'] = self.identity_verified(c,user['id'])
@@ -770,7 +771,7 @@ class Store:
             raise Problem('Para reservar necesitas una cuenta activa, carnet y certificado de título aprobados por administración, y saldo confirmado.', 403)
         if not row['email_verified']:
             raise Problem('Confirma tu correo electrónico antes de reservar.', 403)
-        if not 2 <= len(row['specialty']) <= 100 and c.execute('SELECT 1 FROM google_accounts WHERE user_id=?',(uid,)).fetchone():
+        if row['role']=='professional' and not 2 <= len(row['specialty'].strip()) <= 100:
             raise Problem('Completa tu profesión o especialidad en Mi perfil antes de reservar.', 403)
 
     def discount_quote(self, c, catalog, code=''):

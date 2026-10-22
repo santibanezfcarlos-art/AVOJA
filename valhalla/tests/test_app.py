@@ -31,7 +31,7 @@ class Rules(unittest.TestCase):
             for uid, role, verified in [(1, 'professional', 1), (2, 'professional', 1), (3, 'professional', 0), (4, 'admin', 1)]:
                 c.execute('INSERT INTO users(id,name,email,password,role,verified) VALUES(?,?,?,?,?,?)',
                           (uid, f'Persona {uid}', ADMIN_EMAIL if role=='admin' else f'{uid}@test.cl', self.encoded, role, verified))
-                c.execute('UPDATE users SET email_verified=1 WHERE id=?',(uid,))
+                c.execute("UPDATE users SET email_verified=1,specialty='Psicología' WHERE id=?",(uid,))
                 if verified:
                     c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,?,'application/pdf',?,'approved',?,'identity')", (0 if uid==4 else -uid,uid,'fixture.pdf',b'%PDF-1.4\nTEST',stamp(self.clock)))
                     c.execute("INSERT INTO documents(id,user_id,filename,mime,content,status,created_at,kind) VALUES(?,?,'degree.pdf','application/pdf',?,'approved',?,'degree')",(-100-uid,uid,b'Degree fixture',stamp(self.clock)))

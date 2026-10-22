@@ -98,6 +98,29 @@ class MigrationAndPayments(unittest.TestCase):
         self.store.update_profile(self.uid,{'name':'Changed Name','specialty':'Psicología'})
         self.assertEqual(self.state()['user']['verified'],0)
 
+    def test_blank_specialty_migration_preserves_existing_profile_and_is_silent(self):
+        self.store.import_legacy(self.admin,self.legacy|{'specialty':''})
+        self.assertEqual(self.state()['user']['specialty'],'Psicología')
+        self.assertFalse(self.state()['user']['profile_required'])
+        with self.store.connection() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM notification_outbox WHERE kind='hours_credited'").fetchone()[0],0)
+
+    def test_migrated_google_user_completes_specialty_before_booking_without_losing_balance(self):
+        from google_auth import authenticate
+        self.store.import_legacy(self.admin,self.legacy|{'email':'pending-profession@example.cl','specialty':'','reference':'pending-specialty'})
+        token,result=authenticate(self.store,{'sub':'pending-specialty-google','email':'pending-profession@example.cl','name':self.legacy['name'],'email_verified':True})
+        user=self.store.session(token);state=self.store.state(user)
+        self.assertEqual(result,'profile_required');self.assertTrue(state['user']['profile_required'])
+        self.assertEqual(state['user']['identity_source'],'legacy');self.assertEqual(state['packages'][0]['remaining'],10)
+        with self.store.connection() as c:
+            with self.assertRaises(Problem):self.store.professional(c,user['id'])
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM notification_outbox WHERE kind='hours_credited'").fetchone()[0],0)
+        self.store.update_profile(user['id'],{'name':user['name'],'specialty':'Kinesiología'})
+        state=self.store.state(self.store.session(token))
+        self.assertFalse(state['user']['profile_required']);self.assertTrue(state['user']['verified'])
+        self.assertEqual(state['packages'][0]['remaining'],10)
+        with self.store.connection() as c:self.store.professional(c,user['id'])
+
     def test_csv_preview_no_changes_commit_atomic_and_duplicate_safe(self):
         body=self.csv('old002,Persona Nueva,new@example.cl,Psicología,5,Saldo validado\n')
         preview=self.store.import_legacy_csv(self.admin,body,preview=True)
