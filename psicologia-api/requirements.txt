@@ -1,0 +1,4 @@
+Flask>=3.1,<4
+Gunicorn>=23,<26
+icalendar>=6.2,<8
+recurring-ical-events>=3.7,<4
