@@ -1,0 +1,12 @@
+# Render Blueprint: demo pública de Psicología Carlos Santibáñez.
+# Publica únicamente archivos estáticos de /psicologia.
+# ATENCIÓN: No incluye autenticación, agenda compartida, pagos ni reservas reales.
+services:
+  - type: web
+    name: psicologia-carlos-demo
+    runtime: static
+    repo: https://github.com/santibanezfcarlos-art/AVOJA
+    branch: psicologia-carlos
+    buildCommand: 'echo "Sitio HTML estático; no requiere compilación"'
+    staticPublishPath: ./psicologia
+    autoDeployTrigger: commit
