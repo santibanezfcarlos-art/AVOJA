@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agenda online · Psicología Carlos Santibáñez</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#173e35"><meta name="robots" content="noindex,nofollow">
+<meta name="description" content="Psicología online para personas adultas. Conoce el enfoque de Carlos Santibáñez y explora horarios de atención en una demostración de agenda.">
+<title>Carlos Santibáñez | Psicología Online</title>
 <style>
 :root{--ink:#143e35;--green:#307653;--bg:#f4f7f3;--line:#dbe6df;--muted:#70807b;--light:#e7f2eb}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;color:var(--ink);background:var(--bg)}button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #6baa84;outline-offset:2px}
@@ -59,11 +60,84 @@ main{max-width:1100px;margin:auto;padding:30px 25px 60px}.eyebrow{font-size:11px
 .footer .reset{margin:0 4px}
 @media(max-width:880px){.admin-view{grid-template-columns:1fr}}
 @media(max-width:490px){.weekday-options{gap:3px}.weekday-option{font-size:11px;min-height:54px}.weekday-option span{font-size:9px}.metric-grid{gap:4px}.metric{padding:9px 4px}}
+
+
+/* Sitio web integral y navegación principal */
+html{scroll-behavior:smooth}body{background:#f5f7f3;line-height:1.5}
+[hidden]{display:none!important}
+header.site-header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.96);backdrop-filter:blur(15px);border-bottom:1px solid #e1e9e2}
+.site-header .bar{max-width:1220px;padding:15px 30px;min-height:80px}
+.header-links{display:flex;gap:21px;align-items:center}.header-links a,.mobile-nav a{text-decoration:none;color:#49675c;font-size:13px;font-weight:650}.header-links a:hover,.header-links a.active{color:#144536}.header-links .header-cta{background:#153e35;color:white;padding:11px 19px;border-radius:10px;font-weight:750;white-space:nowrap}.header-links .header-cta:hover,.header-links .header-cta.active{background:#2e6d52;color:white}
+.brand{flex-shrink:0}.brand small{font-weight:400}.site-header .brand strong{font-size:15px}
+.mobile-nav{display:none;align-items:center;justify-content:space-between;gap:9px;padding:12px 20px;border-top:1px solid #e6eee6;flex-wrap:wrap}.mobile-nav a{font-size:12px}
+main.site-main{max-width:1220px;padding:0 30px 50px}
+#homePage{padding:0}
+.hero{display:grid;grid-template-columns:1.08fr .92fr;min-height:558px;align-items:center;gap:38px;padding:48px 0 58px}
+.hero-copy{max-width:625px}.hero .eyebrow{font-size:11px;letter-spacing:2px;margin-bottom:18px}
+.hero h1{font-size:clamp(40px,5.25vw,71px);line-height:1.065;letter-spacing:-2.8px;color:#143a32;margin:9px 0 24px;font-weight:760}
+.hero h1 em{font-style:normal;color:#4b956d}.hero-lead{font-size:16px;line-height:1.75;color:#5f786d;max-width:515px;margin:0 0 27px}
+.hero-actions{display:flex;gap:11px;flex-wrap:wrap;align-items:center;margin-bottom:26px}.cta-button{border-radius:11px;background:#19483a;color:white;border:1px solid #19483a;text-decoration:none;padding:14px 23px;min-height:50px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:13px;font-weight:780}.cta-button:hover{background:#2e7150}.secondary-button{border-radius:11px;background:#fff;border:1px solid #cedcd1;color:#164035;text-decoration:none;padding:14px 23px;min-height:50px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:750}.secondary-button:hover{background:#edf5ed}
+.hero-points{display:flex;align-items:center;gap:11px 18px;flex-wrap:wrap;color:#5e7368;font-size:12px}.hero-points span:before{content:'✓';font-weight:850;margin-right:7px;color:#448d65}
+.hero-art{min-height:492px;background:linear-gradient(154deg,#ddebe0 0%,#bad3c0 49%,#e9f0df 100%);border-radius:26px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:28px}
+.art-orb{height:450px;width:450px;border-radius:50%;position:absolute;top:-150px;right:-165px;background:linear-gradient(170deg,#f6f6e9,#dae8d7)}
+.art-leaf{position:absolute;height:290px;width:115px;border-radius:120px 0 120px 0;background:#a4c0a5;transform:rotate(29deg);bottom:-80px;left:-25px;opacity:.7}
+.art-leaf.two{height:240px;width:96px;left:46px;bottom:-91px;transform:rotate(-10deg);background:#7eaa91;opacity:.6}
+.art-inner{position:relative;background:rgba(255,255,255,.96);border-radius:20px;padding:28px;box-shadow:0 30px 90px #1c4a3333;width:100%;max-width:342px;border:1px solid #e5ebe5;transform:rotate(-2deg)}
+.art-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.art-tag{border-radius:30px;background:#e9f4eb;color:#346a4f;font-size:10px;padding:6px 9px;font-weight:700}.art-mini-title{color:#193e34;font-size:19px;letter-spacing:-.5px;font-weight:770;margin:0 0 5px}.art-mini-sub{font-size:11px;color:#85958a;margin:0 0 15px}.art-week{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px}.art-day{text-align:center;padding:9px 3px;border-radius:9px;border:1px solid #e1e8e1;color:#557365;font-size:11px}.art-day strong{font-size:17px;display:block;color:#1e4a3a}.art-day.on{background:#ddefe1;border-color:#73a487}.art-hours{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.art-hours span{background:#f3f7f2;border:1px solid #e7eee6;padding:10px 3px;border-radius:8px;text-align:center;font-size:12px;font-weight:750;color:#416b52}.art-hours span.on{background:#1d503f;color:#fff;border-color:#1d503f}
+.art-caption{margin-top:18px;color:#819187;font-size:10px;display:flex;align-items:center;gap:7px}.art-caption:before{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#85b592}
+.section{padding:66px 0;border-top:1px solid #dfe8e0;scroll-margin-top:114px}.section-heading{max-width:680px;margin-bottom:28px}.section-heading .eyebrow{margin:0 0 9px}.section h2{font-size:clamp(28px,3vw,40px);letter-spacing:-1.2px;color:#173e33;line-height:1.2;margin:0 0 14px}.section-heading p{font-size:15px;line-height:1.7;color:#677f71;margin:0}
+.services-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.service-card{background:#fff;border:1px solid #dfe9e0;border-radius:17px;padding:23px;min-height:212px}.service-icon{width:42px;height:42px;background:#e7f2e9;color:#386b4b;display:grid;place-items:center;border-radius:13px;font-size:22px;margin-bottom:20px}.service-card h3{font-size:17px;line-height:1.2;color:#204535;letter-spacing:-.4px;margin-bottom:11px}.service-card p{font-size:13px;line-height:1.65;color:#73867b;margin:0}
+.about-grid{display:grid;grid-template-columns:1fr .92fr;gap:48px;align-items:center}.about-panel{background:#e9f0e7;border-radius:22px;padding:37px 37px 33px;position:relative;overflow:hidden}.about-panel:after{content:'';position:absolute;width:190px;height:190px;border-radius:50%;right:-90px;bottom:-90px;border:28px solid #c9dec9}.about-panel .quote-mark{color:#81b293;font-size:57px;height:57px;font-family:Georgia,serif}.about-panel .quote{font-size:25px;line-height:1.45;color:#2a5842;letter-spacing:-.5px;font-weight:650;margin:0 0 22px;max-width:420px}.about-sign{font-size:12px;color:#607c6d}.about-text p{font-size:15px;color:#637d70;line-height:1.8}.about-text .eyebrow{margin-bottom:10px}.text-link{color:#1d6b4b;font-weight:750;text-underline-offset:5px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}.step{background:#fff;border:1px solid #e0e8df;padding:25px 25px 27px;border-radius:17px}.step-num{font-size:12px;font-weight:820;color:#449167;margin-bottom:20px;display:block}.step h3{font-size:18px;margin:0 0 9px;color:#254935}.step p{font-size:13px;line-height:1.7;color:#6f8174;margin:0}
+.price-banner{display:flex;justify-content:space-between;align-items:center;gap:24px;background:#1c493c;color:white;border-radius:24px;padding:38px 45px}.price-banner h2{color:#fff;font-size:clamp(25px,3vw,33px);margin:0 0 9px}.price-banner p{color:#d4e4d8;font-size:13px;margin:0 0 12px}.price-tag{font-size:31px;font-weight:790;letter-spacing:-1px;margin-top:7px;display:block}.price-banner .cta-button{background:#fff;color:#1b4b3a;border-color:#fff;flex-shrink:0}.price-banner .cta-button:hover{background:#e9f6ed}
+.faq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.faq-item{background:#fff;border:1px solid #dfe8df;border-radius:15px;padding:22px 23px}.faq-item h3{font-size:15px;color:#204939;margin-bottom:9px}.faq-item p{font-size:13px;line-height:1.7;color:#6c8174;margin:0}
+.site-footer{background:#eaf0e9;border-top:1px solid #d4e1d5}.footer-inner{max-width:1220px;margin:auto;padding:35px 30px;display:flex;justify-content:space-between;align-items:center;gap:25px}.footer-inner .footer-label{font-size:13px;font-weight:800}.footer-inner p{color:#6b8172;font-size:12px;margin:5px 0 0}.footer-links{display:flex;flex-wrap:wrap;gap:20px}.footer-links a{text-decoration:none;color:#4d715d;font-size:12px;font-weight:650}.footer-links a:hover{text-decoration:underline}
+#appPage{padding:36px 0 16px}.app-crumb{display:flex;gap:10px;align-items:center;font-size:12px;color:#6f8a7b;margin-bottom:22px}.app-crumb a{color:#426e56;text-decoration:none}.app-head{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:22px}.app-head h1{font-size:clamp(27px,4vw,40px);margin:8px 0 10px}.app-head .sub{margin-bottom:0}.app-trial{font-size:11px;line-height:1.5;border-radius:30px;background:#fff0d8;color:#805e2e;padding:9px 15px;font-weight:750;flex-shrink:0}.app-bottom-note{color:#87988a;font-size:12px;margin-top:23px}
+@media(max-width:1080px){.header-links{gap:12px}.header-links a{font-size:12px}.hero{gap:22px}.hero-art{min-height:455px}.services-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:780px){.header-links .link-hide{display:none}.hero{grid-template-columns:1fr;padding:35px 0 43px;min-height:auto}.hero h1{max-width:650px}.hero-art{min-height:410px}.about-grid{grid-template-columns:1fr;gap:24px}.steps{grid-template-columns:1fr}.price-banner{flex-direction:column;align-items:flex-start}.faq-grid{grid-template-columns:1fr}.footer-inner{flex-direction:column;align-items:flex-start}.app-head{flex-direction:column}.site-main{padding-bottom:30px}}
+@media(max-width:510px){.site-header .bar{padding:11px 16px;min-height:70px}.site-main{padding:0!important;margin:0 14px!important}.site-header .header-links{display:none}.mobile-nav{display:flex}.hero h1{font-size:39px;letter-spacing:-1.7px}.hero-art{min-height:377px;padding:16px;border-radius:19px}.art-inner{padding:21px}.section{padding:42px 0;scroll-margin-top:125px}.services-grid{grid-template-columns:1fr}.service-card{min-height:auto;padding:20px}.about-panel{padding:28px}.about-panel .quote{font-size:23px}.price-banner{padding:27px}.footer-inner{padding:30px 17px}.hero-actions .cta-button,.hero-actions .secondary-button{width:100%}#appPage{padding:22px 0}.app-trial{border-radius:10px}}
 </style>
-</head>
-<body>
-<header><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez</strong><small>Psicología · Atención online</small></div></div><span class="tag">● Versión de prueba</span></div></header>
-<main><div class="eyebrow">Agenda de atención psicológica</div><h1>Reserva tu próxima sesión</h1><p class="sub">Selecciona el día y la hora que más te acomoden para tu atención psicológica online. Puedes probar el calendario sin efectuar pagos reales.</p>
+</head><body>
+
+<header class="site-header"><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez</strong><small>Psicología · Atención online</small></div></div>
+<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#servicios" data-nav="servicios" class="link-hide">Áreas de atención</a><a href="#enfoque" data-nav="enfoque" class="link-hide">Mi enfoque</a><a href="#proceso" data-nav="proceso" class="link-hide">Cómo funciona</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
+<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#servicios">Áreas de atención</a><a href="#enfoque">Mi enfoque</a><a href="#agenda">Reservar hora →</a></nav></header>
+
+<main class="site-main">
+<div id="homePage">
+<section class="hero" id="inicio" aria-labelledby="heroTitle">
+ <div class="hero-copy"><div class="eyebrow">Psicoterapia breve · Adultos · Online</div><h1 id="heroTitle">Un espacio para <em>sentirte mejor</em> y avanzar.</h1>
+ <p class="hero-lead">Acompañamiento psicológico cercano y profesional para comprender lo que estás viviendo, fortalecer tus recursos y trabajar en cambios concretos a tu ritmo.</p>
+ <div class="hero-actions"><a href="#agenda" class="cta-button">Agendar mi sesión <span aria-hidden="true">→</span></a><a href="#servicios" class="secondary-button">Conoce cómo puedo ayudarte</a></div>
+ <div class="hero-points"><span>100% online</span><span>Atención individual a adultos</span><span>Objetivos claros</span></div></div>
+ <div class="hero-art" aria-label="Ilustración de una agenda con horarios disponibles"><div class="art-orb"></div><div class="art-leaf"></div><div class="art-leaf two"></div>
+ <div class="art-inner"><div class="art-top"><div class="art-mini-title">Un momento para ti</div><span class="art-tag">Online</span></div><p class="art-mini-sub">Agenda tu sesión con tranquilidad</p>
+ <div class="art-week"><div class="art-day"><span>Lu</span><strong>26</strong></div><div class="art-day"><span>Ma</span><strong>27</strong></div><div class="art-day on"><span>Mi</span><strong>28</strong></div><div class="art-day"><span>Ju</span><strong>29</strong></div><div class="art-day"><span>Vi</span><strong>30</strong></div></div>
+ <div class="art-hours"><span>09:00</span><span class="on">10:00</span><span>11:00</span><span>15:00</span><span>16:00</span><span>17:00</span></div><div class="art-caption">Representación ilustrativa de la agenda</div></div>
+ </div>
+</section>
+<section class="section" id="servicios"><div class="section-heading"><div class="eyebrow">Áreas de atención</div><h2>Un acompañamiento según lo que necesitas.</h2><p>La terapia es un proceso colaborativo. Podemos trabajar aquello que hoy está afectando tu bienestar, tus relaciones o tu vida laboral.</p></div>
+ <div class="services-grid">
+  <article class="service-card"><div class="service-icon" aria-hidden="true">✳</div><h3>Ansiedad y estrés</h3><p>Reconocer las situaciones que generan malestar y desarrollar herramientas para afrontarlas.</p></article>
+  <article class="service-card"><div class="service-icon" aria-hidden="true">◇</div><h3>Autoestima y límites</h3><p>Fortalecer la confianza personal, el autocuidado y la capacidad de poner límites saludables.</p></article>
+  <article class="service-card"><div class="service-icon" aria-hidden="true">♡</div><h3>Vínculos y emociones</h3><p>Comprender patrones de relación, conflictos interpersonales y dificultades en la regulación emocional.</p></article>
+  <article class="service-card"><div class="service-icon" aria-hidden="true">↗</div><h3>Bienestar laboral</h3><p>Abordar exigencias, desgaste emocional, toma de decisiones y desafíos del entorno de trabajo.</p></article>
+ </div>
+</section>
+<section class="section" id="enfoque"><div class="about-grid"><div class="about-panel"><div class="quote-mark" aria-hidden="true">“</div><p class="quote">La terapia puede ser un espacio para mirar con claridad lo que ocurre y construir nuevas formas de afrontarlo.</p><div class="about-sign">Carlos Santibáñez · Psicólogo</div></div>
+ <div class="about-text"><div class="eyebrow">Mi enfoque de trabajo</div><h2>Escucha profesional y herramientas para el cambio.</h2><p>Soy Carlos Santibáñez, psicólogo. Mi trabajo clínico se centra en el acompañamiento de personas adultas mediante un enfoque de psicoterapia breve, con atención a sus necesidades, contexto y objetivos.</p><p>Busco que cada sesión sea un espacio de confianza en el que podamos comprender las dificultades, explorar alternativas y acordar acciones aplicables a tu vida cotidiana.</p><a href="#agenda" class="text-link">Revisar disponibilidad →</a></div></div></section>
+<section class="section" id="proceso"><div class="section-heading"><div class="eyebrow">Cómo funciona</div><h2>Comenzar es sencillo.</h2><p>Queremos que reservar un espacio para ti sea un proceso claro, desde la elección del horario hasta el encuentro online.</p></div>
+<div class="steps"><div class="step"><span class="step-num">01 / ELIGE</span><h3>Busca tu horario</h3><p>Consulta el calendario y selecciona el día y la hora que más te acomoden, entre los espacios disponibles.</p></div><div class="step"><span class="step-num">02 / RESERVA</span><h3>Confirma tu sesión</h3><p>En la versión definitiva, podrás realizar el pago anticipado para confirmar la reserva. Por ahora puedes simularla.</p></div><div class="step"><span class="step-num">03 / CONECTA</span><h3>Nos encontramos online</h3><p>La atención se realizará por videollamada. El envío automático del enlace está considerado para la versión definitiva.</p></div></div>
+</section>
+<section class="section" id="tarifa"><div class="price-banner"><div><h2>Tu espacio de atención psicológica.</h2><p>Sesión particular individual · Modalidad online</p><span class="price-tag">$30.000 CLP</span></div><a href="#agenda" class="cta-button">Ver días y horarios <span aria-hidden="true">→</span></a></div></section>
+<section class="section" id="preguntas"><div class="section-heading"><div class="eyebrow">Preguntas frecuentes</div><h2>Lo que necesitas saber antes de comenzar.</h2></div>
+<div class="faq-grid"><article class="faq-item"><h3>¿Las sesiones son presenciales?</h3><p>No. Todas las atenciones de esta plataforma están contempladas en modalidad online.</p></article><article class="faq-item"><h3>¿Cuál es el valor de una sesión?</h3><p>El valor de la sesión particular es de $30.000 CLP. La integración para bonos Fonasa se encuentra pendiente de implementación.</p></article><article class="faq-item"><h3>¿Cómo se confirma una reserva?</h3><p>En la plataforma definitiva, la hora se confirmará después de acreditar el pago. En esta demostración no se cobra ni se reserva realmente.</p></article><article class="faq-item"><h3>¿Recibiré una boleta?</h3><p>Estamos contemplando integrar la emisión de documentos tributarios mediante el SII. Esta función todavía no está habilitada.</p></article></div>
+</section>
+</div>
+
+
+<div id="appPage" hidden><div class="app-crumb"><a href="#inicio">Inicio</a><span aria-hidden="true">/</span><span id="appBread">Reserva tu hora</span></div>
+<div class="app-head"><div><div class="eyebrow">Agenda de atención psicológica</div><h1>Reserva tu próxima sesión</h1><p class="sub">Selecciona el día y la hora para tu atención psicológica online. En esta demostración puedes probar el calendario sin realizar pagos.</p></div><span class="app-trial">● Vista de prueba — sin pagos reales</span></div>
 <div class="tabs" role="tablist" aria-label="Vista del calendario"><button class="tab active" type="button" id="tabPublic" role="tab" aria-selected="true" aria-controls="patientView">Agenda del paciente</button><button class="tab" type="button" id="tabAdmin" role="tab" aria-selected="false" aria-controls="adminView">Administración de prueba</button></div>
 <div class="layout" id="patientView" role="tabpanel" aria-labelledby="tabPublic"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note">Demostración: la disponibilidad mostrada es ilustrativa. Las reservas de prueba no son visibles en otros dispositivos y no bloquean horas reales.</p></section>
 <aside class="card"><div class="kicker">Paso 1 de 2 · Seleccionar horario</div><h2 style="margin-top:8px">Tu sesión online</h2><div class="feature"><span class="check">✓</span><span>Atención psicológica individual, modalidad 100% online.</span></div><div class="feature"><span class="check">✓</span><span>Máximo de 3 atenciones confirmadas por día.</span></div><hr class="rule"><div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div><div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div><div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div><div class="price"><span>Sesión particular</span><strong>$30.000</strong></div><div class="hold" id="hold" hidden></div><button type="button" class="primary" id="confirm" disabled>Simular reserva</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">No se procesan pagos, bonos Fonasa ni boletas en este prototipo. Una confirmación aquí solo sirve para probar el calendario.</p></aside></div>
@@ -109,7 +183,11 @@ main{max-width:1100px;margin:auto;padding:30px 25px 60px}.eyebrow{font-size:11px
       <p class="message-admin" id="adminMessage" hidden role="status"></p>
     </div>
   </div>
-</section><div class="footer">Vista de desarrollo · <button class="reset" id="clear">Eliminar reservas de prueba</button></div></main>
+</section><p class="app-bottom-note">Versión de prueba: agenda, cupos y modificaciones guardados únicamente en este navegador. No ingresar datos de pacientes.</p><button type="button" class="reset" id="clear">Eliminar reservas de prueba</button></div>
+</main>
+
+<footer class="site-footer"><div class="footer-inner"><div><div class="footer-label">Carlos Santibáñez · Psicología</div><p>Atención psicológica online para personas adultas · Prototipo de desarrollo</p></div><nav class="footer-links" aria-label="Enlaces de pie de página"><a href="#inicio">Inicio</a><a href="#agenda">Agendar una hora</a><a href="#admin">Panel administrador (demo)</a></nav></div></footer>
+
 <script>
 (()=>{
 'use strict';
@@ -224,5 +302,28 @@ setInterval(()=>{if(hold)tick()},1000);
 render();renderAdmin();
 })();
 </script>
-</body>
-</html>
+
+<script>
+(function(){
+'use strict';
+const home=document.getElementById('homePage'),app=document.getElementById('appPage');
+function route(){
+ let frag=decodeURIComponent((location.hash||'#inicio').slice(1)).toLowerCase();
+ let inApp=frag==='agenda'||frag==='admin';
+ home.hidden=inApp;app.hidden=!inApp;
+ if(inApp){document.getElementById(frag==='admin'?'tabAdmin':'tabPublic').click();document.getElementById('appBread').textContent=frag==='admin'?'Administración de prueba':'Reserva tu hora';document.title=(frag==='admin'?'Administración de prueba':'Reserva tu sesión')+' · Carlos Santibáñez';}
+ else{document.title='Carlos Santibáñez | Psicología Online';}
+ document.querySelectorAll('[data-nav]').forEach(link=>link.classList.toggle('active',link.getAttribute('data-nav')===frag));
+ if(inApp)window.scrollTo({top:0,behavior:'instant'});
+ else if(frag!=='inicio'){let dest=document.getElementById(frag);if(dest)requestAnimationFrame(()=>dest.scrollIntoView({block:'start',behavior:'smooth'}));}
+ else window.scrollTo({top:0,behavior:'instant'});
+}
+window.addEventListener('hashchange',route);
+const publicTab=document.getElementById('tabPublic'),adminTab=document.getElementById('tabAdmin');
+publicTab.addEventListener('click',()=>{if(location.hash!=='#agenda')location.hash='agenda'});
+adminTab.addEventListener('click',()=>{if(location.hash!=='#admin')location.hash='admin'});
+route();
+})();
+</script>
+
+</body></html>
