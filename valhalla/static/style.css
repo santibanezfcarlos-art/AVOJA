@@ -94,3 +94,6 @@ a.brand{text-decoration:none}
 @media(max-width:720px){.room-subtitle{white-space:normal;overflow-wrap:normal;line-height:1.4}.availability th{padding:12px 2px}.sidebar nav{align-items:stretch;justify-content:flex-start}.sidebar.menu-open .sidebar-bottom .profile-name{max-width:180px}}
 
 .batch-summary{flex-wrap:wrap;gap:16px}.batch-summary .btn{max-width:100%}
+
+/* Selected icon model: green outlines on soft sage tiles. */
+.sidebar .nav-icon{width:40px;height:40px;min-width:40px;display:grid;place-items:center;flex-shrink:0;color:#255e51;background:#e9f1e6;border-radius:12px}.sidebar .nav-icon svg{display:block;width:24px;height:24px}.sidebar .nav-item{padding:10px 12px;gap:12px}.sidebar .nav-item.active .nav-icon{background:#dbe9cc}.sidebar .nav-label{min-width:0}@media(max-width:720px){.sidebar .nav-item{padding:4px;min-height:48px}.sidebar.menu-open .nav-item{padding:8px;gap:14px}.sidebar .nav-icon svg{width:23px;height:23px}}
