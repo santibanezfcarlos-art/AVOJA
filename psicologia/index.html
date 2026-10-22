@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173b36">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Agenda online | Psicología Carlos Santibáñez</title>
+  <style>
+    :root{--ink:#173b36;--ink-soft:#58746b;--muted:#6b7773;--bg:#f5f7f2;--paper:#fff;--line:#dce5df;--green:#2c6a4f;--green-bg:#e9f4eb;--soft:#f1f5f0;--amber:#80602d;--amber-bg:#fdf4df;--shadow:0 15px 45px rgba(25,60,44,.07)}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #8ab7aa;outline-offset:3px}
+    .shell{max-width:1140px;margin:auto;padding:0 24px}
+    .topbar{background:white;border-bottom:1px solid var(--line)}
+    .topbar .shell{min-height:81px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+    .brand{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;background:var(--ink);color:#fff;border-radius:13px;display:grid;place-items:center;font-size:16px;font-weight:750;letter-spacing:-1px}
+    .brand-name{font-weight:750;font-size:14px;line-height:1.15}.brand-sub{font-size:12px;color:var(--muted)}
+    .mode{display:flex;align-items:center;gap:7px;background:#f2f6f2;border:1px solid var(--line);border-radius:50px;padding:7px 12px;font-size:12px;font-weight:680;color:var(--ink-soft)}
+    .mode-dot{width:7px;height:7px;border-radius:100%;background:#d39a35}
+    .intro{padding:38px 0 24px}
+    .eyebrow{text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:750;font-size:11px;margin:0 0 7px}
+    h1{font-size:clamp(28px,4vw,38px);line-height:1.16;letter-spacing:-1.3px;margin:0 0 10px}
+    .intro p:last-child{color:var(--ink-soft);margin:0;max-width:760px}
+    .layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(285px,.85fr);gap:22px;align-items:start;padding-bottom:24px}
+    .panel{border:1px solid var(--line);box-shadow:var(--shadow);border-radius:18px;background:#fff}
+    .calendar{padding:26px}
+    .panel-heading{display:flex;justify-content:space-between;align-items:start;gap:10px}
+    h2{font-size:19px;letter-spacing:-.45px;line-height:1.3;margin:0 0 5px}
+    .small{font-size:12px;color:var(--muted);margin:0}
+    .legend{display:flex;gap:14px;font-size:11px;color:var(--ink-soft);margin-top:12px;flex-wrap:wrap}
+    .key{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:#dfe5df}.key.yes{background:#77aa87}.key.pick{background:#1d5c45}
+    .navigation{margin-top:25px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .period{font-weight:760;font-size:14px;text-transform:capitalize}
+    .nav-actions{display:flex;gap:7px}
+    .arrow{background:white;border:1px solid var(--line);border-radius:9px;width:34px;height:34px;font-size:19px;color:var(--ink)}
+    .arrow:hover:enabled{background:var(--soft)}button:disabled{cursor:not-allowed}
+    .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}
+    .day{border:1px solid transparent;background:transparent;border-radius:12px;min-height:74px;padding:7px 2px;color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+    .day:hover:enabled{background:var(--soft)}.day.active{background:#e7f1e9;border-color:#2d6d54}
+    .day.disabled{color:#b3bcb5;opacity:.8}.day-label{font-size:11px}.day-num{font-size:20px;font-weight:800;line-height:1.2}
+    .day-indicator{width:5px;height:5px;background:#5c9a76;border-radius:100%}
+    .rule{border:0;border-top:1px solid var(--line);margin:25px 0 22px}
+    .slots-head{display:flex;align-items:start;justify-content:space-between;gap:9px;flex-wrap:wrap;margin-bottom:17px}
+    .slots-head h3{font-size:16px;margin:0 0 3px;letter-spacing:-.35px}
+    .capacity{background:var(--green-bg);color:var(--green);font-weight:700;font-size:11px;padding:7px 11px;border-radius:50px;white-space:nowrap}
+    .slot-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+    .slot{border:1px solid var(--line);background:#fff;padding:13px 7px;border-radius:11px;min-height:70px;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center}
+    .slot-time{font-weight:780;font-size:17px}.slot-state{font-size:11px;color:var(--green)}
+    .slot:hover:enabled{background:var(--green-bg);border-color:#78aa88}.slot.selected{background:var(--ink);border-color:var(--ink);color:white}.slot.selected .slot-state{color:#c1e7d0}
+    .slot.unavailable{background:#f2f4f2;border-color:#eef0ee;color:#b1b9b4}.slot.unavailable .slot-state{color:#aab5ae}
+    .empty{background:var(--soft);color:var(--ink-soft);border-radius:12px;padding:20px;text-align:center;font-size:13px}
+    .demo-note{font-size:12px;color:var(--amber);border-radius:10px;background:var(--amber-bg);padding:11px 13px;margin:18px 0 0}
+    .summary{padding:27px;position:sticky;top:22px}
+    .step{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--green);font-weight:800;margin:0 0 9px}
+    .sum-title{font-size:21px;font-weight:790;letter-spacing:-.5px;margin:0 0 14px}
+    .feature{display:flex;gap:10px;align-items:flex-start;margin:10px 0;font-size:13px;color:var(--ink-soft)}
+    .feature-icon{display:grid;place-items:center;background:var(--green-bg);color:var(--green);border-radius:7px;width:25px;height:25px;flex:0 0 25px;font-weight:800}
+    .separator{height:1px;background:var(--line);margin:20px 0}
+    .detail-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin:13px 0}.detail-row span:first-child{color:var(--muted)}.detail-row strong{text-align:right;max-width:64%}
+    .price-row{border-top:1px solid var(--line);padding-top:15px;margin-top:15px;display:flex;align-items:center;justify-content:space-between}
+    .price-row strong{font-size:25px;letter-spacing:-.7px}.price-row span{color:var(--ink-soft);font-size:13px}
+    .hold{background:var(--amber-bg);border-radius:9px;padding:11px 12px;color:var(--amber);font-size:12px;margin-top:17px}
+    .primary{background:var(--ink);border:1px solid var(--ink);color:#fff;border-radius:11px;min-height:49px;padding:12px 16px;font-weight:750;width:100%;margin-top:17px}
+    .primary:hover:enabled{background:#255547}.primary:disabled{opacity:.46}
+    .secondary{background:transparent;border:0;text-decoration:underline;text-underline-offset:3px;color:var(--ink-soft);font-size:12px;padding:12px 2px}
+    .footnote{font-size:11px;color:var(--muted);line-height:1.6;margin:12px 0 0}
+    .notice{font-size:12px;padding:12px;border-radius:10px;margin-top:12px;background:var(--green-bg);color:var(--green);display:none}
+    .notice.visible{display:block}.footer{display:flex;align-items:center;justify-content:space-between;gap:18px;color:var(--muted);font-size:12px;padding-bottom:38px}
+    .reset{border:0;background:transparent;color:var(--ink-soft);font-size:12px;text-decoration:underline;cursor:pointer;padding:5px}
+    @media(max-width:850px){.layout{grid-template-columns:1fr}.summary{position:static}.calendar,.summary{padding:23px}}
+    @media(max-width:500px){.shell{padding:0 15px}.topbar .shell{min-height:72px}.mode{font-size:10px;padding:6px 8px}.intro{padding:27px 0 19px}.week{gap:2px}.day{min-height:67px}.day-num{font-size:17px}.calendar,.summary{padding:17px;border-radius:14px}.slot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.legend{gap:9px}.footer{align-items:start;flex-direction:column}}
+    @media(prefers-reduced-motion:no-preference){.day,.slot,.primary{transition:background-color .15s ease,border-color .15s ease}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell">
+      <div class="brand"><div class="logo" aria-hidden="true">CS</div><div><div class="brand-name">Carlos Santibáñez</div><div class="brand-sub">Psicología · Atención online</div></div></div>
+      <div class="mode"><span class="mode-dot"></span> Prototipo de agenda</div>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="intro">
+      <p class="eyebrow">Agenda de atención psicológica</p>
+      <h1>Reserva tu próxima sesión</h1>
+      <p>Elige el día y la hora que más te acomoden para una atención psicológica online. La reserva definitiva requerirá pago anticipado cuando habilitemos el sistema.</p>
+    </section>
+    <div class="layout">
+      <section class="panel calendar" aria-label="Calendario de sesiones">
+        <div class="panel-heading"><div><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar los horarios.</p></div></div>
+        <div class="navigation">
+          <div class="period" id="period" aria-live="polite"></div>
+          <div class="nav-actions"><button type="button" class="arrow" id="prev" aria-label="Semana anterior">‹</button><button type="button" class="arrow" id="next" aria-label="Semana siguiente">›</button></div>
+        </div>
+        <div class="week" id="week" aria-label="Días de la semana"></div>
+        <div class="legend"><span><i class="key yes"></i> Disponible</span><span><i class="key pick"></i> Seleccionado</span><span><i class="key"></i> No disponible</span></div>
+        <hr class="rule">
+        <div class="slots-head">
+          <div><h3 id="day-title">Horarios disponibles</h3><p class="small" id="day-info"></p></div>
+          <span class="capacity" id="capacity"></span>
+        </div>
+        <div id="slots" class="slot-grid" role="group" aria-label="Horarios para reservar"></div>
+        <p class="demo-note">Vista demostrativa: los días y horarios son ilustrativos y no representan disponibilidad real. Ninguna selección constituye una reserva pagada.</p>
+      </section>
+      <aside class="panel summary" aria-label="Resumen de la reserva">
+        <p class="step">Paso 1 de 2 · Elegir horario</p>
+        <div class="sum-title">Tu sesión online</div>
+        <div class="feature"><span class="feature-icon" aria-hidden="true">✓</span><span>Atención psicológica individual, modalidad 100% online.</span></div>
+        <div class="feature"><span class="feature-icon" aria-hidden="true">✓</span><span>Máximo 3 atenciones por día para respetar la disponibilidad profesional.</span></div>
+        <div class="separator"></div>
+        <div class="detail-row"><span>Fecha</span><strong id="chosen-date">Selecciona una fecha</strong></div>
+        <div class="detail-row"><span>Hora (Chile)</span><strong id="chosen-hour">Sin seleccionar</strong></div>
+        <div class="detail-row"><span>Modalidad</span><strong>Videollamada</strong></div>
+        <div class="price-row"><span>Valor particular</span><strong>$30.000</strong></div>
+        <div class="hold" id="hold" hidden></div>
+        <button type="button" class="primary" id="confirm" disabled>Simular confirmación de reserva</button>
+        <button type="button" class="secondary" id="cancel" hidden>Cancelar selección</button>
+        <div class="notice" role="status" id="notice" aria-live="polite"></div>
+        <p class="footnote">Esta versión no procesa pagos, bonos Fonasa ni boletas. La confirmación es una simulación que se guarda únicamente en este navegador.</p>
+      </aside>
+    </div>
+    <footer class="footer"><span>Psicología Carlos Santibáñez · Prototipo de calendario, aún no publicado para pacientes</span><button type="button" class="reset" id="reset">Borrar reservas de prueba</button></footer>
+  </main>
+<script>
+(function(){
+  'use strict';
+  var ZONE='America/Santiago', STORE='psicologia_calendario_demo_v1', MAX_DAILY=3, HOLD_MS=10*60*1000;
+  var DAYS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var SHORT=['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
+  var HOURS={1:['09:00','10:00','11:00','15:00','16:00','17:00'],2:['09:00','10:00','11:00','15:00','16:00','17:00'],3:['09:00','10:00','11:00','15:00','16:00','17:00'],4:['09:00','10:00','11:00','15:00','16:00','17:00'],5:['09:00','10:00','11:00','15:00','16:00','17:00'],6:['10:00','11:00','12:00']};
+  var $=function(id){return document.getElementById(id);};
+  function chileParts(){var p=new Intl.DateTimeFormat('en-US',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());var o={};p.forEach(function(x){if(x.type!=='literal')o[x.type]=x.value;});return o;}
+  function todayISO(){var p=chileParts();return p.year+'-'+p.month+'-'+p.day;}
+  function dateUTC(iso){return new Date(iso+'T12:00:00Z');}
+  function isoOf(d){return d.toISOString().slice(0,10);}
+  function shift(iso,n){var d=dateUTC(iso);d.setUTCDate(d.getUTCDate()+n);return isoOf(d);}
+  function monday(iso){var d=dateUTC(iso).getUTCDay();return shift(iso,-((d+6)%7));}
+  function displayDate(iso,opts){return new Intl.DateTimeFormat('es-CL',Object.assign({timeZone:'UTC'},opts)).format(dateUTC(iso));}
+  function periodLabel(first){var end=shift(first,6);return displayDate(first,{day:'numeric',month:'short'})+' – '+displayDate(end,{day:'numeric',month:'short',year:'numeric'});}
+  function load(){try{var value=JSON.parse(localStorage.getItem(STORE)||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch(e){return {};}}
+  function save(){try{localStorage.setItem(STORE,JSON.stringify(bookings));}catch(e){announce('No se pudo guardar la simulación en este navegador.');}}
+  var bookings=load(), today=todayISO(), chosen=today, weekStart=monday(today), hold=null;
+  function dayBookings(iso){return Array.isArray(bookings[iso])?bookings[iso]:[];}
+  function inPast(iso,time){if(iso<todayISO())return true;if(iso>todayISO())return false;var p=chileParts();return time<=p.hour+':'+p.minute;}
+  function timesFor(iso){return HOURS[dateUTC(iso).getUTCDay()]||[];}
+  function selectableDate(iso){return iso>=todayISO()&&timesFor(iso).length>0;}
+  function announce(msg){$('notice').textContent=msg;$('notice').classList.add('visible');}
+  function clearNotice(){$('notice').textContent='';$('notice').classList.remove('visible');}
+  function cancelHold(){hold=null;$('hold').hidden=true;$('cancel').hidden=true;renderSlots();renderSummary();}
+  function selectDate(iso){if(!selectableDate(iso))return;chosen=iso;hold=null;clearNotice();render();}
+  function selectTime(time){
+    if(inPast(chosen,time)||dayBookings(chosen).length>=MAX_DAILY||dayBookings(chosen).includes(time))return;
+    hold={date:chosen,time:time,expires:Date.now()+HOLD_MS};
+    clearNotice();renderSlots();renderSummary();
+  }
+  function renderWeek(){
+    $('period').textContent=periodLabel(weekStart);
+    $('prev').disabled=weekStart<=monday(todayISO());
+    var w=$('week');w.innerHTML='';
+    for(var i=0;i<7;i++){
+      var iso=shift(weekStart,i),d=dateUTC(iso),button=document.createElement('button');
+      var allowed=selectableDate(iso);
+      button.type='button';button.className='day'+(iso===chosen?' active':'')+(!allowed?' disabled':'');
+      button.disabled=!allowed;button.setAttribute('aria-label',displayDate(iso,{weekday:'long',day:'numeric',month:'long'}));
+      button.setAttribute('aria-pressed',String(iso===chosen));
+      var dayLabel=document.createElement('span');dayLabel.className='day-label';dayLabel.textContent=SHORT[d.getUTCDay()];
+      var num=document.createElement('span');num.className='day-num';num.textContent=String(d.getUTCDate());
+      button.append(dayLabel,num);
+      if(allowed){var dot=document.createElement('span');dot.className='day-indicator';button.appendChild(dot);}
+      (function(x){button.addEventListener('click',function(){selectDate(x);});})(iso);
+      w.appendChild(button);
+    }
+  }
+  function renderSlots(){
+    var available=timesFor(chosen),reserved=dayBookings(chosen),full=reserved.length>=MAX_DAILY;
+    $('day-title').textContent=displayDate(chosen,{weekday:'long',day:'numeric',month:'long'});
+    $('day-info').textContent='Horarios expresados en la zona horaria de Chile';
+    $('capacity').textContent=reserved.length+' de '+MAX_DAILY+' cupos de prueba ocupados';
+    var container=$('slots');container.innerHTML='';
+    if(!available.length){container.className='';var msg=document.createElement('div');msg.className='empty';msg.textContent='No hay horarios configurados para este día en la demostración.';container.appendChild(msg);return;}
+    container.className='slot-grid';
+    available.forEach(function(time){
+      var taken=reserved.includes(time),past=inPast(chosen,time),selected=!!hold&&hold.date===chosen&&hold.time===time;
+      var unavailable=taken||past||full;
+      var b=document.createElement('button');b.type='button';b.className='slot'+(selected?' selected':'')+(unavailable?' unavailable':'');
+      b.disabled=unavailable;b.setAttribute('aria-pressed',String(selected));
+      var t=document.createElement('span');t.className='slot-time';t.textContent=time;
+      var s=document.createElement('span');s.className='slot-state';s.textContent=taken?'Reservado':past?'Horario pasado':full?'Cupos agotados':selected?'Seleccionado':'Disponible';
+      b.append(t,s);b.addEventListener('click',function(){selectTime(time);});container.appendChild(b);
+    });
+  }
+  function renderSummary(){
+    $('chosen-date').textContent=hold?displayDate(hold.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Selecciona una fecha';
+    $('chosen-hour').textContent=hold?hold.time:'Sin seleccionar';
+    $('confirm').disabled=!hold;
+    $('cancel').hidden=!hold;
+    updateHold();
+  }
+  function updateHold(){
+    if(!hold){$('hold').hidden=true;return;}
+    var remain=hold.expires-Date.now();
+    if(remain<=0){hold=null;renderSlots();renderSummary();announce('La retención de prueba expiró. Selecciona un horario nuevamente.');return;}
+    var m=Math.floor(remain/60000),s=Math.floor((remain%60000)/1000);
+    $('hold').hidden=false;
+    $('hold').textContent='Retención temporal de prueba: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'. Solo aplica en este navegador.';
+  }
+  function render(){today=todayISO();renderWeek();renderSlots();renderSummary();}
+  $('prev').addEventListener('click',function(){if(weekStart>monday(todayISO())){weekStart=shift(weekStart,-7);chosen=selectableDate(weekStart)?weekStart:todayISO();hold=null;clearNotice();render();}});
+  $('next').addEventListener('click',function(){weekStart=shift(weekStart,7);chosen=weekStart;hold=null;clearNotice();render();});
+  $('cancel').addEventListener('click',function(){cancelHold();clearNotice();});
+  $('confirm').addEventListener('click',function(){
+    if(!hold)return;
+    if(Date.now()>=hold.expires){updateHold();return;}
+    var iso=hold.date,time=hold.time,existing=dayBookings(iso);
+    if(existing.length>=MAX_DAILY||existing.includes(time)||inPast(iso,time)){cancelHold();announce('Ese horario ya no está disponible en la demostración.');return;}
+    bookings[iso]=existing.concat(time);save();hold=null;render();announce('Reserva simulada para '+displayDate(iso,{day:'numeric',month:'long'})+' a las '+time+'. No se realizó ningún cobro ni se reservó una hora real.');
+  });
+  $('reset').addEventListener('click',function(){bookings={};try{localStorage.removeItem(STORE);}catch(e){}hold=null;render();announce('Se borraron las reservas simuladas de este navegador.');});
+  window.setInterval(function(){if(hold)updateHold();if(todayISO()!==today){weekStart=monday(todayISO());chosen=todayISO();hold=null;render();}},1000);
+  if(!selectableDate(chosen)){for(var i=1;i<8;i++){if(selectableDate(shift(today,i))){chosen=shift(today,i);break;}}}
+  render();
+})();
+</script>
+</body>
+</html>
