@@ -92,3 +92,5 @@ a.brand{text-decoration:none}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 @media(max-width:720px){.room-subtitle{white-space:normal;overflow-wrap:normal;line-height:1.4}.availability th{padding:12px 2px}.sidebar nav{align-items:stretch;justify-content:flex-start}.sidebar.menu-open .sidebar-bottom .profile-name{max-width:180px}}
+
+.batch-summary{flex-wrap:wrap;gap:16px}.batch-summary .btn{max-width:100%}
