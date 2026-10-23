@@ -83,7 +83,7 @@ class CheckoutDemoTests(unittest.TestCase):
         start=datetime(2026,10,24,15,0,tzinfo=timezone.utc)
         subject,body=template("patient","PSI1234567890","psicoterapia",
                               start,start+timedelta(minutes=45))
-        self.assertIn("24/10/2026 12:00",subject)
+        self.assertIn("24/10/2026 · 12:00",subject)
         self.assertIn("12:00–12:45",body)
         self.assertNotIn("15:00",body)
         corrected_subject,corrected_body=template("patient","PSI1234567890",
