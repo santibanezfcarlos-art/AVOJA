@@ -1,8 +1,11 @@
 """Webpay Plus: ensayo aislado en el ambiente oficial de integración.
 
-No captura datos bancarios, no registra pacientes ni genera reservas, boletas
-o cobros reales. Nunca admite credenciales ni endpoints de producción.
+No captura datos bancarios ni genera reservas o boletas. Guarda datos de
+receptor solo si se solicita el historial privado configurado. No genera
+cobros reales. Nunca admite credenciales ni endpoints de producción.
 """
+import sqlite3
+import billing
 import base64
 import hashlib
 import hmac
@@ -154,7 +157,7 @@ def start_demo():
         return _page("Prueba no habilitada", "El ambiente de integración aún no está configurado.", status=503)
     if request.headers.get("Origin") not in ALLOWED_ORIGINS:
         return _page("Origen no permitido", "Inicia la prueba desde nuestra página web.", status=403)
-    if (request.content_length or 0) > 1024:
+    if (request.content_length or 0) > 4096:
         return _page("Solicitud inválida", "Los datos enviados superan el límite.", status=400)
     service = request.form.get("service", "")
     if service not in SERVICES:
@@ -175,7 +178,20 @@ def start_demo():
                 raise ValueError()
         except ValueError:
             return _page("Horario inválido", "Elige una fecha y hora futura válida.", status=400)
+    person = None
+    if request.form.get('billing_required') == '1':
+        if not billing.configured():
+            return _page('Historial no disponible', 'No se inició el pago porque falta activar el guardado privado de datos.', status=503)
+        try:
+            person = billing.receiver(request.form)
+        except ValueError as exc:
+            return _page('Revisa tus datos', str(exc), status=400)
     order = "PSCD" + secrets.token_hex(9).upper()
+    if person:
+        try:
+            billing.prepare(order, service, day, hour, SERVICES[service], person, 'integration')
+        except (RuntimeError, sqlite3.Error, OSError):
+            return _page('No se guardaron los datos', 'No se inició el pago. Intenta más tarde.', status=503)
     session = _signed_session(service, day, hour)
     try:
         result = _send("POST", BASE, {
@@ -187,6 +203,11 @@ def start_demo():
     token = result.get("token")
     if result.get("url") != CHECKOUT_URL or not isinstance(token, str) or not (20 <= len(token) <= 150) or not token.isalnum():
         return _page("Respuesta inesperada", "No se abrió el formulario por seguridad.", status=503)
+    if person:
+        try:
+            billing.bind_token(order, token)
+        except (RuntimeError, sqlite3.Error, OSError):
+            return _page('No se guardó la operación', 'No se abrió el pago. Intenta más tarde.', status=503)
     # No se muestran ni almacenan datos de tarjetas: Transbank los recoge en su propio dominio.
     body = ('<!doctype html><html lang="es"><head><meta charset="utf-8">'
             '<meta name="referrer" content="no-referrer">'
@@ -209,6 +230,10 @@ def return_demo():
     if not _enabled():
         return _page("Prueba no habilitada", "El ambiente de integración no está configurado.", status=503)
     if request.values.get("TBK_TOKEN") is not None:
+        try:
+            billing.cancelled(request.values.get('TBK_TOKEN', ''))
+        except (RuntimeError, sqlite3.Error, OSError):
+            pass  # Remains unconfirmed; never enters pending invoices.
         return _return_site(cancelled=True)
     token = request.values.get("token_ws", "")
     if not isinstance(token, str) or not (20 <= len(token) <= 150) or not token.isalnum():
@@ -223,7 +248,11 @@ def return_demo():
         or result.get("amount") != SERVICES[parsed["service"]]):
         return _page("Resultado no confirmado", "La respuesta no coincide con una compra de prueba válida. No se simuló ninguna reserva.", status=503)
     approved = result.get("status") == "AUTHORIZED" and result.get("response_code") == 0
-    data = {"status": "approved" if approved else "rejected", "service": parsed["service"],
+    try:
+        saved = billing.record_result(order, token, result['amount'], approved, result.get('payment_type_code', ''))
+    except (ValueError, RuntimeError, sqlite3.Error, OSError):
+        return _page('Resultado pendiente de registro', 'La respuesta de Webpay no pudo guardarse. La operación requiere revisión; no repitas el pago.', status=503)
+    data = {"billing_saved": saved, "status": "approved" if approved else "rejected", "service": parsed["service"],
             "date": parsed["date"], "time": parsed["time"],
             "amount": SERVICES[parsed["service"]], "order": order, "iat": int(time.time())}
     return _return_site(receipt=_signed_receipt(data))
@@ -238,3 +267,4 @@ def verify_demo_result():
     if data is None:
         return jsonify(error="Comprobante de prueba inválido o vencido"), 400
     return jsonify(data)
+

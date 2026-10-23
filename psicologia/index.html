@@ -407,6 +407,8 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 /* Marca clicable: conserva diseño y vuelve al inicio. */
 header.site-header a.brand{color:inherit;text-decoration:none}
 header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offset:3px;border-radius:12px}
+
+.billing-fields{border:1px solid #c9dccc;border-radius:10px;padding:14px;margin:12px 0}.billing-fields legend{font-weight:750}.billing-fields label{display:block;font-size:12px;margin:12px 0 5px}.billing-fields input{width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px;font:inherit;color:var(--ink)}.billing-fields input[readonly]{background:#edf3ec}
 </style>
 </head><body>
 
@@ -526,14 +528,18 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
  <h3>Pago simulado · Webpay (demostración)</h3><div id="webpayDemoResult" role="status" aria-live="polite" hidden style="padding:14px;border:1px solid #b9d7c4;border-radius:12px;background:#edf6ee;margin:12px 0"></div>
  <p class="small" id="webpayNotice" role="status" style="margin:8px 0 14px">Conexión con Transbank en preparación. No se realizan cargos.</p>
  <form id="webpayForm" autocomplete="on" method="post" action="https://psicologia-carlos-calendar-api.onrender.com/api/webpay-demo/start"><input type="hidden" id="webpayTestService" name="service" value="psicoterapia"><input type="hidden" id="webpayTestDate" name="date"><input type="hidden" id="webpayTestTime" name="time">
-  <label for="payerName" style="display:block;font-size:12px;margin:8px 0 4px">Nombre completo</label>
-  <input id="payerName" type="text" autocomplete="name" maxlength="120" minlength="2" required placeholder="Nombre y apellido" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
-  <label for="payerEmail" style="display:block;font-size:12px;margin:12px 0 4px">Correo para tu confirmación</label>
-  <input id="payerEmail" type="email" autocomplete="email" maxlength="254" required placeholder="tu@correo.cl" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
-  <fieldset style="border:1px solid #c9dccc;border-radius:10px;padding:12px;margin:12px 0"><legend>Modalidad de compra</legend><label style="display:block"><input type="radio" name="accountMode" checked> Comprar como invitado</label><label style="display:block"><input type="radio" name="accountMode"> Crear una cuenta (próximamente)</label><label style="display:block"><input type="radio" name="accountMode"> Iniciar sesión (próximamente)</label><p class="small">Las cuentas aún no se crean ni se autentican.</p></fieldset>
-<label for="payerRut">RUT del paciente</label><input id="payerRut" required maxlength="12" placeholder="12.345.678-9" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
-<label for="payerPhone">Teléfono</label><input id="payerPhone" type="tel" autocomplete="tel" required maxlength="20" placeholder="+56 9 1234 5678" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
-<p class="small">Boleta electrónica no afecta o exenta de IVA de la EIRL: solo vista previa, no se emite.</p>
+  <fieldset class="billing-fields"><legend>Datos para tu boleta</legend>
+  <p class="small">Completa los datos del receptor. Se guardarán con la compra en un historial privado para preparar la boleta. En esta demostración utiliza datos ficticios.</p>
+  <input type="hidden" name="billing_required" value="1">
+  <label for="payerRut">RUT receptor</label><input id="payerRut" name="billing_rut" required maxlength="12" placeholder="12.345.678-9">
+  <label for="payerName">Nombre completo del receptor</label><input id="payerName" name="billing_name" autocomplete="name" minlength="2" maxlength="120" required placeholder="Nombre y apellido">
+  <label for="payerAddress">Dirección del receptor</label><input id="payerAddress" name="billing_address" autocomplete="street-address" minlength="5" maxlength="200" required placeholder="Calle, número, comuna y ciudad">
+  <label for="payerEmail">E-mail del receptor</label><input id="payerEmail" name="billing_email" type="email" autocomplete="email" maxlength="254" required placeholder="tu@correo.cl">
+  <label for="payerPhone">Teléfono del receptor</label><input id="payerPhone" name="billing_phone" type="tel" autocomplete="tel" minlength="8" maxlength="20" required placeholder="+56 9 1234 5678">
+  <label for="billingDetail">Detalle de la prestación</label><input id="billingDetail" readonly value="Sesión de psicoterapia breve online">
+  <p class="small">Boleta electrónica no afecta o exenta de IVA de la E.I.R.L. El detalle se completa según el servicio seleccionado.</p>
+  </fieldset>
+  <p id="billingReadiness" class="small" role="status">Verificando el guardado de datos…</p>
 <label style="display:block;margin:10px 0"><input required type="checkbox"> Entiendo que esta compra es una simulación sin cobro real.</label>
 <button class="primary" id="webpayPay" type="submit">Simular pago con Webpay Plus</button>
  </form>
@@ -542,6 +548,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 <button type="button" class="primary" id="confirm" disabled style="display:none">Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">Solo demostración: un pago aprobado bloquea la hora únicamente en este navegador. Si se rechaza o cancela, vuelve a estar disponible. Sin cobros, boletas ni reservas reales.</p></aside></div>
 <section id="adminView" class="admin-section" role="tabpanel" aria-labelledby="tabAdmin" hidden>
   <p class="admin-warning"><strong>Panel de administración — demostración local.</strong> Esta pantalla no tiene autenticación. No es segura para uso público y ningún cambio se sincroniza entre dispositivos. Antes de publicar, se deberá implementar acceso privado, base de datos y control de reservas en el servidor.</p>
+  <section class="card" style="margin-bottom:20px"><h2>Historial privado para boletas</h2><p>Compras y datos del receptor listos para copiar al SII. Acceso protegido, filtros, descarga CSV y registro del folio emitido.</p><a class="cta-button" href="https://psicologia-carlos-calendar-api.onrender.com/admin/boletas">Abrir historial de boletas</a></section>
   <div class="admin-view">
     <div class="admin-column">
       <section class="card" aria-label="Horario semanal">
@@ -571,13 +578,13 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
         <p class="helper">Puedes liberar reservas simuladas aquí. En el sistema definitivo esta operación deberá requerir confirmación, autorización y registro.</p>
       </section>
       <section class="card" aria-label="Configuración de demostración">
-        <h2>Estado de la demostración</h2><p class="helper">Los cambios y reservas se guardan solamente en este navegador. No se piden datos de pacientes y no hay pagos reales.</p>
+        <h2>Estado de la demostración</h2><p class="helper">Los cambios y reservas se guardan solamente en este navegador. El historial de boletas se guarda por separado en el servidor y requiere acceso privado. No hay pagos reales.</p>
         <div class="detail"><span>Sesión particular</span><strong>$30.000 CLP</strong></div>
         <div class="detail"><span>Modalidad</span><strong>100 % online</strong></div>
         <div class="detail"><span>Retención temporal</span><strong>10 minutos (local)</strong></div>
         <div class="detail"><span>Zona horaria</span><strong>Chile continental</strong></div>
         <button type="button" id="resetConfig" class="small-btn ghost" style="margin-top:12px">Restablecer disponibilidad inicial</button>
-        <button type="button" id="resetDemo" class="small-btn danger" style="margin-top:9px">Borrar todos los datos de prueba</button>
+        <button type="button" id="resetDemo" class="small-btn danger" style="margin-top:9px">Borrar configuración y reservas locales</button>
       </section>
       <p class="message-admin" id="adminMessage" hidden role="status"></p>
     </div>
@@ -608,12 +615,18 @@ function fitsSlot(h,duration=currentService().minutes){return minutesOf(h)>=540&
 function chooseService(id){
  if(!Object.prototype.hasOwnProperty.call(SERVICE_TYPES,id))return;
  selectedService=id;hold=null;clearMessage();
+ updateBillingDetail();
  $('bookingServiceSelect').value=id;
  chosen=getAvailable(todayISO());start=monday(chosen);
  loadCalendar();
 }
 const CAL_API='https://psicologia-carlos-calendar-api.onrender.com/api/availability';
 const PAYMENT_API=CAL_API.replace('/api/availability','');
+const BILLING_DETAILS={psicoterapia:'Sesión de psicoterapia breve online',empleabilidad:'Asesoría en empleabilidad online',competencias:'Desarrollo de competencias online'};
+function updateBillingDetail(){$('billingDetail').value=BILLING_DETAILS[selectedService]}
+async function billingReady(){try{const r=await fetch(PAYMENT_API+'/api/billing/config',{cache:'no-store'});const c=await r.json();if(!r.ok||!c.ready)throw Error();$('billingReadiness').textContent='Datos protegidos en el historial privado de compras.';return true}catch{$('billingReadiness').textContent='El historial está pendiente de activación. El pago quedará detenido para evitar perder tus datos.';return false}}
+billingReady();
+$('payerRut').addEventListener('input',()=> $('payerRut').setCustomValidity(''));
 const DEMO_PENDING_KEY='psico_webpay_demo_pending_v1';
 let realPaymentsEnabled=false, paymentBusy=false;
 function paymentStatus(text){const el=document.getElementById('webpayNotice');if(el)el.textContent=text;}
@@ -797,10 +810,10 @@ $('confirm').onclick=()=>{
   hold=null;render();message('Ya no está disponible ese horario para este servicio.');return
  }
  reservations[date]=[...r,{time,duration:service.minutes,service:selectedService}];
- save(KEY_BOOK,reservations);hold=null;render();renderAdmin();
+ save(KEY_BOOK,reservations);hold=null;updateBillingDetail();render();renderAdmin();
  message('Reserva simulada de '+service.title+': '+textDate(date,{day:'numeric',month:'long'})+' de '+time+' a '+endsAt(time,service.minutes)+' · $'+service.price.toLocaleString('es-CL')+'. No se ha cobrado ni reservado una atención real.')
  };
-$('clear').onclick=()=>{if(!window.confirm('¿Eliminar todas las reservas simuladas?'))return;reservations={};save(KEY_BOOK,reservations);hold=null;render();renderAdmin();message('Se borraron las reservas de prueba.')};
+$('clear').onclick=()=>{if(!window.confirm('¿Eliminar todas las reservas simuladas?'))return;reservations={};save(KEY_BOOK,reservations);hold=null;updateBillingDetail();render();renderAdmin();message('Se borraron las reservas de prueba.')};
 $('weeklyToggle').onclick=()=>{settings.closedWeekdays= settings.closedWeekdays.includes(weekday)?settings.closedWeekdays.filter(x=>x!==weekday):[...settings.closedWeekdays,weekday];persistSettings('Disponibilidad semanal actualizada para '+WEEK_FULL[weekday]+'.')};
 $('weeklyAddForm').onsubmit=e=>{e.preventDefault();const h=$('weeklyTime').value;if(!goodHour(h))return adminMessage('Solo se admiten inicios entre 09:00 y 19:00, cada 15 minutos.');settings.weekly[weekday]=normalize([...settings.weekly[weekday],h]);persistSettings('Hora '+h+' agregada a '+WEEK_FULL[weekday]+'.')};
 $('adminDate').onchange=()=>{const value=$('adminDate').value;if(/^\d{4}-\d\d-\d\d$/.test(value)){adminDate=value;renderAdmin()}};
@@ -808,7 +821,7 @@ $('closeDate').onclick=()=>{const x=ensureException(adminDate);x.closed=!x.close
 $('specialAddForm').onsubmit=e=>{e.preventDefault();const h=$('specialTime').value;if(!goodHour(h))return adminMessage('Solo se admiten inicios entre 09:00 y 19:00, cada 15 minutos.');const x=ensureException(adminDate);x.slots=normalize([...x.slots,h]);persistSettings('Hora '+h+' agregada exclusivamente el '+adminDate+'.')};
 $('restoreDate').onclick=()=>{delete settings.exceptions[adminDate];persistSettings('Se restauró el horario semanal para '+adminDate+'.')};
 $('resetConfig').onclick=()=>{if(!window.confirm('¿Restaurar el horario semanal y eliminar todas las excepciones de prueba? Las reservas simuladas se conservarán.'))return;settings=clone(DEFAULT);persistSettings('Disponibilidad de prueba restablecida a la configuración inicial.')};
-$('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración y las reservas de esta demostración?'))return;reservations={};settings=clone(DEFAULT);save(KEY_BOOK,reservations);save(KEY_SETTINGS,settings);hold=null;render();renderAdmin();adminMessage('Se borraron todos los datos locales de prueba.')};
+$('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración y las reservas de esta demostración?'))return;reservations={};settings=clone(DEFAULT);save(KEY_BOOK,reservations);save(KEY_SETTINGS,settings);hold=null;updateBillingDetail();render();renderAdmin();adminMessage('Se borraron todos los datos locales de prueba.')};
 
 function pendingDemo(){
  try{
@@ -850,7 +863,7 @@ async function processDemoReturn(){
  chosen=p.date;start=monday(chosen);
  const svc=currentService(),records=bookedRecords(p.date);
  if(records.some(v=>v.demoOrder===r.order)){
-  render();renderAdmin();demoNotice('Prueba ya registrada','Esta operación ya figura en este navegador y no se duplicó la hora.',true);return
+  updateBillingDetail();render();renderAdmin();demoNotice('Prueba ya registrada','Esta operación ya figura en este navegador y no se duplicó la hora.',true);return
  }
  if(calendarState!=='ready'||past(p.date,p.time)||!schedule(p.date).includes(p.time)
     ||!fitsSlot(p.time,svc.minutes)||calendarBusy(p.date,p.time)
@@ -858,13 +871,13 @@ async function processDemoReturn(){
   render();demoNotice('Pago aprobado, sin reserva','No pudo verificarse que la hora continúe disponible. No se confirmó una cita real.',false);return
  }
  reservations[p.date]=[...records,{time:p.time,duration:svc.minutes,service:p.service,demoOrder:r.order}];
- save(KEY_BOOK,reservations);render();renderAdmin();
+ save(KEY_BOOK,reservations);updateBillingDetail();render();renderAdmin();
  demoNotice('¡Reserva de prueba confirmada!',svc.title+' · '+p.date+' · '+p.time+' a '+endsAt(p.time,svc.minutes)+' · $'+svc.price.toLocaleString('es-CL')+' CLP. Solo en este navegador; no es una cita real.',true);
 }
 
-$('webpayForm').addEventListener('submit',(ev)=>{
+$('webpayForm').addEventListener('submit',async (ev)=>{
  ev.preventDefault();
- if(!hold||cannotCheck())return;
+ if(paymentBusy||!hold||cannotCheck())return;
  if(Date.now()>=hold.expires||hold.service!==selectedService||calendarBusy(hold.date,hold.time)||localBusy(hold.date,hold.time)){hold=null;render();paymentStatus('Horario no disponible. Selecciona nuevamente.');return;}
  const field=$('payerRut');field.setCustomValidity('');
  const rut=field.value.replaceAll('.','').replaceAll('-','').toUpperCase();
@@ -873,7 +886,10 @@ $('webpayForm').addEventListener('submit',(ev)=>{
  for(let i=rut.length-2;i>=0;i--){const d=Number(rut[i]);if(!Number.isInteger(d)){field.setCustomValidity('RUT inválido');field.reportValidity();return;}total+=d*m;m=m===7?2:m+1;}
  const mod=11-total%11,check=mod===11?'0':mod===10?'K':String(mod);
  if(check!==rut.slice(-1)){field.setCustomValidity('RUT inválido: revisa el dígito verificador');field.reportValidity();return;}
- // El formulario envía únicamente el tipo de servicio. Ningún dato personal se envía al servidor de pruebas.
+ paymentBusy=true;$('webpayPay').disabled=true;
+ if(!await billingReady()){paymentBusy=false;render();return;}
+ if(!hold||Date.now()>=hold.expires||hold.service!==selectedService){paymentBusy=false;hold=null;render();return;}
+ // Los datos del receptor viajan al servidor propio; no se incluyen en Webpay ni en URLs.
  $('webpayTestService').value=selectedService;
  $('webpayTestDate').value=hold.date;
  $('webpayTestTime').value=hold.time;
@@ -881,7 +897,7 @@ $('webpayForm').addEventListener('submit',(ev)=>{
  paymentBusy=true;
  paymentStatus('Conectando al formulario oficial de Webpay Plus (ambiente de integración)…');
  $('webpayPay').disabled=true;
- ev.currentTarget.submit();
+ $('webpayForm').submit();
 });
 setInterval(()=>{if(hold)tick()},1000);
 setInterval(()=>{if(!document.hidden&&calendarState!=='loading')loadCalendar()},120000);
@@ -890,7 +906,7 @@ if(returning&&(location.search.includes('wp_demo=')||location.search.includes('w
  selectedService=returning.service;$('bookingServiceSelect').value=selectedService;
  chosen=returning.date;start=monday(chosen);
 }
-render();renderAdmin();
+updateBillingDetail();render();renderAdmin();
 loadCalendar().then(processDemoReturn).catch(processDemoReturn);
 checkWebpayConfig();
 })();
