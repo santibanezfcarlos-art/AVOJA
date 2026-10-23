@@ -68,14 +68,23 @@ def _load_busy_intervals():
                 raise CalendarConfigurationError("Redirección de calendario no permitida")
             raw = response.read(MAX_FEED_SIZE + 1)
         if len(raw) > MAX_FEED_SIZE:
+            app.logger.warning("CALENDAR_READ_STAGE: size_exceeded")
             raise ValueError("Calendario demasiado grande")
-        cal = Calendar.from_ical(raw)
+        try:
+            cal = Calendar.from_ical(raw)
+        except ValueError:
+            app.logger.warning("CALENDAR_READ_STAGE: parse_ical_failed")
+            raise
         # Se consultan los próximos 70 días; Google iCal admite recurrencias.
         start = datetime.now(TZ).date() - timedelta(days=1)
         end = start + timedelta(days=72)
         start_dt = datetime(start.year, start.month, start.day, tzinfo=TZ)
         end_dt = datetime(end.year, end.month, end.day, tzinfo=TZ)
-        events = recurring_ical_events.of(cal).between(start_dt, end_dt)
+        try:
+            events = recurring_ical_events.of(cal).between(start_dt, end_dt)
+        except ValueError:
+            app.logger.warning("CALENDAR_READ_STAGE: expand_recurrences_failed")
+            raise
         intervals = []
         for event in events:
             if str(event.get("STATUS", "")).upper() == "CANCELLED":
@@ -84,13 +93,17 @@ def _load_busy_intervals():
                 continue
             if "DTSTART" not in event:
                 continue
-            s = _to_local(event.decoded("DTSTART"))
-            if "DTEND" in event:
-                e = _to_local(event.decoded("DTEND"))
-            elif "DURATION" in event:
-                e = s + event.decoded("DURATION")
-            else:
-                e = s + (timedelta(days=1) if isinstance(event.decoded("DTSTART"), date) and not isinstance(event.decoded("DTSTART"), datetime) else timedelta(hours=1))
+            try:
+                s = _to_local(event.decoded("DTSTART"))
+                if "DTEND" in event:
+                    e = _to_local(event.decoded("DTEND"))
+                elif "DURATION" in event:
+                    e = s + event.decoded("DURATION")
+                else:
+                    e = s + (timedelta(days=1) if isinstance(event.decoded("DTSTART"), date) and not isinstance(event.decoded("DTSTART"), datetime) else timedelta(hours=1))
+            except ValueError:
+                app.logger.warning("CALENDAR_READ_STAGE: event_date_failed")
+                raise
             if e > s:
                 intervals.append((s, e))
         _feed_cache.update(at=now, events=intervals)
