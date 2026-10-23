@@ -150,6 +150,8 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
             data=json.dumps(payload).encode("utf-8"),
             headers={"Authorization": "Bearer " + os.environ["PSICOLOGIA_PILOT_RESEND_API_KEY"],
                      "Content-Type": "application/json",
+                     "Accept": "application/json",
+                     "User-Agent": "pscsantibanez-reservas/1.0",
                      "Idempotency-Key": "psc-demo-" + order + "-" + role})
         try:
             with urlopen(request, timeout=12) as response:
@@ -179,7 +181,17 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
                 else:
                     provider_code = "unexpected_error_format"
             except (ValueError, OSError):
-                provider_code = "unparseable_error"
+                # Respuestas HTML/texto (p.ej., pasarela de red) se clasifican
+                # sin registrar el cuerpo, que podría incluir datos privados.
+                kind=exc.headers.get("Content-Type", "").lower()
+                if "text/html" in kind:
+                    provider_code="upstream_html_block"
+                elif "text/plain" in kind:
+                    provider_code="upstream_text_block"
+                elif "application/json" in kind:
+                    provider_code="malformed_json_response"
+                else:
+                    provider_code="unknown_403_response"
             raise NotificationError("Resend rechazó el envío",
                 http_status=exc.code,provider_code=provider_code) from None
         except (URLError, OSError, ValueError, TimeoutError) as exc:
