@@ -1,7 +1,7 @@
 """Tests puros de agenda; no usan base de datos, bancos ni calendario reales."""
 import sys
 import unittest
-from datetime import datetime, timedelta, time
+from datetime import date, datetime, timedelta, time
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -41,14 +41,14 @@ class BookingTests(unittest.TestCase):
             {"id": t0, "starts_at": time(16,0), "ends_at": time(17,0)},
         ]
         c=FakeConnection(rows)
-        self.assertTrue(_slot_taken(c, self.future(), time(19,0)))
-        self.assertFalse(_slot_taken(c, self.future(), time(19,0),exclude_id=t0))
+        self.assertTrue(_slot_taken(c, date.fromisoformat(self.future()), time(19,0)))
+        self.assertFalse(_slot_taken(c, date.fromisoformat(self.future()), time(19,0),exclude_id=t0))
 
     def test_overlapping_slots_not_allowed(self):
         c=FakeConnection([{"id":uuid4(),"starts_at":time(10,0),"ends_at":time(11,0)}])
-        self.assertTrue(_slot_taken(c,self.future(),time(10,45)))
-        self.assertTrue(_slot_taken(c,self.future(),time(9,15)))
-        self.assertFalse(_slot_taken(c,self.future(),time(11,0)))
+        self.assertTrue(_slot_taken(c,date.fromisoformat(self.future()),time(10,45)))
+        self.assertTrue(_slot_taken(c,date.fromisoformat(self.future()),time(9,15)))
+        self.assertFalse(_slot_taken(c,date.fromisoformat(self.future()),time(11,0)))
 
     def test_payment_feature_disabled_by_default(self):
         from unittest.mock import patch
