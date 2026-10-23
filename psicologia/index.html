@@ -160,7 +160,39 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 @media(max-width:1040px){.offer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.offer-grid{grid-template-columns:1fr}.offer-card{padding:23px;min-height:0}.offer-copy{flex:0 0 auto}.offer-card-top{margin-bottom:17px}}
 
-.booking-service-picker{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#e7f1e9;border:1px solid #d1e3d6;border-radius:17px;padding:18px 20px;margin:13px 0 19px}.booking-service-picker label{font-size:13px;font-weight:830;color:#285a42;display:block;margin-bottom:4px}.booking-service-picker p{font-size:12px;color:#667e6d;margin:0;line-height:1.5}.booking-service-picker select{background:#fff;border:1px solid #bbd5c3;border-radius:11px;padding:12px 14px;font:inherit;font-size:14px;font-weight:700;color:#214c38;max-width:100%;min-width:270px;cursor:pointer}.booking-service-picker select:focus-visible{outline:3px solid #7ab090;outline-offset:2px}.booking-service-picker .service-picker-control{flex:0 1 385px}@media(max-width:680px){.booking-service-picker{flex-direction:column;align-items:stretch}.booking-service-picker .service-picker-control{flex:auto}.booking-service-picker select{min-width:0;width:100%}}</style>
+.booking-service-picker{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#e7f1e9;border:1px solid #d1e3d6;border-radius:17px;padding:18px 20px;margin:13px 0 19px}.booking-service-picker label{font-size:13px;font-weight:830;color:#285a42;display:block;margin-bottom:4px}.booking-service-picker p{font-size:12px;color:#667e6d;margin:0;line-height:1.5}.booking-service-picker select{background:#fff;border:1px solid #bbd5c3;border-radius:11px;padding:12px 14px;font:inherit;font-size:14px;font-weight:700;color:#214c38;max-width:100%;min-width:270px;cursor:pointer}.booking-service-picker select:focus-visible{outline:3px solid #7ab090;outline-offset:2px}.booking-service-picker .service-picker-control{flex:0 1 385px}@media(max-width:680px){.booking-service-picker{flex-direction:column;align-items:stretch}.booking-service-picker .service-picker-control{flex:auto}.booking-service-picker select{min-width:0;width:100%}}
+/* Contenido detallado de los tres servicios */
+.service-detail-area{margin-top:37px}
+.service-detail-heading{display:flex;align-items:end;justify-content:space-between;gap:25px;margin-bottom:20px}
+.service-detail-heading h3{font-size:clamp(24px,2.7vw,31px);line-height:1.25;letter-spacing:-.9px;color:#1b4434;margin:0 0 7px}
+.service-detail-heading p{font-size:14px;color:#677f71;line-height:1.7;max-width:680px;margin:0}
+.service-detail-eyebrow{color:#438163;text-transform:uppercase;font-size:11px;letter-spacing:1.5px;font-weight:850;margin:0 0 8px}
+.service-detail-stack{display:grid;gap:17px}
+.service-detail-panel{border:1px solid #dce9df;border-radius:22px;background:#fff;padding:26px 29px 27px;scroll-margin-top:105px;box-shadow:0 8px 24px rgba(25,69,44,.03)}
+.service-detail-panel.clinical{background:linear-gradient(125deg,#e5f1e8,#f9fcf9 80%);border-color:#cfe1d3}
+.service-detail-lead{display:flex;gap:16px;align-items:flex-start;margin-bottom:20px}
+.service-detail-number{width:43px;height:43px;min-width:43px;border-radius:13px;background:#eaf4ec;color:#3e7655;display:grid;place-items:center;font-size:13px;font-weight:850}
+.service-detail-panel.clinical .service-detail-number{background:#cfdfd2;color:#22553b}
+.service-detail-text{flex:1}
+.service-detail-text h4{font-size:21px;color:#204936;line-height:1.25;letter-spacing:-.55px;margin:0 0 8px}
+.service-detail-text p{font-size:14px;color:#607a6a;line-height:1.7;margin:0;max-width:930px}
+.service-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.service-detail-item{padding:17px 18px;border:1px solid #e4ede5;border-radius:14px;background:#f9fcf9}
+.service-detail-panel.clinical .service-detail-item{background:#fff;border-color:#dce9df}
+.service-detail-item h5{font-size:14px;line-height:1.4;color:#1d4b35;margin:0 0 7px;font-weight:800}
+.service-detail-item h5:before{content:"✓";display:inline-grid;place-items:center;width:21px;height:21px;margin-right:8px;border-radius:6px;background:#e4f1e6;color:#347653;font-size:11px;vertical-align:1px}
+.service-detail-item p{font-size:13px;line-height:1.65;color:#6a8171;margin:0}
+.service-detail-foot{display:flex;justify-content:space-between;align-items:center;gap:20px;padding-top:18px;margin-top:18px;border-top:1px solid #e0eae2}
+.service-detail-foot span{font-size:12px;color:#6c8272;line-height:1.6}
+.service-detail-foot a{font-size:13px;font-weight:800;color:#256546;text-decoration:none;white-space:nowrap}
+.service-detail-foot a:hover{text-decoration:underline;text-underline-offset:4px}
+.offer-more{display:block;text-align:center;text-decoration:none;color:#d9efdc;font-size:12px;font-weight:750;margin-top:12px}
+.offer-more:hover{text-decoration:underline;text-underline-offset:3px}
+.offer-card:not(.offer-featured) .offer-more{color:#3c7654}
+@media(max-width:1050px){.service-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.service-detail-panel{padding:20px}.service-detail-grid{grid-template-columns:1fr}.service-detail-heading{display:block}.service-detail-lead{gap:12px}.service-detail-text h4{font-size:19px}.service-detail-item{padding:15px}.service-detail-foot{align-items:flex-start;flex-direction:column;gap:9px}}
+
+</style>
 </head><body>
 
 <header class="site-header"><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez</strong><small>Psicología · Atención online</small></div></div>
@@ -194,7 +226,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
    <p class="offer-copy">Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y trabajar objetivos terapéuticos concretos.</p>
    <div class="offer-facts"><span>45 minutos</span><span>Adultos</span><span>Online</span></div>
    <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
-    <a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad de prueba para psicoterapia breve">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+    <a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad de prueba para psicoterapia breve">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-psicoterapia">Qué incluye este servicio ↓</a></div>
   </article>
   <article class="offer-card">
    <div class="offer-card-top"><span class="offer-type">Orientación laboral</span><span class="offer-icon" aria-hidden="true">↗</span></div>
@@ -202,7 +234,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
    <p class="offer-copy">Revisa tu perfil laboral, mejora tu currículum, prepara entrevistas y fortalece tu estrategia de búsqueda de trabajo.</p>
    <div class="offer-facts"><span>90 minutos</span><span>Personalizada</span><span>Online</span></div>
    <div class="offer-bottom"><div class="offer-caption">Valor de la asesoría</div><div class="offer-values"><strong class="offer-current">$45.000 <small>CLP</small></strong><span class="offer-was">$60.000</span></div>
-    <a class="offer-cta" href="#agenda" data-service="empleabilidad" aria-label="Ver agenda de prueba para asesoría en empleabilidad">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+    <a class="offer-cta" href="#agenda" data-service="empleabilidad" aria-label="Ver agenda de prueba para asesoría en empleabilidad">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-empleabilidad">Qué incluye este servicio ↓</a></div>
   </article>
   <article class="offer-card">
    <div class="offer-card-top"><span class="offer-type">Desarrollo personal y laboral</span><span class="offer-icon" aria-hidden="true">◇</span></div>
@@ -210,8 +242,53 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
    <p class="offer-copy">Fortalece la comunicación, el autoconocimiento, la organización y las habilidades necesarias para alcanzar objetivos personales y profesionales.</p>
    <div class="offer-facts"><span>45 minutos</span><span>Objetivos claros</span><span>Online</span></div>
    <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
-    <a class="offer-cta" href="#agenda" data-service="competencias" aria-label="Ver agenda de prueba para desarrollo de competencias">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+    <a class="offer-cta" href="#agenda" data-service="competencias" aria-label="Ver agenda de prueba para desarrollo de competencias">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-competencias">Qué incluye este servicio ↓</a></div>
   </article>
+ </div>
+
+ <div class="service-detail-area" aria-labelledby="detalleServiciosTitulo">
+  <div class="service-detail-heading">
+   <div>
+    <p class="service-detail-eyebrow">Conoce los servicios</p>
+    <h3 id="detalleServiciosTitulo">¿Qué podemos trabajar en cada atención?</h3>
+    <p>Más que una hora en la agenda, cada servicio propone herramientas y objetivos concretos, ajustados a tus necesidades.</p>
+   </div>
+  </div>
+  <div class="service-detail-stack">
+   <article class="service-detail-panel clinical" id="detalle-psicoterapia" aria-labelledby="tituloDetallePsicoterapia">
+    <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">01</div><div class="service-detail-text"><h4 id="tituloDetallePsicoterapia">Psicoterapia breve: trabajar con foco y colaboración</h4><p>Un proceso clínico orientado a comprender el motivo de consulta, identificar recursos y construir alternativas. La duración total del proceso se acuerda y revisa de acuerdo con tus necesidades.</p></div></div>
+    <div class="service-detail-grid">
+     <div class="service-detail-item"><h5>Definición de objetivos</h5><p>Identificamos qué te gustaría cambiar y qué avances serían importantes para ti.</p></div>
+     <div class="service-detail-item"><h5>Emociones y pensamientos</h5><p>Trabajamos la ansiedad, el estrés y las respuestas emocionales que generan malestar.</p></div>
+     <div class="service-detail-item"><h5>Herramientas para el cambio</h5><p>Exploramos recursos personales, soluciones posibles y estrategias aplicables a tu vida cotidiana.</p></div>
+    </div>
+    <div class="service-detail-foot"><span>Atención psicológica individual para personas adultas · 45 minutos</span><a href="#agenda" data-service="psicoterapia">Ver disponibilidad →</a></div>
+   </article>
+   <article class="service-detail-panel" id="detalle-empleabilidad" aria-labelledby="tituloDetalleEmpleabilidad">
+    <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">02</div><div class="service-detail-text"><h4 id="tituloDetalleEmpleabilidad">Asesoría en empleabilidad: prepararte para nuevas oportunidades</h4><p>Revisamos tu perfil y las exigencias de los cargos a los que quieres postular, con orientación práctica para comunicar mejor tu experiencia y enfrentar procesos de selección.</p></div></div>
+    <div class="service-detail-grid">
+     <div class="service-detail-item"><h5>Currículum y perfil profesional</h5><p>Revisión de estructura, logros, fortalezas y presentación de tu experiencia laboral.</p></div>
+     <div class="service-detail-item"><h5>Búsqueda y ofertas de empleo</h5><p>Identificación de vacantes pertinentes y lectura de los requisitos de cada cargo.</p></div>
+     <div class="service-detail-item"><h5>Cartas de presentación</h5><p>Orientación para redactar postulaciones y explicar con claridad tu motivación y aporte.</p></div>
+     <div class="service-detail-item"><h5>Entrevistas por competencias</h5><p>Preparación y práctica de entrevistas utilizando ejemplos conductuales y la metodología STAR.</p></div>
+     <div class="service-detail-item"><h5>Pruebas psicolaborales</h5><p>Orientación sobre los tipos de evaluaciones y cómo enfrentarlas con tranquilidad y autenticidad.</p></div>
+     <div class="service-detail-item"><h5>Plan de postulación</h5><p>Definición de próximos pasos, aspectos por mejorar y estrategias para entrevistas futuras.</p></div>
+    </div>
+    <div class="service-detail-foot"><span>Asesoría personalizada · 90 minutos · El trabajo se ajusta a tus objetivos</span><a href="#agenda" data-service="empleabilidad">Ver disponibilidad →</a></div>
+   </article>
+   <article class="service-detail-panel" id="detalle-competencias" aria-labelledby="tituloDetalleCompetencias">
+    <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">03</div><div class="service-detail-text"><h4 id="tituloDetalleCompetencias">Desarrollo de competencias: fortalecer habilidades para tu trabajo</h4><p>Las competencias pueden entrenarse mediante reflexión, ejercicios y aplicación a situaciones reales. Estas son algunas de las más trabajadas en contextos personales y laborales.</p></div></div>
+    <div class="service-detail-grid">
+     <div class="service-detail-item"><h5>Comunicación efectiva</h5><p>Expresar ideas con claridad, escuchar activamente y abordar conversaciones difíciles.</p></div>
+     <div class="service-detail-item"><h5>Trabajo en equipo</h5><p>Colaborar, coordinar tareas y construir relaciones de trabajo respetuosas.</p></div>
+     <div class="service-detail-item"><h5>Liderazgo</h5><p>Orientar, tomar decisiones y movilizar a otros hacia objetivos compartidos.</p></div>
+     <div class="service-detail-item"><h5>Planificación y organización</h5><p>Definir prioridades, administrar tiempos y dar seguimiento a los compromisos.</p></div>
+     <div class="service-detail-item"><h5>Adaptabilidad</h5><p>Responder de manera flexible ante cambios, nuevas exigencias o escenarios inciertos.</p></div>
+     <div class="service-detail-item"><h5>Manejo de contingencias</h5><p>Analizar imprevistos, resolver problemas y actuar con criterio bajo presión.</p></div>
+    </div>
+    <div class="service-detail-foot"><span>Acompañamiento individual · 45 minutos · Competencias definidas según necesidades</span><a href="#agenda" data-service="competencias">Ver disponibilidad →</a></div>
+   </article>
+  </div>
  </div>
  <p class="offer-note">Agenda de demostración: cada servicio muestra su duración y valor, pero todavía no se aceptan pagos ni se confirman reservas reales.</p>
 </section>
