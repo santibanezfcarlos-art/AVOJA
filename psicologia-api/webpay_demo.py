@@ -165,8 +165,8 @@ def start_demo():
         return _page("Servicio no válido", "Selecciona un servicio disponible.", status=400)
     day = request.form.get("date", "")
     hour = request.form.get("time", "")
-    if bool(day) != bool(hour):
-        return _page("Horario inválido", "Selecciona nuevamente la fecha y la hora.", status=400)
+    if not day or not hour:
+        return _page("Horario obligatorio", "Selecciona una fecha y una hora antes de pagar.", status=400)
     if day and hour:
         try:
             chosen_day = date.fromisoformat(day)
