@@ -141,6 +141,13 @@ def availability():
     except (TypeError, ValueError):
         return jsonify(error="Formato de fecha no válido"), 400
 
+    try:
+        duration = int(request.args.get("duration", "60"))
+    except (TypeError, ValueError):
+        return jsonify(error="Duración inválida"), 400
+    if duration not in (45, 60, 90):
+        return jsonify(error="Duración no permitida"), 400
+
     today = datetime.now(TZ).date()
     if first < today - timedelta(days=1) or last < first or last > today + timedelta(days=60) or (last - first).days > 21:
         return jsonify(error="Rango de fechas no permitido"), 400
@@ -149,29 +156,29 @@ def availability():
         intervals = _load_busy_intervals()
     except CalendarConfigurationError:
         app.logger.warning("GOOGLE_CALENDAR_ICS_URL no tiene un formato iCal válido. No se registran detalles.")
-        return jsonify(status="not_configured", reason="calendar_url_invalid", configured=False, blocked={}, duration_minutes=SLOT_DURATION_MINUTES)
+        return jsonify(status="not_configured", reason="calendar_url_invalid", configured=False, blocked={}, duration_minutes=duration)
     except Exception as exc:
         # No registrar URL privada ni detalles de eventos.
         app.logger.error("Fallo al procesar la agenda iCal: %s", type(exc).__name__)
         return jsonify(error="No fue posible verificar disponibilidad. Reintentar más tarde."), 503
 
     if intervals is None:
-        return jsonify(status="not_configured", reason="calendar_url_missing", configured=False, blocked={}, duration_minutes=SLOT_DURATION_MINUTES)
+        return jsonify(status="not_configured", reason="calendar_url_missing", configured=False, blocked={}, duration_minutes=duration)
 
     blocked = {}
     day = first
     while day <= last:
         items = []
-        for minute in range(OPEN_MINUTES, CLOSE_MINUTES - SLOT_DURATION_MINUTES + 1, 15):
+        for minute in range(OPEN_MINUTES, CLOSE_MINUTES - duration + 1, 15):
             start = datetime(day.year, day.month, day.day, minute // 60, minute % 60, tzinfo=TZ)
-            end = start + timedelta(minutes=SLOT_DURATION_MINUTES)
+            end = start + timedelta(minutes=duration)
             if any(start < ev_end and ev_start < end for ev_start, ev_end in intervals):
                 items.append(start.strftime("%H:%M"))
         blocked[day.isoformat()] = items
         day += timedelta(days=1)
 
     return jsonify(status="ok", configured=True, blocked=blocked,
-                   duration_minutes=SLOT_DURATION_MINUTES, timezone="America/Santiago")
+                   duration_minutes=duration, timezone="America/Santiago")
 
 
 def _startup_calendar_diagnostic():
