@@ -70,6 +70,66 @@ class BookingDatabaseTests(unittest.TestCase):
         self.assertEqual(self.hold("10:45").status_code,409)
         self.assertEqual(self.hold("11:00").status_code,201)
 
+    def test_webpay_authorizes_and_confirms_only_once(self):
+        import uuid
+        class FakeGateway:
+            mode="integration"
+            token="A"*60
+            commits=0
+            def create_for_existing_hold(self,*,buy_order,session_id):
+                self.order=buy_order
+                self.session=session_id
+                return {"token":self.token,
+                        "url":"https://webpay3gint.transbank.cl/webpayserver/initTransaction"}
+            def commit(self,token):
+                self.commits+=1
+                assert token==self.token
+                return {"status":"AUTHORIZED","response_code":0,"amount":30000,
+                        "buy_order":self.order,"session_id":self.session}
+        fake=FakeGateway()
+        with patch("booking_api.WebpayGateway",return_value=fake):
+            hold=self.hold("09:00")
+            self.assertEqual(hold.status_code,201,hold.get_json())
+            with self.app.test_client() as client:
+                start=client.post("/api/bookings/checkout",json={"hold_id":hold.get_json()["hold_id"]})
+                self.assertEqual(start.status_code,200,start.get_json())
+                self.assertEqual(start.get_json()["token_ws"],fake.token)
+                first=client.get("/api/webpay/return?token_ws="+fake.token)
+                second=client.get("/api/webpay/return?token_ws="+fake.token)
+                self.assertEqual(first.status_code,200)
+                self.assertIn(b"hora confirmada",first.data)
+                self.assertIn(b"hora confirmada",second.data)
+            self.assertEqual(fake.commits,1)
+            with psycopg.connect(self.dsn) as c:
+                booked=c.execute("SELECT status FROM psychology_booking_holds").fetchone()[0]
+                pay=c.execute("SELECT state,amount_clp FROM psychology_payment_attempts").fetchone()
+            self.assertEqual(booked,"CONFIRMED")
+            self.assertEqual(pay,("APPROVED",30000))
+
+    def test_webpay_abort_does_not_commit(self):
+        class FakeGateway:
+            mode="integration"
+            token="B"*60
+            commits=0
+            def create_for_existing_hold(self,*,buy_order,session_id):
+                return {"token":self.token,
+                        "url":"https://webpay3gint.transbank.cl/webpayserver/initTransaction"}
+            def commit(self,token):
+                self.commits+=1
+                raise AssertionError("No se debe realizar commit con TBK_TOKEN")
+        fake=FakeGateway()
+        with patch("booking_api.WebpayGateway",return_value=fake):
+            hold=self.hold("10:00")
+            with self.app.test_client() as client:
+                pay=client.post("/api/bookings/checkout",json={"hold_id":hold.get_json()["hold_id"]})
+                self.assertEqual(pay.status_code,200)
+                ret=client.post("/api/webpay/return",data={"TBK_TOKEN":fake.token,"token_ws":fake.token})
+                self.assertEqual(ret.status_code,200)
+            self.assertEqual(fake.commits,0)
+            with psycopg.connect(self.dsn) as c:
+                state=c.execute("SELECT state FROM psychology_payment_attempts").fetchone()[0]
+            self.assertEqual(state,"CANCELLED")
+
     def test_no_payment_without_explicit_flag(self):
         with patch.dict(os.environ,{"PSICOLOGIA_BOOKINGS_ENABLED":"false"}):
             self.assertEqual(self.hold("10:00").status_code,503)
