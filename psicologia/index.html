@@ -120,12 +120,52 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 @media(max-width:840px){.training-highlight,.training-columns{grid-template-columns:1fr}}
 @media(max-width:510px){.training-major,.training-panel{padding:21px}.training-list li{display:block}.training-list li small{display:block;margin-top:5px}.training-footer{align-items:flex-start;flex-direction:column}.training-major h3{font-size:19px}}
 
+
+/* Tarjetas de servicios */
+.offer-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:17px}
+.offer-card{display:flex;flex-direction:column;position:relative;overflow:hidden;border:1px solid #dce7de;background:#fff;border-radius:23px;padding:27px;min-height:453px;box-shadow:0 12px 28px rgba(29,69,48,.05);isolation:isolate}
+.offer-card:before{content:"";position:absolute;right:-92px;top:-96px;width:170px;height:170px;border:25px solid #eaf2ea;border-radius:50%;z-index:-1}
+.offer-featured{background:#1b4938;border-color:#1b4938;box-shadow:0 18px 35px rgba(24,68,45,.13)}
+.offer-featured:before{border-color:#3f7157}
+.offer-card-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:25px}
+.offer-type{font-size:11px;letter-spacing:1.25px;font-weight:850;text-transform:uppercase;color:#588769}
+.offer-featured .offer-type{color:#cce6d5}
+.offer-icon{width:50px;height:50px;border-radius:15px;background:#e7f2ea;color:#2c6d4d;font-size:25px;display:grid;place-items:center}
+.offer-featured .offer-icon{background:#396c52;color:#fff}
+.offer-card h3{font-size:22px;line-height:1.2;letter-spacing:-.5px;color:#204a36;margin:0 0 13px}
+.offer-featured h3{color:#fff}
+.offer-copy{font-size:14px;line-height:1.72;color:#687f71;flex:1;margin:0 0 19px}
+.offer-featured .offer-copy{color:#dbece2}
+.offer-facts{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:21px}
+.offer-facts span{font-size:12px;font-weight:700;border-radius:50px;padding:7px 11px;background:#eef5ef;border:1px solid #deeadf;color:#4d715b}
+.offer-featured .offer-facts span{color:#e9f7ed;background:#2b5c45;border-color:#47745b}
+.offer-bottom{border-top:1px solid #e4ece5;margin-top:auto;padding-top:19px}
+.offer-featured .offer-bottom{border-color:#46715b}
+.offer-caption{font-size:11px;text-transform:uppercase;letter-spacing:.7px;font-weight:800;color:#75877c}
+.offer-featured .offer-caption{color:#bfdcc8}
+.offer-values{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;margin:6px 0 18px}
+.offer-current{font-size:28px;letter-spacing:-1px;font-weight:850;color:#214c39}
+.offer-current small{font-size:12px;letter-spacing:0}
+.offer-was{color:#86998a;font-size:14px;text-decoration:line-through}
+.offer-featured .offer-current{color:#fff}
+.offer-featured .offer-was{color:#bcd3c4}
+.offer-cta{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#1c4b36;color:#fff;font-size:13px;font-weight:800;text-decoration:none;padding:14px 16px;border-radius:12px}
+.offer-cta:hover{background:#2d7150}
+.offer-featured .offer-cta{background:#edf7ef;color:#16402d}
+.offer-featured .offer-cta:hover{background:#deeee1}
+.offer-cta span{font-size:19px;line-height:1}
+.offer-note{font-size:12px;line-height:1.65;color:#738679;margin:20px 0 0;max-width:900px}
+.offer-subtitle{display:flex;gap:10px;align-items:center;margin:0 0 25px}
+.offer-subtitle span{display:inline-flex;border:1px solid #dce9de;background:#ebf4ec;border-radius:50px;padding:8px 12px;color:#396d50;font-size:12px;font-weight:800}
+@media(max-width:1040px){.offer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.offer-grid{grid-template-columns:1fr}.offer-card{padding:23px;min-height:0}.offer-copy{flex:0 0 auto}.offer-card-top{margin-bottom:17px}}
+
 </style>
 </head><body>
 
 <header class="site-header"><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez</strong><small>Psicología · Atención online</small></div></div>
-<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#servicios" data-nav="servicios" class="link-hide">Áreas de atención</a><a href="#enfoque" data-nav="enfoque" class="link-hide">Mi enfoque</a><a href="#formacion" data-nav="formacion" class="link-hide">Formación</a><a href="#proceso" data-nav="proceso" class="link-hide">Cómo funciona</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
-<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#servicios">Áreas de atención</a><a href="#enfoque">Mi enfoque</a><a href="#formacion">Formación</a><a href="#agenda">Reservar hora →</a></nav></header>
+<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#servicios" data-nav="servicios" class="link-hide">Áreas de atención</a><a href="#prestaciones" data-nav="prestaciones" class="link-hide">Servicios</a><a href="#enfoque" data-nav="enfoque" class="link-hide">Mi enfoque</a><a href="#formacion" data-nav="formacion" class="link-hide">Formación</a><a href="#proceso" data-nav="proceso" class="link-hide">Cómo funciona</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
+<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#servicios">Áreas de atención</a><a href="#prestaciones">Servicios</a><a href="#enfoque">Mi enfoque</a><a href="#formacion">Formación</a><a href="#agenda">Reservar hora →</a></nav></header>
 
 <main class="site-main">
 <div id="homePage">
@@ -156,6 +196,42 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
   <article class="service-card"><div class="service-icon" aria-hidden="true">⇄</div><h3>Bloqueo y toma de decisiones</h3><p>Ordenar problemas, explorar alternativas y avanzar ante situaciones que parecen difíciles de resolver.</p></article>
  </div>
  <p class="services-help">No necesitas tener un diagnóstico para consultar. En la primera sesión podemos conversar sobre lo que te ocurre y definir juntos los objetivos del proceso.</p>
+</section>
+
+<section class="section" id="prestaciones" aria-labelledby="prestacionesTitulo">
+ <div class="section-heading" style="max-width:800px">
+  <div class="eyebrow">Servicios y valores</div>
+  <h2 id="prestacionesTitulo">Un espacio para tu bienestar y desarrollo.</h2>
+  <p>Además de la psicoterapia, puedes encontrar acompañamiento para tu desarrollo personal y laboral. Conoce cada servicio, su duración y valor.</p>
+ </div>
+ <div class="offer-subtitle"><span>Atención 100% online</span><span>Valores claros</span></div>
+ <div class="offer-grid">
+  <article class="offer-card offer-featured">
+   <div class="offer-card-top"><span class="offer-type">Atención clínica</span><span class="offer-icon" aria-hidden="true">✳</span></div>
+   <h3>Sesión de Psicoterapia Breve</h3>
+   <p class="offer-copy">Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y trabajar objetivos terapéuticos concretos.</p>
+   <div class="offer-facts"><span>45 minutos</span><span>Adultos</span><span>Online</span></div>
+   <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
+    <a class="offer-cta" href="#agenda" aria-label="Ver disponibilidad de prueba para psicoterapia breve">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+  </article>
+  <article class="offer-card">
+   <div class="offer-card-top"><span class="offer-type">Orientación laboral</span><span class="offer-icon" aria-hidden="true">↗</span></div>
+   <h3>Asesoría en Empleabilidad</h3>
+   <p class="offer-copy">Revisa tu perfil laboral, mejora tu currículum, prepara entrevistas y fortalece tu estrategia de búsqueda de trabajo.</p>
+   <div class="offer-facts"><span>90 minutos</span><span>Personalizada</span><span>Online</span></div>
+   <div class="offer-bottom"><div class="offer-caption">Valor de la asesoría</div><div class="offer-values"><strong class="offer-current">$45.000 <small>CLP</small></strong><span class="offer-was">$60.000</span></div>
+    <a class="offer-cta" href="#agenda" aria-label="Ver agenda de prueba para asesoría en empleabilidad">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+  </article>
+  <article class="offer-card">
+   <div class="offer-card-top"><span class="offer-type">Desarrollo personal y laboral</span><span class="offer-icon" aria-hidden="true">◇</span></div>
+   <h3>Desarrollo de Competencias</h3>
+   <p class="offer-copy">Fortalece la comunicación, el autoconocimiento, la organización y las habilidades necesarias para alcanzar objetivos personales y profesionales.</p>
+   <div class="offer-facts"><span>45 minutos</span><span>Objetivos claros</span><span>Online</span></div>
+   <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
+    <a class="offer-cta" href="#agenda" aria-label="Ver agenda de prueba para desarrollo de competencias">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+  </article>
+ </div>
+ <p class="offer-note">La agenda actualmente está en demostración: los botones abren el calendario de prueba, que todavía no distingue entre servicios de distinta duración ni acepta pagos reales. Esta funcionalidad se habilitará con el sistema definitivo de reservas.</p>
 </section>
 <section class="section" id="enfoque"><div class="about-grid"><div class="about-panel"><div class="quote-mark" aria-hidden="true">“</div><p class="quote">La terapia puede ser un espacio para mirar con claridad lo que ocurre y construir nuevas formas de afrontarlo.</p><div class="about-sign">Carlos Santibáñez · Psicólogo</div></div>
  <div class="about-text"><div class="eyebrow">Mi modelo de psicoterapia</div><h2>Psicoterapia breve centrada en soluciones y objetivos concretos.</h2><p>Trabajo con personas adultas desde un enfoque de <strong>Psicoterapia Breve Centrada en Soluciones</strong>. Nos enfocamos en comprender lo que está ocurriendo, reconocer tus recursos y acordar objetivos claros y alcanzables, respetando tu contexto y tus tiempos.</p><p>Según las necesidades de cada proceso, incorporo estrategias de reestructuración cognitiva, regulación emocional, resolución de problemas y fortalecimiento de herramientas personales. Revisamos juntos los avances para ajustar el trabajo cuando sea necesario.</p><p>“Breve” se refiere a una forma de trabajar focalizada y colaborativa, no a una cantidad fija de sesiones ni a resultados garantizados.</p><a href="#formacion" class="text-link">Conoce mi formación →</a></div></div></section>
