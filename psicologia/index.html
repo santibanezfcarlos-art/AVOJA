@@ -396,6 +396,10 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 /* Menú accesible en tabletas para abrir las páginas informativas y preguntas frecuentes */
 @media (min-width:511px) and (max-width:980px){.site-header .header-links{display:none}.site-header .mobile-nav{display:flex}}
 
+/* Ajuste local: menor separación entre Servicios y Preguntas frecuentes. */
+#prestaciones{padding-bottom:22px}
+#preguntas{padding-top:26px}
+@media(max-width:780px){#prestaciones{padding-bottom:18px}#preguntas{padding-top:22px}}
 /* Marca clicable: conserva diseño y vuelve al inicio. */
 header.site-header a.brand{color:inherit;text-decoration:none}
 header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offset:3px;border-radius:12px}
