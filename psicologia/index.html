@@ -96,12 +96,36 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 @media(max-width:1080px){.header-links{gap:12px}.header-links a{font-size:12px}.hero{gap:22px}.hero-art{min-height:455px}.services-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:780px){.header-links .link-hide{display:none}.hero{grid-template-columns:1fr;padding:35px 0 43px;min-height:auto}.hero h1{max-width:650px}.hero-art{min-height:410px}.about-grid{grid-template-columns:1fr;gap:24px}.steps{grid-template-columns:1fr}.price-banner{flex-direction:column;align-items:flex-start}.faq-grid{grid-template-columns:1fr}.footer-inner{flex-direction:column;align-items:flex-start}.app-head{flex-direction:column}.site-main{padding-bottom:30px}}
 @media(max-width:510px){.site-header .bar{padding:11px 16px;min-height:70px}.site-main{padding:0!important;margin:0 14px!important}.site-header .header-links{display:none}.mobile-nav{display:flex}.hero h1{font-size:39px;letter-spacing:-1.7px}.hero-art{min-height:377px;padding:16px;border-radius:19px}.art-inner{padding:21px}.section{padding:42px 0;scroll-margin-top:125px}.services-grid{grid-template-columns:1fr}.service-card{min-height:auto;padding:20px}.about-panel{padding:28px}.about-panel .quote{font-size:23px}.price-banner{padding:27px}.footer-inner{padding:30px 17px}.hero-actions .cta-button,.hero-actions .secondary-button{width:100%}#appPage{padding:22px 0}.app-trial{border-radius:10px}}
+
+
+/* Formación profesional — manteniendo la identidad visual del sitio */
+.training-section .section-heading{max-width:780px}
+.training-highlight{display:grid;grid-template-columns:1fr 1.15fr;gap:16px;margin-bottom:17px}
+.training-major{background:#fff;border:1px solid #dce8de;border-radius:18px;padding:28px;min-height:184px}
+.training-specialization{background:#e7f1e7;border-color:#d2e2d5}
+.training-label{font-size:11px;text-transform:uppercase;letter-spacing:.9px;font-weight:800;color:#48805d;margin-bottom:13px}
+.training-major h3{color:#1b4b39;font-size:21px;line-height:1.28;letter-spacing:-.5px;margin:0 0 11px}
+.training-major p{color:#647a6f;font-size:14px;line-height:1.55;margin:0 0 15px}
+.training-meta{display:inline-block;border:1px solid #cddfd1;border-radius:999px;color:#3a6b4e;font-size:12px;font-weight:700;padding:7px 11px}
+.training-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.training-panel{background:#fff;border:1px solid #dce8de;border-radius:18px;padding:27px 29px}
+.training-panel h3{margin:0 0 13px;color:#214c39;font-size:19px;line-height:1.35;letter-spacing:-.3px}
+.training-list{list-style:none;padding:0;margin:0}
+.training-list li{display:flex;align-items:baseline;justify-content:space-between;gap:18px;border-top:1px solid #e6eee7;padding:14px 0;color:#375b49;font-size:14px;line-height:1.45}
+.training-list li span{flex:1}
+.training-list li small{flex:0 0 auto;color:#728778;font-size:12px;white-space:nowrap}
+.training-context{font-size:13px;line-height:1.65;color:#708578;margin:18px 0 0}
+.training-footer{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-top:20px}
+.training-footer p{font-size:12px;color:#75897a;margin:0}
+@media(max-width:840px){.training-highlight,.training-columns{grid-template-columns:1fr}}
+@media(max-width:510px){.training-major,.training-panel{padding:21px}.training-list li{display:block}.training-list li small{display:block;margin-top:5px}.training-footer{align-items:flex-start;flex-direction:column}.training-major h3{font-size:19px}}
+
 </style>
 </head><body>
 
 <header class="site-header"><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez</strong><small>Psicología · Atención online</small></div></div>
-<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#servicios" data-nav="servicios" class="link-hide">Áreas de atención</a><a href="#enfoque" data-nav="enfoque" class="link-hide">Mi enfoque</a><a href="#proceso" data-nav="proceso" class="link-hide">Cómo funciona</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
-<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#servicios">Áreas de atención</a><a href="#enfoque">Mi enfoque</a><a href="#agenda">Reservar hora →</a></nav></header>
+<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#servicios" data-nav="servicios" class="link-hide">Áreas de atención</a><a href="#enfoque" data-nav="enfoque" class="link-hide">Mi enfoque</a><a href="#formacion" data-nav="formacion" class="link-hide">Formación</a><a href="#proceso" data-nav="proceso" class="link-hide">Cómo funciona</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
+<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#servicios">Áreas de atención</a><a href="#enfoque">Mi enfoque</a><a href="#formacion">Formación</a><a href="#agenda">Reservar hora →</a></nav></header>
 
 <main class="site-main">
 <div id="homePage">
@@ -134,7 +158,49 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
  <p class="services-help">No necesitas tener un diagnóstico para consultar. En la primera sesión podemos conversar sobre lo que te ocurre y definir juntos los objetivos del proceso.</p>
 </section>
 <section class="section" id="enfoque"><div class="about-grid"><div class="about-panel"><div class="quote-mark" aria-hidden="true">“</div><p class="quote">La terapia puede ser un espacio para mirar con claridad lo que ocurre y construir nuevas formas de afrontarlo.</p><div class="about-sign">Carlos Santibáñez · Psicólogo</div></div>
- <div class="about-text"><div class="eyebrow">Mi enfoque de trabajo</div><h2>Escucha profesional y herramientas para el cambio.</h2><p>Soy Carlos Santibáñez, psicólogo. Mi trabajo clínico se centra en el acompañamiento de personas adultas mediante un enfoque de psicoterapia breve, con atención a sus necesidades, contexto y objetivos.</p><p>Busco que cada sesión sea un espacio de confianza en el que podamos comprender las dificultades, explorar alternativas y acordar acciones aplicables a tu vida cotidiana.</p><a href="#agenda" class="text-link">Revisar disponibilidad →</a></div></div></section>
+ <div class="about-text"><div class="eyebrow">Mi modelo de psicoterapia</div><h2>Psicoterapia breve centrada en soluciones y objetivos concretos.</h2><p>Trabajo con personas adultas desde un enfoque de <strong>Psicoterapia Breve Centrada en Soluciones</strong>. Nos enfocamos en comprender lo que está ocurriendo, reconocer tus recursos y acordar objetivos claros y alcanzables, respetando tu contexto y tus tiempos.</p><p>Según las necesidades de cada proceso, incorporo estrategias de reestructuración cognitiva, regulación emocional, resolución de problemas y fortalecimiento de herramientas personales. Revisamos juntos los avances para ajustar el trabajo cuando sea necesario.</p><p>“Breve” se refiere a una forma de trabajar focalizada y colaborativa, no a una cantidad fija de sesiones ni a resultados garantizados.</p><a href="#formacion" class="text-link">Conoce mi formación →</a></div></div></section>
+<section class="section training-section" id="formacion" aria-labelledby="trainingTitle">
+ <div class="section-heading">
+  <div class="eyebrow">Formación académica y perfeccionamiento</div>
+  <h2 id="trainingTitle">Formación profesional y actualización continua.</h2>
+  <p>Mi práctica se apoya en estudios universitarios y en formación complementaria en terapia breve, psicodiagnóstico y evaluación de competencias.</p>
+ </div>
+ <div class="training-highlight">
+  <article class="training-major">
+   <div class="training-label">Título profesional</div>
+   <h3>Psicólogo · Licenciado en Psicología</h3>
+   <p>Universidad del Desarrollo</p>
+   <span class="training-meta">Titulado en marzo de 2012</span>
+  </article>
+  <article class="training-major training-specialization">
+   <div class="training-label">Especialización · Formación posterior al título</div>
+   <h3>Especialización en Terapia Breve</h3>
+   <p>Academia Digital de Psicología y Aprendizaje (ADIPA)</p>
+   <span class="training-meta">2026 · 120 horas certificadas · Modalidad e-learning</span>
+  </article>
+ </div>
+ <div class="training-columns">
+  <div class="training-panel">
+   <h3>Psicodiagnóstico clínico y pericial</h3>
+   <ul class="training-list">
+    <li><span>Curso en Psicodiagnóstico Clínico Pericial</span><small>2020 · 16 horas</small></li>
+    <li><span>Curso de Test de Relaciones Objetales de Philipson (TRO)</span><small>2015 · 16 horas</small></li>
+    <li><span>Curso de Test de Rorschach</span><small>2015 · 16 horas</small></li>
+    <li><span>Curso de Psicodiagnóstico: Test de Zulliger</span><small>2013 · 16 horas</small></li>
+    <li><span>Curso de Psicodiagnóstico: Test de Lüscher</span><small>2013 · 16 horas</small></li>
+   </ul>
+  </div>
+  <div class="training-panel">
+   <h3>Evaluación de competencias y ámbito organizacional</h3>
+   <ul class="training-list">
+    <li><span>Certificación en Entrevistas por Competencias — Targeted Selection</span><small>2016 · 16 horas</small></li>
+    <li><span>Curso de Selección de Personal basado en Modelo de Competencias</span><small>2014 · 24 horas</small></li>
+   </ul>
+   <p class="training-context">Estas capacitaciones complementan mi experiencia en evaluación psicológica y consultoría organizacional.</p>
+  </div>
+ </div>
+ <div class="training-footer"><p>Formación y capacitaciones registradas hasta 2026.</p><a href="#agenda" class="text-link">Agendar una sesión →</a></div>
+</section>
 <section class="section" id="proceso"><div class="section-heading"><div class="eyebrow">Cómo funciona</div><h2>Comenzar es sencillo.</h2><p>Queremos que reservar un espacio para ti sea un proceso claro, desde la elección del horario hasta el encuentro online.</p></div>
 <div class="steps"><div class="step"><span class="step-num">01 / ELIGE</span><h3>Busca tu horario</h3><p>Consulta el calendario y selecciona el día y la hora que más te acomoden, entre los espacios disponibles.</p></div><div class="step"><span class="step-num">02 / RESERVA</span><h3>Confirma tu sesión</h3><p>En la versión definitiva, podrás realizar el pago anticipado para confirmar la reserva. Por ahora puedes simularla.</p></div><div class="step"><span class="step-num">03 / CONECTA</span><h3>Nos encontramos online</h3><p>La atención se realizará por videollamada. El envío automático del enlace está considerado para la versión definitiva.</p></div></div>
 </section>
