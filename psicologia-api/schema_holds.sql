@@ -57,3 +57,8 @@ CREATE TABLE IF NOT EXISTS psychology_demo_notifications (
   PRIMARY KEY(order_id,recipient_role)
 );
 COMMIT;
+
+-- Hora de Chile: marca la corrección del correo antiguo una sola vez.
+-- Idempotencia también protegida por clave específica en Resend.
+ALTER TABLE psychology_demo_notifications
+    ADD COLUMN IF NOT EXISTS timezone_correction_sent_at timestamptz;
