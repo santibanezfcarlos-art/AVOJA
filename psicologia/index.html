@@ -525,7 +525,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 <div class="card" style="margin:18px 0 12px;padding:16px;border-radius:12px;background:#f7faf7">
  <h3>Pago simulado · Webpay (demostración)</h3>
  <p class="small" id="webpayNotice" role="status" style="margin:8px 0 14px">Conexión con Transbank en preparación. No se realizan cargos.</p>
- <form id="webpayForm" autocomplete="on">
+ <form id="webpayForm" autocomplete="on" method="post" action="https://psicologia-carlos-calendar-api.onrender.com/api/webpay-demo/start"><input type="hidden" id="webpayTestService" name="service" value="psicoterapia">
   <label for="payerName" style="display:block;font-size:12px;margin:8px 0 4px">Nombre completo</label>
   <input id="payerName" type="text" autocomplete="name" maxlength="120" minlength="2" required placeholder="Nombre y apellido" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
   <label for="payerEmail" style="display:block;font-size:12px;margin:12px 0 4px">Correo para tu confirmación</label>
@@ -537,8 +537,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 <label style="display:block;margin:10px 0"><input required type="checkbox"> Entiendo que esta compra es una simulación sin cobro real.</label>
 <button class="primary" id="webpayPay" type="submit">Simular pago con Webpay Plus</button>
  </form>
- <p class="small" style="margin-top:10px">Esta demostración NO te dirige a Transbank ni solicita datos bancarios. No se realizan cobros.</p>
- <p class="small" style="margin-top:12px"><a href="prueba-webpay.html" style="font-weight:750;color:#194b39;text-decoration:underline">Probar el formulario oficial de Webpay Plus con una tarjeta ficticia →</a><br>Ambiente de integración de Transbank. Sin cobros ni reservas reales.</p>
+ <p class="small" style="margin-top:10px">Al pulsar el botón, irás directamente a Webpay Plus de Transbank para utilizar una tarjeta de prueba. Sin dinero, reservas ni boletas reales.</p>
 </div>
 <button type="button" class="primary" id="confirm" disabled>Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">Este es un simulador local: no se procesan pagos, bonos Fonasa ni boletas. Una confirmación aquí solo sirve para probar el calendario.</p></aside></div>
 <section id="adminView" class="admin-section" role="tabpanel" aria-labelledby="tabAdmin" hidden>
@@ -617,15 +616,10 @@ const CAL_API='https://psicologia-carlos-calendar-api.onrender.com/api/availabil
 const PAYMENT_API=CAL_API.replace('/api/availability','');
 let realPaymentsEnabled=false, paymentBusy=false;
 function paymentStatus(text){const el=document.getElementById('webpayNotice');if(el)el.textContent=text;}
-async function checkWebpayConfig(){
- try{
-  const r=await fetch(PAYMENT_API+'/api/bookings/config',{cache:'no-store'});
-  if(!r.ok)throw Error('not-ready');
-  const data=await r.json();
-  // El backend Webpay aún no admite precios y duraciones por servicio: sin cobros.
-  realPaymentsEnabled=false;
-  paymentStatus('SIMULADOR LOCAL · No se conecta con Transbank ni genera cargos.');
- }catch(e){realPaymentsEnabled=false;paymentStatus('SIMULADOR LOCAL · Sin cargos, cuentas ni reservas reales.');}
+function checkWebpayConfig(){
+ // Solo se usa el ambiente de integración del proveedor: no hay cobros ni reservas reales.
+ realPaymentsEnabled=false;
+ paymentStatus('WEBPAY PLUS · Ambiente oficial de integración. Solo tarjetas de prueba; sin cobros reales.');
  const b=document.getElementById('webpayPay');if(b)b.disabled=!hold||paymentBusy||cannotCheck();
 }
 let calendarState='loading',calendarBlocked={},calendarBlockedShort={},calendarSeq=0,calendarRetry=null;
@@ -825,11 +819,12 @@ $('webpayForm').addEventListener('submit',(ev)=>{
  for(let i=rut.length-2;i>=0;i--){const d=Number(rut[i]);if(!Number.isInteger(d)){field.setCustomValidity('RUT inválido');field.reportValidity();return;}total+=d*m;m=m===7?2:m+1;}
  const mod=11-total%11,check=mod===11?'0':mod===10?'K':String(mod);
  if(check!==rut.slice(-1)){field.setCustomValidity('RUT inválido: revisa el dígito verificador');field.reportValidity();return;}
- const svc=currentService(),date=hold.date,time=hold.time;
- const msg='Pago simulado aprobado: '+svc.title+' · '+date+' · '+time+'–'+endsAt(time)+' · $'+svc.price.toLocaleString('es-CL')+'. No existe cargo real, reserva real, boleta emitida ni cuenta creada.';
- const out=document.createElement('p');out.className='small';out.style.border='1px solid #a8d0b0';out.style.padding='12px';out.style.borderRadius='10px';out.textContent=msg;
- const old=document.getElementById('mockReceipt');if(old)old.remove();out.id='mockReceipt';$('webpayForm').after(out);
- paymentStatus('Simulación local realizada sin contacto con Transbank.');
+ // El formulario envía únicamente el tipo de servicio. Ningún dato personal se envía al servidor de pruebas.
+ $('webpayTestService').value=selectedService;
+ paymentBusy=true;
+ paymentStatus('Conectando al formulario oficial de Webpay Plus (ambiente de integración)…');
+ $('webpayPay').disabled=true;
+ ev.currentTarget.submit();
 });
 setInterval(()=>{if(hold)tick()},1000);
 setInterval(()=>{if(!document.hidden&&calendarState!=='loading')loadCalendar()},120000);
