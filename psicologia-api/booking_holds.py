@@ -88,6 +88,14 @@ def can_hold(active_windows, start, end, *, max_daily=MAX_DAILY):
 
 
 def _calendar_free(start, end):
+    # API oficial en tiempo real: solamente cuando el piloto tenga una
+    # identidad Google explícita. No reemplaza la fuente pública iCal.
+    if os.environ.get("PSICOLOGIA_HOLDS_CALENDAR_POLICY") == "google_api":
+        from google_calendar_writer import CalendarWriter, CalendarIntegrationError
+        try:
+            return CalendarWriter().is_free(start, end)
+        except CalendarIntegrationError:
+            raise HoldProblem("No se pudo verificar Google Calendar por API.", 503) from None
     # Modo sintético EXCLUSIVO de un backend de ensayo sin citas reales.
     # Nunca debe activarse en la API pública ni con un modo de pago diferente de disabled.
     if os.environ.get("PSICOLOGIA_HOLDS_CALENDAR_POLICY") == "synthetic":
