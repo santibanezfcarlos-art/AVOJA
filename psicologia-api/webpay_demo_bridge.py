@@ -50,10 +50,10 @@ def _request(endpoint,data):
         raise BridgeError("INVALID_REPLY")
     return response["state"]
 
-def preflight(*,order,session,service,day,hour,amount,email):
+def preflight(*,order,session,service,day,hour,amount,email,email_consent=False):
     return _request("/internal/psicologia/demo/preflight",{
         "order":order,"session":session,"service":service,"date":day,
-        "time":hour,"amount":amount,"email":email})
+        "time":hour,"amount":amount,"email":email,"email_consent":email_consent})
 
 def complete(*,order,session,amount,outcome):
     return _request("/internal/psicologia/demo/complete",{
