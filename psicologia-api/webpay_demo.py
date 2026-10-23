@@ -6,6 +6,7 @@ cobros reales. Nunca admite credenciales ni endpoints de producción.
 """
 import sqlite3
 import billing
+import webpay_demo_bridge as bridge
 import base64
 import hashlib
 import hmac
@@ -187,18 +188,43 @@ def start_demo():
         except ValueError as exc:
             return _page('Revisa tus datos', str(exc), status=400)
     order = "PSCD" + secrets.token_hex(9).upper()
+    session = _signed_session(service, day, hour)
+    # El puente solo se activa cuando API/Render estén completamente configurados.
+    # Si está activo, NO iniciamos un pago simulado sin reservar antes el cupo
+    # en PostgreSQL y comprobar disponibilidad real en Google.
+    if person and bridge.enabled():
+        try:
+            state=bridge.preflight(order=order,session=session,service=service,
+                   day=day,hour=hour,amount=SERVICES[service],email=person["email"])
+        except bridge.BridgeError as exc:
+            if exc.state=="TEST_EMAIL_ONLY":
+                return _page("Correo de prueba requerido",
+                    "En integración solo se pueden enviar confirmaciones al correo de pruebas autorizado. "
+                    "No ingreses información real de pacientes.",status=422)
+            return _page("No se pudo reservar temporalmente",
+                "No se inició Webpay porque la agenda no pudo confirmar el horario. "
+                "Selecciona otra hora o revisa la conexión con Google Calendar.",status=503)
+        if state!="READY":
+            return _page("Horario no disponible",
+               "No se inició el pago de prueba porque la hora no está libre o el servicio está temporalmente indisponible.",
+               status=409)
     if person:
         try:
             billing.prepare(order, service, day, hour, SERVICES[service], person, 'integration')
         except (RuntimeError, sqlite3.Error, OSError):
+            if bridge.enabled():
+                try: bridge.complete(order=order,session=session,amount=SERVICES[service],outcome="cancelled")
+                except bridge.BridgeError: pass
             return _page('No se guardaron los datos', 'No se inició el pago. Intenta más tarde.', status=503)
-    session = _signed_session(service, day, hour)
     try:
         result = _send("POST", BASE, {
             "buy_order": order, "session_id": session,
             "amount": SERVICES[service], "return_url": RETURN_URL,
         })
     except (HTTPError, URLError, ValueError, KeyError, TimeoutError):
+        if person and bridge.enabled():
+            try: bridge.complete(order=order,session=session,amount=SERVICES[service],outcome="cancelled")
+            except bridge.BridgeError: pass
         return _page("No fue posible iniciar la prueba", "Transbank no respondió correctamente. Intenta más tarde.", status=503)
     token = result.get("token")
     if result.get("url") != CHECKOUT_URL or not isinstance(token, str) or not (20 <= len(token) <= 150) or not token.isalnum():
@@ -248,12 +274,21 @@ def return_demo():
         or result.get("amount") != SERVICES[parsed["service"]]):
         return _page("Resultado no confirmado", "La respuesta no coincide con una compra de prueba válida. No se simuló ninguna reserva.", status=503)
     approved = result.get("status") == "AUTHORIZED" and result.get("response_code") == 0
+    if bridge.enabled():
+        try:
+            bridge_state=bridge.complete(order=order,session=result["session_id"],
+                amount=result["amount"],outcome="approved" if approved else "rejected")
+        except bridge.BridgeError:
+            bridge_state="RECONCILIATION_REQUIRED" if approved else "REJECTED"
+    else:
+        bridge_state="LEGACY"
     try:
         saved = billing.record_result(order, token, result['amount'], approved, result.get('payment_type_code', ''))
     except (ValueError, RuntimeError, sqlite3.Error, OSError):
         return _page('Resultado pendiente de registro', 'La respuesta de Webpay no pudo guardarse. La operación requiere revisión; no repitas el pago.', status=503)
-    data = {"billing_saved": saved, "status": "approved" if approved else "rejected", "service": parsed["service"],
+    data = {"billing_saved": saved, "status": ("approved" if approved else "rejected"), "service": parsed["service"],
             "date": parsed["date"], "time": parsed["time"],
+            "reservation_status": bridge_state,
             "amount": SERVICES[parsed["service"]], "order": order, "iat": int(time.time())}
     return _return_site(receipt=_signed_receipt(data))
 
