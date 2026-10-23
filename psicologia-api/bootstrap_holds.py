@@ -96,6 +96,8 @@ def main():
         with psycopg.connect(url, connect_timeout=10, application_name="psychology-pilot-bootstrap") as conn:
             conn.execute(sql)
         print("PSICOLOGIA_PILOT_SCHEMA: ready", flush=True)
+        from demo_notifications import configured as mail_is_ready
+        print("PSICOLOGIA_PILOT_EMAIL: " + ("ready" if mail_is_ready() else "not_configured"), flush=True)
         if os.environ.get("PSICOLOGIA_GOOGLE_READ_PROBE") == "true":
             _probe_google_calendar_read()
         if os.environ.get("PSICOLOGIA_HOLDS_DB_SELFTEST") == "true":
