@@ -121,6 +121,58 @@ def _diagnose_and_recover_demo_notifications():
         print("PSICOLOGIA_MAIL_RECOVERY: nothing_pending",flush=True)
 
 
+def _send_timezone_correction_for_latest_test():
+    """Solo corrige una reserva ficticia reciente, sin recrear evento ni pago."""
+    if os.environ.get("PSICOLOGIA_PILOT_TIMEZONE_CORRECTION_ENABLED") != "true":
+        return
+    if (os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") != "true"
+            or os.environ.get("PSICOLOGIA_WEBPAY_MODE","disabled") != "disabled"):
+        return
+    from booking_holds import _database_connection
+    from demo_notifications import configured, send, NotificationError, safe_error_label
+    if not configured():
+        print("PSICOLOGIA_TZ_CORRECTION: email_unavailable",flush=True)
+        return
+    with _database_connection() as conn:
+        rows=conn.execute("""
+            SELECT n.recipient_role,p.order_id,p.hold_id,p.test_recipient,p.service,
+                   h.starts_at,h.ends_at
+            FROM psychology_demo_payments p
+            JOIN psychology_booking_holds h ON h.id=p.hold_id
+            JOIN psychology_demo_notifications n ON n.order_id=p.order_id
+            WHERE p.order_id=(
+              SELECT order_id FROM psychology_demo_payments
+              WHERE state='CONFIRMED' AND calendar_event_id IS NOT NULL
+                AND created_at>=now()-interval '3 hours'
+              ORDER BY created_at DESC LIMIT 1
+            )
+              AND n.status='sent'
+              AND n.timezone_correction_sent_at IS NULL
+            ORDER BY n.recipient_role LIMIT 2
+        """).fetchall()
+    if not rows:
+        print("PSICOLOGIA_TZ_CORRECTION: no_eligible_messages",flush=True)
+        return
+    for row in rows:
+        role=row["recipient_role"]
+        recipient=(os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","")
+                   if role=="professional" else row["test_recipient"])
+        try:
+            send(role,row["order_id"],row["hold_id"],recipient,row["service"],
+                 row["starts_at"],row["ends_at"],correction=True)
+            with _database_connection() as conn:
+                conn.execute("""
+                    UPDATE psychology_demo_notifications
+                    SET timezone_correction_sent_at=now()
+                    WHERE order_id=%s AND recipient_role=%s
+                        AND status='sent' AND timezone_correction_sent_at IS NULL
+                """,(row["order_id"],role))
+            print("PSICOLOGIA_TZ_CORRECTION: role=" + role + " result=accepted",flush=True)
+        except NotificationError as exc:
+            print("PSICOLOGIA_TZ_CORRECTION: role=" + role + " result=failed code="
+                  + safe_error_label(exc),flush=True)
+
+
 def main():
     if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
         print("PSICOLOGIA_PILOT_SCHEMA: bootstrap_disabled", flush=True)
@@ -150,6 +202,10 @@ def main():
             _diagnose_and_recover_demo_notifications()
         except Exception as error:
             print("PSICOLOGIA_MAIL_RECOVERY: error_type=" + type(error).__name__,flush=True)
+        try:
+            _send_timezone_correction_for_latest_test()
+        except Exception as error:
+            print("PSICOLOGIA_TZ_CORRECTION: error_type=" + type(error).__name__,flush=True)
         if os.environ.get("PSICOLOGIA_GOOGLE_READ_PROBE") == "true":
             _probe_google_calendar_read()
         if os.environ.get("PSICOLOGIA_HOLDS_DB_SELFTEST") == "true":
