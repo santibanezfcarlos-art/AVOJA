@@ -88,6 +88,14 @@ def can_hold(active_windows, start, end, *, max_daily=MAX_DAILY):
 
 
 def _calendar_free(start, end):
+    # Modo sintético EXCLUSIVO de un backend de ensayo sin citas reales.
+    # Nunca debe activarse en la API pública ni con un modo de pago diferente de disabled.
+    if os.environ.get("PSICOLOGIA_HOLDS_CALENDAR_POLICY") == "synthetic":
+        if (os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") != "true"
+                or os.environ.get("PSICOLOGIA_CHECKOUT_MODE", "disabled") != "disabled"
+                or os.environ.get("PSICOLOGIA_WEBPAY_MODE", "disabled") != "disabled"):
+            raise HoldProblem("El modo sintético está reservado para ensayos aislados.", 503)
+        return True
     # Leer el origen iCal FRESCO y bloquear si no puede consultarse. El feed de
     # Google podría publicar cambios con retraso: piloto, NO autorización real.
     from main import _read_busy_intervals, valid_calendar_url
