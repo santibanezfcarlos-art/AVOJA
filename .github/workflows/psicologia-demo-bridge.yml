@@ -1,0 +1,26 @@
+name: Pruebas puente Webpay público
+on:
+  push:
+    branches:
+      - psicologia-carlos
+    paths:
+      - "psicologia-api/webpay_demo.py"
+      - "psicologia-api/webpay_demo_bridge.py"
+      - "psicologia-api/test_webpay_demo_bridge.py"
+      - ".github/workflows/psicologia-demo-bridge.yml"
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias
+        run: pip install -r psicologia-api/requirements.txt
+      - name: Validar firma HMAC y no duplicación de retorno
+        run: |
+          cd psicologia-api
+          python -m unittest -v test_webpay_demo_bridge
