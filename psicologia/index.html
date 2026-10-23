@@ -276,6 +276,44 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
  color:var(--detail-ink);
 }
 
+
+/* Iconografía vectorial de servicios: una familia de trazo coherente con la paleta verde */
+#prestaciones .service-detail-number.detail-main-icon{
+ position:relative;display:grid;place-items:center;width:64px;height:64px;min-width:64px;
+ border-radius:17px;background:var(--detail-number);color:var(--detail-ink);
+}
+#prestaciones .service-detail-number.detail-main-icon svg{display:block;width:31px;height:31px;stroke-width:1.75}
+#prestaciones .detail-icon-index{
+ position:absolute;right:-6px;bottom:-6px;display:grid;place-items:center;
+ height:24px;min-width:28px;padding:0 4px;border-radius:7px;
+ background:var(--detail-ink);color:#fff;font-size:10px;font-weight:850;
+ border:2px solid var(--detail-bg);font-variant-numeric:tabular-nums;
+}
+#prestaciones .service-detail-item h5{
+ display:flex;align-items:center;gap:11px;line-height:1.35;margin-bottom:10px;
+}
+#prestaciones .service-detail-item h5::before{content:none!important;display:none!important}
+#prestaciones .service-topic-icon{
+ width:39px;height:39px;min-width:39px;display:grid;place-items:center;
+ border:1px solid var(--detail-border);border-radius:12px;
+ background:var(--detail-check);color:var(--detail-ink);
+}
+#prestaciones .service-topic-icon svg{width:21px;height:21px;display:block;stroke-width:1.8}
+#prestaciones .service-detail-item{
+ transition:box-shadow .2s ease,transform .2s ease,border-color .2s ease;
+}
+@media(hover:hover){
+ #prestaciones .service-detail-item:hover{
+  transform:translateY(-2px);border-color:var(--detail-ink);
+  box-shadow:0 9px 18px rgba(25,69,44,.07);
+ }
+}
+@media(max-width:650px){
+ #prestaciones .service-detail-number.detail-main-icon{width:54px;height:54px;min-width:54px;border-radius:15px}
+ #prestaciones .service-detail-number.detail-main-icon svg{width:27px;height:27px}
+ #prestaciones .service-topic-icon{width:36px;height:36px;min-width:36px}
+}
+
 </style>
 </head><body>
 
@@ -340,35 +378,35 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
   </div>
   <div class="service-detail-stack">
    <article class="service-detail-panel clinical detail-tone-forest" id="detalle-psicoterapia" aria-labelledby="tituloDetallePsicoterapia">
-    <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">01</div><div class="service-detail-text"><h4 id="tituloDetallePsicoterapia">Psicoterapia breve: trabajar con foco y colaboración</h4><p>Un proceso clínico orientado a comprender el motivo de consulta, identificar recursos y construir alternativas. La duración total del proceso se acuerda y revisa de acuerdo con tus necesidades.</p></div></div>
+    <div class="service-detail-lead"><div class="service-detail-number detail-main-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M12 18V5a3 3 0 0 0-5.8-1.1A4 4 0 0 0 4 10.8 4 4 0 0 0 5 18a3 3 0 0 0 5 2.2A3 3 0 0 0 12 18Z"/><path d="M12 18V5a3 3 0 0 1 5.8-1.1A4 4 0 0 1 20 10.8 4 4 0 0 1 19 18a3 3 0 0 1-5 2.2A3 3 0 0 1 12 18Z"/><path d="M7.5 11.2c2-.5 3.5.5 4.5 2.2M17 8.5c-1.5 0-2.5 1-3 2"/></svg><span class="detail-icon-index">01</span></div><div class="service-detail-text"><h4 id="tituloDetallePsicoterapia">Psicoterapia breve: trabajar con foco y colaboración</h4><p>Un proceso clínico orientado a comprender el motivo de consulta, identificar recursos y construir alternativas. La duración total del proceso se acuerda y revisa de acuerdo con tus necesidades.</p></div></div>
     <div class="service-detail-grid">
-     <div class="service-detail-item"><h5>Definición de objetivos</h5><p>Identificamos qué te gustaría cambiar y qué avances serían importantes para ti.</p></div>
-     <div class="service-detail-item"><h5>Emociones y pensamientos</h5><p>Trabajamos la ansiedad, el estrés y las respuestas emocionales que generan malestar.</p></div>
-     <div class="service-detail-item"><h5>Herramientas para el cambio</h5><p>Exploramos recursos personales, soluciones posibles y estrategias aplicables a tu vida cotidiana.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span><span>Definición de objetivos</span></h5><p>Identificamos qué te gustaría cambiar y qué avances serían importantes para ti.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M20.8 9a5.1 5.1 0 0 0-8.8-3.3A5.1 5.1 0 0 0 3.2 9c0 5 8.8 10 8.8 10s8.8-5 8.8-10Z"/><path d="M5 12h4l2-3 2.5 6 2-3H19"/></svg></span><span>Emociones y pensamientos</span></h5><p>Trabajamos la ansiedad, el estrés y las respuestas emocionales que generan malestar.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="m12 3 1.7 6.3L20 11l-6.3 1.7L12 19l-1.7-6.3L4 11l6.3-1.7L12 3ZM19 17l.6 2.4L22 20l-2.4.6L19 23l-.6-2.4L16 20l2.4-.6L19 17Z"/></svg></span><span>Herramientas para el cambio</span></h5><p>Exploramos recursos personales, soluciones posibles y estrategias aplicables a tu vida cotidiana.</p></div>
     </div>
     <div class="service-detail-foot"><span>Atención psicológica individual para personas adultas · 45 minutos</span><a href="#agenda" data-service="psicoterapia">Ver disponibilidad →</a></div>
    </article>
    <article class="service-detail-panel detail-tone-sage" id="detalle-empleabilidad" aria-labelledby="tituloDetalleEmpleabilidad">
-    <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">02</div><div class="service-detail-text"><h4 id="tituloDetalleEmpleabilidad">Asesoría en empleabilidad: prepararte para nuevas oportunidades</h4><p>Revisamos tu perfil y las exigencias de los cargos a los que quieres postular, con orientación práctica para comunicar mejor tu experiencia y enfrentar procesos de selección.</p></div></div>
+    <div class="service-detail-lead"><div class="service-detail-number detail-main-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13c3 1.5 6 2 9 2s6-.5 9-2M10 14v2h4v-2"/></svg><span class="detail-icon-index">02</span></div><div class="service-detail-text"><h4 id="tituloDetalleEmpleabilidad">Asesoría en empleabilidad: prepararte para nuevas oportunidades</h4><p>Revisamos tu perfil y las exigencias de los cargos a los que quieres postular, con orientación práctica para comunicar mejor tu experiencia y enfrentar procesos de selección.</p></div></div>
     <div class="service-detail-grid">
-     <div class="service-detail-item"><h5>Currículum y perfil profesional</h5><p>Revisión de estructura, logros, fortalezas y presentación de tu experiencia laboral.</p></div>
-     <div class="service-detail-item"><h5>Búsqueda y ofertas de empleo</h5><p>Identificación de vacantes pertinentes y lectura de los requisitos de cada cargo.</p></div>
-     <div class="service-detail-item"><h5>Cartas de presentación</h5><p>Orientación para redactar postulaciones y explicar con claridad tu motivación y aporte.</p></div>
-     <div class="service-detail-item"><h5>Entrevistas por competencias</h5><p>Preparación y práctica de entrevistas utilizando ejemplos conductuales y la metodología STAR.</p></div>
-     <div class="service-detail-item"><h5>Pruebas psicolaborales</h5><p>Orientación sobre los tipos de evaluaciones y cómo enfrentarlas con tranquilidad y autenticidad.</p></div>
-     <div class="service-detail-item"><h5>Plan de postulación</h5><p>Definición de próximos pasos, aspectos por mejorar y estrategias para entrevistas futuras.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></span><span>Currículum y perfil profesional</span></h5><p>Revisión de estructura, logros, fortalezas y presentación de tu experiencia laboral.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.3 16.3 4.2 4.2"/></svg></span><span>Búsqueda y ofertas de empleo</span></h5><p>Identificación de vacantes pertinentes y lectura de los requisitos de cada cargo.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m3 6 9 7 9-7"/></svg></span><span>Cartas de presentación</span></h5><p>Orientación para redactar postulaciones y explicar con claridad tu motivación y aporte.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M19 10a6 6 0 0 1-6 6H7l-4 3V8a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6Z"/><path d="M9 8h5M9 12h3M20 12a5 5 0 0 1 1 3v5l-3-2h-4"/></svg></span><span>Entrevistas por competencias</span></h5><p>Preparación y práctica de entrevistas utilizando ejemplos conductuales y la metodología STAR.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg></span><span>Pruebas psicolaborales</span></h5><p>Orientación sobre los tipos de evaluaciones y cómo enfrentarlas con tranquilidad y autenticidad.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 18h6a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h6"/></svg></span><span>Plan de postulación</span></h5><p>Definición de próximos pasos, aspectos por mejorar y estrategias para entrevistas futuras.</p></div>
     </div>
     <div class="service-detail-foot"><span>Asesoría personalizada · 90 minutos · El trabajo se ajusta a tus objetivos</span><a href="#agenda" data-service="empleabilidad">Ver disponibilidad →</a></div>
    </article>
    <article class="service-detail-panel detail-tone-mist" id="detalle-competencias" aria-labelledby="tituloDetalleCompetencias">
-    <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">03</div><div class="service-detail-text"><h4 id="tituloDetalleCompetencias">Desarrollo de competencias: fortalecer habilidades para tu trabajo</h4><p>Las competencias pueden entrenarse mediante reflexión, ejercicios y aplicación a situaciones reales. Estas son algunas de las más trabajadas en contextos personales y laborales.</p></div></div>
+    <div class="service-detail-lead"><div class="service-detail-number detail-main-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 2 6-7"/><path d="M16 6h4v4"/></svg><span class="detail-icon-index">03</span></div><div class="service-detail-text"><h4 id="tituloDetalleCompetencias">Desarrollo de competencias: fortalecer habilidades para tu trabajo</h4><p>Las competencias pueden entrenarse mediante reflexión, ejercicios y aplicación a situaciones reales. Estas son algunas de las más trabajadas en contextos personales y laborales.</p></div></div>
     <div class="service-detail-grid">
-     <div class="service-detail-item"><h5>Comunicación efectiva</h5><p>Expresar ideas con claridad, escuchar activamente y abordar conversaciones difíciles.</p></div>
-     <div class="service-detail-item"><h5>Trabajo en equipo</h5><p>Colaborar, coordinar tareas y construir relaciones de trabajo respetuosas.</p></div>
-     <div class="service-detail-item"><h5>Liderazgo</h5><p>Orientar, tomar decisiones y movilizar a otros hacia objetivos compartidos.</p></div>
-     <div class="service-detail-item"><h5>Planificación y organización</h5><p>Definir prioridades, administrar tiempos y dar seguimiento a los compromisos.</p></div>
-     <div class="service-detail-item"><h5>Adaptabilidad</h5><p>Responder de manera flexible ante cambios, nuevas exigencias o escenarios inciertos.</p></div>
-     <div class="service-detail-item"><h5>Manejo de contingencias</h5><p>Analizar imprevistos, resolver problemas y actuar con criterio bajo presión.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-9 8.5 9 9 0 0 1-4-.9L3 21l1.8-5a9 9 0 1 1 16.2-4.5Z"/><path d="M8 10h8M8 14h5"/></svg></span><span>Comunicación efectiva</span></h5><p>Expresar ideas con claridad, escuchar activamente y abordar conversaciones difíciles.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M2.5 20v-1a6.5 6.5 0 0 1 13 0v1M16 5a3 3 0 0 1 0 6M19 20v-1a6 6 0 0 0-3-5.2"/></svg></span><span>Trabajo en equipo</span></h5><p>Colaborar, coordinar tareas y construir relaciones de trabajo respetuosas.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.5 5.5-4.5 1.5L11 10Z"/></svg></span><span>Liderazgo</span></h5><p>Orientar, tomar decisiones y movilizar a otros hacia objetivos compartidos.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18m-12 5 2 2 4-4"/></svg></span><span>Planificación y organización</span></h5><p>Definir prioridades, administrar tiempos y dar seguimiento a los compromisos.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M21 9a9 9 0 0 0-15-4L3 8"/><path d="M3 3v5h5M3 15a9 9 0 0 0 15 4l3-3"/><path d="M21 21v-5h-5"/></svg></span><span>Adaptabilidad</span></h5><p>Responder de manera flexible ante cambios, nuevas exigencias o escenarios inciertos.</p></div>
+     <div class="service-detail-item"><h5><span class="service-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3 8.5 8 11 5-2.5 8-6 8-11V5Z"/><path d="m9 12 2 2 4-4"/></svg></span><span>Manejo de contingencias</span></h5><p>Analizar imprevistos, resolver problemas y actuar con criterio bajo presión.</p></div>
     </div>
     <div class="service-detail-foot"><span>Acompañamiento individual · 45 minutos · Competencias definidas según necesidades</span><a href="#agenda" data-service="competencias">Ver disponibilidad →</a></div>
    </article>
