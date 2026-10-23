@@ -395,10 +395,14 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 #prestaciones .offer-card.offer-tone-mist{border:2px solid #b3d2bc;}
 /* Menú accesible en tabletas para abrir las páginas informativas y preguntas frecuentes */
 @media (min-width:511px) and (max-width:980px){.site-header .header-links{display:none}.site-header .mobile-nav{display:flex}}
+
+/* Marca clicable: conserva diseño y vuelve al inicio. */
+header.site-header a.brand{color:inherit;text-decoration:none}
+header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offset:3px;border-radius:12px}
 </style>
 </head><body>
 
-<header class="site-header"><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez Fica</strong><small>Psicólogo · Atención online</small><small>Asesoría Clínica, Laboral y Forense</small></div></div>
+<header class="site-header"><div class="bar"><a class="brand" href="./#inicio" aria-label="Volver a la página de inicio"><div class="mark">CS</div><div><strong>Carlos Santibáñez Fica</strong><small>Psicólogo · Atención online</small><small>Asesoría Clínica, Laboral y Forense</small></div></a>
 <nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#prestaciones" data-nav="prestaciones" class="link-hide">Servicios</a><a href="enfoque.html" class="link-hide">Mi enfoque</a><a href="formacion-experiencia.html" class="link-hide">Formación y experiencia</a><a href="#preguntas" data-nav="preguntas" class="link-hide">Preguntas frecuentes</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
 <nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#prestaciones">Servicios</a><a href="enfoque.html">Mi enfoque</a><a href="formacion-experiencia.html">Formación y experiencia</a><a href="#preguntas">Preguntas frecuentes</a><a href="#agenda">Reservar hora →</a></nav></header>
 
