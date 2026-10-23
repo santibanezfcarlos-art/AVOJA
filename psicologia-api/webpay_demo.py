@@ -274,18 +274,21 @@ def return_demo():
         or result.get("amount") != SERVICES[parsed["service"]]):
         return _page("Resultado no confirmado", "La respuesta no coincide con una compra de prueba válida. No se simuló ninguna reserva.", status=503)
     approved = result.get("status") == "AUTHORIZED" and result.get("response_code") == 0
-    if bridge.enabled():
-        try:
-            bridge_state=bridge.complete(order=order,session=result["session_id"],
-                amount=result["amount"],outcome="approved" if approved else "rejected")
-        except bridge.BridgeError:
-            bridge_state="RECONCILIATION_REQUIRED" if approved else "REJECTED"
-    else:
-        bridge_state="LEGACY"
     try:
         saved = billing.record_result(order, token, result['amount'], approved, result.get('payment_type_code', ''))
     except (ValueError, RuntimeError, sqlite3.Error, OSError):
         return _page('Resultado pendiente de registro', 'La respuesta de Webpay no pudo guardarse. La operación requiere revisión; no repitas el pago.', status=503)
+    if bridge.enabled():
+        if not saved:
+            bridge_state="RECONCILIATION_REQUIRED" if approved else "REJECTED"
+        else:
+            try:
+                bridge_state=bridge.complete(order=order,session=result["session_id"],
+                    amount=result["amount"],outcome="approved" if approved else "rejected")
+            except bridge.BridgeError:
+                bridge_state="RECONCILIATION_REQUIRED" if approved else "REJECTED"
+    else:
+        bridge_state="LEGACY"
     data = {"billing_saved": saved, "status": ("approved" if approved else "rejected"), "service": parsed["service"],
             "date": parsed["date"], "time": parsed["time"],
             "reservation_status": bridge_state,
