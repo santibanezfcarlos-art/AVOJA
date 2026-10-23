@@ -357,6 +357,25 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 const $=id=>document.getElementById(id), ZONE='America/Santiago', KEY_BOOK='psico_demo_local_v2', KEY_SETTINGS='psico_demo_admin_config_v1', MAX=3;
 const WEEK=['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
 const WEEK_FULL=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+const SERVICE_TYPES={
+ psicoterapia:{title:'Sesión de Psicoterapia Breve',minutes:45,price:30000,description:'Atención psicológica individual, modalidad 100% online.'},
+ empleabilidad:{title:'Asesoría en Empleabilidad',minutes:90,price:45000,description:'Asesoría de empleabilidad personalizada, modalidad 100% online.'},
+ competencias:{title:'Desarrollo de Competencias',minutes:45,price:30000,description:'Acompañamiento para fortalecer competencias personales y laborales.'}
+};
+let selectedService='psicoterapia';
+function currentService(){return SERVICE_TYPES[selectedService]}
+function minutesOf(h){const [hours,minutes]=h.split(':').map(Number);return hours*60+minutes}
+function clockAt(total){return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0')}
+function endsAt(h,duration=currentService().minutes){return clockAt(minutesOf(h)+duration)}
+function fitsSlot(h,duration=currentService().minutes){return minutesOf(h)>=540&&minutesOf(h)+duration<=1200}
+function chooseService(id){
+ if(!Object.prototype.hasOwnProperty.call(SERVICE_TYPES,id))return;
+ selectedService=id;hold=null;clearMessage();
+ $('bookingServiceSelect').value=id;
+ chosen=getAvailable(todayISO());start=monday(chosen);
+ loadCalendar();
+}
 const CAL_API='https://psicologia-carlos-calendar-api.onrender.com/api/availability';
 const PAYMENT_API=CAL_API.replace('/api/availability','');
 let realPaymentsEnabled=false, paymentBusy=false;
@@ -384,7 +403,7 @@ async function loadCalendar(){
  const req=++calendarSeq,from=start<todayISO()?todayISO():start;
  calendarState='loading';calendarBlocked={};render();
  try{
-  const res=await fetch(CAL_API+'?from='+from+'&to='+plus(from,20),{cache:'no-store'});
+  const res=await fetch(CAL_API+'?from='+from+'&to='+plus(from,20)+'&duration='+currentService().minutes,{cache:'no-store'});
   if(!res.ok)throw Error('Sin conexión');
   const data=await res.json();
   if(req!==calendarSeq)return;
@@ -490,6 +509,8 @@ $('tabPublic').onclick=()=>showTab('public');$('tabAdmin').onclick=()=>showTab('
 $('prev').onclick=()=>{if(start>monday(todayISO())){start=plus(start,-7);chosen=start<todayISO()?todayISO():start;hold=null;clearMessage();loadCalendar()}};
 $('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage();loadCalendar()};
 $('cancel').onclick=()=>{hold=null;clearMessage();render()};
+$('bookingServiceSelect').onchange=e=>chooseService(e.target.value);
+document.querySelectorAll('[data-service]').forEach(a=>a.addEventListener('click',()=>chooseService(a.dataset.service)));
 $('confirm').onclick=()=>{if(!hold)return;if(hold.expires<Date.now()){tick();return}const {date,time}=hold,r=booked(date);if(!schedule(date).includes(time)||r.includes(time)||r.length>=MAX||past(date,time)||calendarBusy(date,time)||cannotCheck()){hold=null;render();message('Ya no está disponible ese horario.');return}reservations[date]=[...r,time];save(KEY_BOOK,reservations);hold=null;render();message('Reserva simulada: '+textDate(date,{day:'numeric',month:'long'})+' a las '+time+'. No se ha cobrado ni reservado una atención real.')};
 $('clear').onclick=()=>{if(!window.confirm('¿Eliminar todas las reservas simuladas?'))return;reservations={};save(KEY_BOOK,reservations);hold=null;render();renderAdmin();message('Se borraron las reservas de prueba.')};
 $('weeklyToggle').onclick=()=>{settings.closedWeekdays= settings.closedWeekdays.includes(weekday)?settings.closedWeekdays.filter(x=>x!==weekday):[...settings.closedWeekdays,weekday];persistSettings('Disponibilidad semanal actualizada para '+WEEK_FULL[weekday]+'.')};
