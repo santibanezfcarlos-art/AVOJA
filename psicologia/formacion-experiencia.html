@@ -394,6 +394,13 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 
 /* Contorno uniforme para la tarjeta superior de Desarrollo de Competencias */
 #prestaciones .offer-card.offer-tone-mist{border:2px solid #b3d2bc;}
+
+/* Tres tarjetas en Formación y experiencia: paleta existente, diseño adaptable */
+.training-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.training-cards .training-panel{min-width:0;height:100%}
+.training-cards .training-card-qualification{font-size:14px;line-height:1.55;color:#647a6f;margin:0 0 15px}
+.training-cards .training-card-qualification strong{display:block;color:#214c39;margin-bottom:4px}
+@media(max-width:900px){.training-cards{grid-template-columns:1fr}}
 </style>
 <style>
 /* Menú funcional de las páginas interiores en tabletas */
@@ -408,24 +415,19 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
  <div class="section-heading">
   <div class="eyebrow">Formación académica y perfeccionamiento</div>
   <h2 id="trainingTitle">Formación y experiencia profesional.</h2>
-  <p>Mi práctica se apoya en estudios universitarios y en formación complementaria en terapia breve, psicodiagnóstico y evaluación de competencias.</p>
+  <p>Mi práctica se apoya en estudios universitarios y en formación complementaria en terapia breve, psicodiagnóstico, evaluación pericial y evaluación por competencias.</p>
  </div>
- <div class="training-highlight">
-  <article class="training-major">
-   <div class="training-label">Título profesional</div>
-   <h3>Psicólogo · Licenciado en Psicología</h3>
-   <p>Universidad del Desarrollo</p>
-  </article>
-  <article class="training-major training-specialization">
-   <div class="training-label">Especialización · Formación posterior al título</div>
-   <h3>Especialización en Terapia Breve</h3>
-   <p>Academia Digital de Psicología y Aprendizaje (ADIPA)</p>
+ <div class="training-cards">
+  <article class="training-panel training-specialization">
+   <div class="training-label">Formación base y especialización</div>
+   <h3>Psicólogo · Especialización en Psicoterapia Breve</h3>
+   <p class="training-card-qualification"><strong>Psicólogo · Licenciado en Psicología</strong>Universidad del Desarrollo</p>
+   <p class="training-card-qualification"><strong>Especialización en Terapia Breve</strong>Academia Digital de Psicología y Aprendizaje (ADIPA)</p>
    <span class="training-meta">120 horas certificadas · Modalidad e-learning</span>
   </article>
- </div>
- <div class="training-columns">
-  <div class="training-panel">
-   <h3>Psicodiagnóstico clínico y pericial</h3>
+  <article class="training-panel">
+   <div class="training-label">Psicodiagnóstico y pericia</div>
+   <h3>Formación en Psicodiagnóstico y evaluación pericial</h3>
    <ul class="training-list">
     <li><span>Curso en Psicodiagnóstico Clínico Pericial</span><small>16 horas</small></li>
     <li><span>Curso de Test de Relaciones Objetales de Philipson (TRO)</span><small>16 horas</small></li>
@@ -433,15 +435,16 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
     <li><span>Curso de Psicodiagnóstico: Test de Zulliger</span><small>16 horas</small></li>
     <li><span>Curso de Psicodiagnóstico: Test de Lüscher</span><small>16 horas</small></li>
    </ul>
-  </div>
-  <div class="training-panel">
-   <h3>Evaluación de competencias y ámbito organizacional</h3>
+  </article>
+  <article class="training-panel">
+   <div class="training-label">Ámbito organizacional</div>
+   <h3>Evaluación por competencias y ámbito organizacional</h3>
    <ul class="training-list">
     <li><span>Certificación en Entrevistas por Competencias — Targeted Selection</span><small>16 horas</small></li>
     <li><span>Curso de Selección de Personal basado en Modelo de Competencias</span><small>24 horas</small></li>
    </ul>
    <p class="training-context">Estas capacitaciones complementan mi experiencia en evaluación psicológica y consultoría organizacional.</p>
-  </div>
+  </article>
  </div>
  <div class="training-footer"><p>Formación académica y perfeccionamiento profesional.</p><a href="./#agenda" class="text-link">Agendar una hora →</a></div>
 </section>
