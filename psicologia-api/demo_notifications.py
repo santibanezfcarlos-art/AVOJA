@@ -157,11 +157,29 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
         except HTTPError as exc:
             provider_code = None
             try:
-                response = json.loads(exc.read(1200).decode("utf-8"))
+                body = exc.read(2000).decode("utf-8", "replace")
+                response = json.loads(body)
                 if isinstance(response, dict):
-                    provider_code = response.get("name")
-            except (ValueError, UnicodeError, OSError):
-                pass
+                    message = str(response.get("message", "") or response.get("error", ""))
+                    raw_code = response.get("name") or response.get("code")
+                    if isinstance(raw_code, str) and re.fullmatch(r"[a-z_]{1,48}", raw_code):
+                        provider_code = raw_code
+                    else:
+                        lowercase = message.lower()
+                        if "domain" in lowercase and ("verif" in lowercase or "authoriz" in lowercase):
+                            provider_code = "sender_domain_not_verified"
+                        elif "only send" in lowercase or "testing" in lowercase:
+                            provider_code = "account_testing_restriction"
+                        elif "key" in lowercase or "permission" in lowercase or "restricted" in lowercase:
+                            provider_code = "api_key_permission"
+                        elif "blocked" in lowercase or "suspend" in lowercase:
+                            provider_code = "account_sending_blocked"
+                        else:
+                            provider_code = "provider_rejected"
+                else:
+                    provider_code = "unexpected_error_format"
+            except (ValueError, OSError):
+                provider_code = "unparseable_error"
             raise NotificationError("Resend rechazó el envío",
                 http_status=exc.code,provider_code=provider_code) from None
         except (URLError, OSError, ValueError, TimeoutError) as exc:
