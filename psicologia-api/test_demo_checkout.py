@@ -2,7 +2,7 @@
 import os
 import unittest
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -77,6 +77,19 @@ class CheckoutDemoTests(unittest.TestCase):
         self.assertIn("PRUEBA",subject)
         self.assertIn("SIN COBRO REAL",body)
         self.assertNotIn("RUT",body)
+
+    def test_emails_use_local_chile_hour_even_when_postgres_returns_utc(self):
+        # Octubre en Chile continental usa UTC-03.
+        start=datetime(2026,10,24,15,0,tzinfo=timezone.utc)
+        subject,body=template("patient","PSI1234567890","psicoterapia",
+                              start,start+timedelta(minutes=45))
+        self.assertIn("24/10/2026 12:00",subject)
+        self.assertIn("12:00–12:45",body)
+        self.assertNotIn("15:00",body)
+        corrected_subject,corrected_body=template("patient","PSI1234567890",
+                         "psicoterapia",start,start+timedelta(minutes=45),correction=True)
+        self.assertIn("CORRECCIÓN DE HORARIO",corrected_subject)
+        self.assertIn("en UTC",corrected_body)
 
     def test_calendar_invite_is_nonclinical_and_utc(self):
         val=ics_text(uuid.uuid4(),NOW,NOW+timedelta(minutes=45))
