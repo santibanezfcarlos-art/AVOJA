@@ -23,15 +23,16 @@ class NotificationError(Exception):
 
 
 def allowed_email(email):
-    """Buzón de ensayo principal o sus alias Gmail, sin admitir destinos arbitrarios.
+    """Valida destinatarios del ensayo; envío externo requiere habilitación específica.
 
-    Ej.: usuario+paciente1@gmail.com llega al mismo Gmail del dueño, pero permite
-    distinguir el correo de profesional del correo del paciente de prueba.
+    Por defecto solo acepta el buzón del propietario y alias Gmail.
+    Con la opción externa activa admite cualquier email bien formado, siempre
+    que se comprueben consentimiento y límites en el preflight del checkout.
     """
     candidate = (email or "").strip().lower()
     trusted = os.environ.get("PSICOLOGIA_PILOT_TEST_EMAIL", "").strip().lower()
     professional = os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL", "").strip().lower()
-    if not trusted or not candidate or professional != trusted:
+    if not trusted or not professional or professional != trusted or not candidate:
         return None
     if candidate == trusted:
         return candidate
@@ -42,7 +43,22 @@ def allowed_email(email):
             alias = candidate[len(prefix):-len("@gmail.com")]
             if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", alias):
                 return candidate
-    return None
+    if os.environ.get("PSICOLOGIA_PILOT_ALLOW_EXTERNAL_TEST_EMAILS") != "true":
+        return None
+    if len(candidate) > 254 or candidate.count("@") != 1:
+        return None
+    local, domain = candidate.split("@")
+    if (not 1 <= len(local) <= 64 or local[0] == "." or local[-1] == "."
+        or ".." in local or not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+", local)):
+        return None
+    if len(domain) > 253 or "." not in domain:
+        return None
+    labels = domain.split(".")
+    if any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part) for part in labels):
+        return None
+    if len(labels[-1]) < 2:
+        return None
+    return candidate
 
 
 def configured():
@@ -101,7 +117,9 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
     if not configured():
         raise NotificationError("Envio de correo de prueba deshabilitado")
     email = allowed_email(recipient)
-    if not email or role not in ("professional", "patient"):
+    professional = os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL", "").strip().lower()
+    if (not email or role not in ("professional", "patient")
+            or (role == "professional" and email != professional)):
         raise NotificationError("Destinatario no permitido")
     subject, body = template(role, order, service, start, end)
     attachment = {
