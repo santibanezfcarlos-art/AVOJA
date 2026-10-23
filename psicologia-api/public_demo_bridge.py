@@ -125,8 +125,9 @@ def complete():
     session=data.get("session")
     outcome=data.get("outcome")
     if (not isinstance(order,str) or not ORDER_PATTERN.fullmatch(order)
-            or not isinstance(session,str) or not SESSION_PATTERN.fullmatch(session)
             or outcome not in ("approved","rejected","cancelled")
+            or (outcome!="cancelled" and
+                (not isinstance(session,str) or not SESSION_PATTERN.fullmatch(session)))
             or not isinstance(data.get("amount"),int)):
         return _reply("INVALID",400)
     try:
@@ -135,7 +136,8 @@ def complete():
                     h.slot_date FROM psychology_demo_payments p
                     JOIN psychology_booking_holds h ON p.hold_id=h.id
                     WHERE p.order_id=%s""",(order,)).fetchone()
-            if not row or row["session_id"]!=session or row["amount_clp"]!=data["amount"]:
+            if (not row or (outcome!="cancelled" and row["session_id"]!=session)
+                    or row["amount_clp"]!=data["amount"]):
                 return _reply("MISMATCH",409)
             _lock_day(conn,row["slot_date"])
             row=conn.execute("SELECT state,hold_id FROM psychology_demo_payments WHERE order_id=%s FOR UPDATE",
