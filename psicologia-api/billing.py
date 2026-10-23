@@ -92,7 +92,7 @@ def receiver(form):
     return values
 
 
-def prepare(order, service, day, hour, amount, person, environment):
+def prepare(order, service, day, hour, amount, person, environment, detail=None):
     if environment not in ('integration', 'production'):
         raise ValueError('Invalid billing environment')
     with db() as con:
@@ -100,7 +100,7 @@ def prepare(order, service, day, hour, amount, person, environment):
          (order_id,environment,created_at,service,appointment_date,appointment_time,
           amount,rut,name,address,email,phone,detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
          (order,environment,now(),service,day,hour,amount,person['rut'],person['name'],
-          person['address'],person['email'],person['phone'],DETAILS[service]))
+          person['address'],person['email'],person['phone'],detail or DETAILS[service]))
 
 
 def bind_token(order, token):
@@ -296,3 +296,4 @@ def export():
     writer.writerows([[safe(row[key]) for key,_ in fields] for row in rows])
     return Response('\ufeff' + output.getvalue(), mimetype='text/csv',
                     headers={'Content-Disposition': 'attachment; filename=boletas-psc.csv'})
+

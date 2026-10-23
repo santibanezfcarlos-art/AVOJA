@@ -159,7 +159,7 @@ def _load_busy_intervals():
 @app.after_request
 def _cors(response):
     origin = request.headers.get("Origin")
-    if origin in ALLOWED_ORIGINS and not request.path.startswith("/admin/boletas"):
+    if origin in ALLOWED_ORIGINS and not request.path.startswith("/admin"):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
     response.headers["Cache-Control"] = "no-store"
@@ -246,6 +246,8 @@ from webpay_demo import webpay_demo_bp
 app.register_blueprint(webpay_demo_bp)
 from billing import billing_bp
 app.register_blueprint(billing_bp)
+from admin import admin_bp
+app.register_blueprint(admin_bp)
 
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
@@ -255,4 +257,5 @@ print("PSICOLOGIA_PUBLIC_BILLING: " + ("ready" if _billing_is_ready() else "not_
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 

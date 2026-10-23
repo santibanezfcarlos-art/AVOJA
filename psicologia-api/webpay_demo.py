@@ -160,6 +160,13 @@ def start_demo():
         return _page("Origen no permitido", "Inicia la prueba desde nuestra página web.", status=403)
     if (request.content_length or 0) > 4096:
         return _page("Solicitud inválida", "Los datos enviados superan el límite.", status=400)
+    from admin import payments_paused, settings, allowed_slot
+    try:
+        if payments_paused():
+            return _page("Pagos pausados", "Los nuevos intentos de pago están pausados por administración.", status=503)
+        admin_config, _ = settings()
+    except (RuntimeError, sqlite3.Error, OSError):
+        return _page("Configuración no disponible", "Intenta más tarde.", status=503)
     service = request.form.get("service", "")
     if service not in SERVICES:
         return _page("Servicio no válido", "Selecciona un servicio disponible.", status=400)
@@ -179,6 +186,8 @@ def start_demo():
                 raise ValueError()
         except ValueError:
             return _page("Horario inválido", "Elige una fecha y hora futura válida.", status=400)
+    if not admin_config["services"][service]["active"] or (day and not allowed_slot(admin_config, service, day, hour)):
+        return _page("Horario no disponible", "Elige un horario disponible en la agenda actualizada.", status=409)
     # No comenzar Webpay si falta la infraestructura de reservas y correos.
     if not bridge.enabled():
         return _page("Agenda en configuración",
@@ -230,7 +239,7 @@ def start_demo():
                status=409)
     if person:
         try:
-            billing.prepare(order, service, day, hour, SERVICES[service], person, 'integration')
+            billing.prepare(order, service, day, hour, SERVICES[service], person, 'integration', detail=admin_config['services'][service]['detail'])
         except (RuntimeError, sqlite3.Error, OSError):
             if bridge.enabled():
                 try: bridge.complete(order=order,session=session,amount=SERVICES[service],outcome="cancelled")
@@ -332,4 +341,5 @@ def verify_demo_result():
     if data is None:
         return jsonify(error="Comprobante de prueba inválido o vencido"), 400
     return jsonify(data)
+
 
