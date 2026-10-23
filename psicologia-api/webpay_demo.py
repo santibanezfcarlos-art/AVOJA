@@ -256,10 +256,17 @@ def return_demo():
     if not _enabled():
         return _page("Prueba no habilitada", "El ambiente de integración no está configurado.", status=503)
     if request.values.get("TBK_TOKEN") is not None:
+        tbk_cancel=request.values.get("TBK_TOKEN","")
+        pending=billing.pending_by_token(tbk_cancel)
         try:
-            billing.cancelled(request.values.get('TBK_TOKEN', ''))
+            billing.cancelled(tbk_cancel)
         except (RuntimeError, sqlite3.Error, OSError):
-            pass  # Remains unconfirmed; never enters pending invoices.
+            pass
+        if pending and bridge.enabled():
+            try:
+                bridge.complete(order=pending["order"],session="",amount=pending["amount"],outcome="cancelled")
+            except bridge.BridgeError:
+                pass  # Si falla la red, la retención caduca automáticamente.
         return _return_site(cancelled=True)
     token = request.values.get("token_ws", "")
     if not isinstance(token, str) or not (20 <= len(token) <= 150) or not token.isalnum():
