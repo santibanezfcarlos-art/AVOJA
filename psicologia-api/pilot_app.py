@@ -40,4 +40,7 @@ def health():
         database_reachable=database_reachable,
         schema_ready=schema_ready,
         holds_enabled=enabled(),
+        google_api_configured=bool(os.environ.get("PSICOLOGIA_GOOGLE_CALENDAR_ID") and os.environ.get("PSICOLOGIA_GOOGLE_SERVICE_ACCOUNT_JSON")),
+        google_api_write_enabled=os.environ.get("PSICOLOGIA_CALENDAR_WRITE_ENABLED") == "true",
+        calendar_availability_source=os.environ.get("PSICOLOGIA_HOLDS_CALENDAR_POLICY", "ical"),
     )
