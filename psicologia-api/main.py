@@ -176,7 +176,11 @@ def index():
 @app.get("/health")
 def health():
     url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
-    return jsonify(status="ok", calendar_configured=bool(url), calendar_url_format_valid=valid_calendar_url(url))
+    from webpay_demo_bridge import enabled as checkout_bridge_ready
+    from billing import configured as billing_ready
+    return jsonify(status="ok", calendar_configured=bool(url), calendar_url_format_valid=valid_calendar_url(url),
+                   webpay_demo_bridge_ready=checkout_bridge_ready(), billing_storage_ready=billing_ready(),
+                   payments_simulated_only=True)
 
 
 @app.get("/api/availability")
