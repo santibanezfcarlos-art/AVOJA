@@ -98,6 +98,9 @@ def main():
         print("PSICOLOGIA_PILOT_SCHEMA: ready", flush=True)
         from demo_notifications import configured as mail_is_ready
         print("PSICOLOGIA_PILOT_EMAIL: " + ("ready" if mail_is_ready() else "not_configured"), flush=True)
+        from public_demo_bridge import _enabled as bridge_ready
+        print("PSICOLOGIA_PILOT_BRIDGE: " + ("ready" if bridge_ready() else "not_configured"), flush=True)
+        print("PSICOLOGIA_PILOT_CALENDAR_WRITE: " + ("enabled" if os.environ.get("PSICOLOGIA_CALENDAR_WRITE_ENABLED") == "true" else "disabled"), flush=True)
         if os.environ.get("PSICOLOGIA_GOOGLE_READ_PROBE") == "true":
             _probe_google_calendar_read()
         if os.environ.get("PSICOLOGIA_HOLDS_DB_SELFTEST") == "true":
