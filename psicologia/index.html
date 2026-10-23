@@ -539,7 +539,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
  </form>
  <p class="small" style="margin-top:10px">Al pulsar el botón, irás directamente a Webpay Plus de Transbank para utilizar una tarjeta de prueba. Sin dinero, reservas ni boletas reales.</p>
 </div>
-<button type="button" class="primary" id="confirm" disabled style="display:none">Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">Solo demostración: el pago aprobado bloqueará la hora únicamente en este navegador. Si el pago se rechaza o cancela, podrás seleccionarla de nuevo. No se procesan cobros, boletas ni reservas reales.</p></aside></div>
+<button type="button" class="primary" id="confirm" disabled style="display:none">Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">Solo demostración: un pago aprobado bloquea la hora únicamente en este navegador. Si se rechaza o cancela, vuelve a estar disponible. Sin cobros, boletas ni reservas reales.</p></aside></div>
 <section id="adminView" class="admin-section" role="tabpanel" aria-labelledby="tabAdmin" hidden>
   <p class="admin-warning"><strong>Panel de administración — demostración local.</strong> Esta pantalla no tiene autenticación. No es segura para uso público y ningún cambio se sincroniza entre dispositivos. Antes de publicar, se deberá implementar acceso privado, base de datos y control de reservas en el servidor.</p>
   <div class="admin-view">
@@ -811,13 +811,16 @@ $('resetConfig').onclick=()=>{if(!window.confirm('¿Restaurar el horario semanal
 $('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración y las reservas de esta demostración?'))return;reservations={};settings=clone(DEFAULT);save(KEY_BOOK,reservations);save(KEY_SETTINGS,settings);hold=null;render();renderAdmin();adminMessage('Se borraron todos los datos locales de prueba.')};
 
 function pendingDemo(){
- try{const p=JSON.parse(sessionStorage.getItem(DEMO_PENDING_KEY)||'null');
- return p&&SERVICE_TYPES[p.service]&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(p.date)&&/^[0-9]{2}:[0-9]{2}$/.test(p.time)&&Number.isFinite(p.until)&&p.until>Date.now()?p:null;
+ try{
+  const p=JSON.parse(sessionStorage.getItem(DEMO_PENDING_KEY)||'null');
+  return p&&SERVICE_TYPES[p.service]&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(p.date)
+   &&/^[0-9]{2}:[0-9]{2}$/.test(p.time)&&Number.isFinite(p.until)&&p.until>Date.now()?p:null;
  }catch{return null}
 }
 function demoNotice(title,description,positive){
- const x=$('webpayDemoResult');x.hidden=false;x.style.background=positive?'#e8f4e9':'#fff1e7';
- x.style.borderColor=positive?'#a1cfaa':'#edc8a0';x.replaceChildren();
+ const x=$('webpayDemoResult');x.hidden=false;
+ x.style.background=positive?'#e8f4e9':'#fff1e7';x.style.borderColor=positive?'#a1cfaa':'#edc8a0';
+ x.replaceChildren();
  const h=document.createElement('strong');h.textContent=title;h.style.display='block';
  const p=document.createElement('p');p.textContent=description;x.append(h,p);
  x.scrollIntoView({block:'center',behavior:'instant'});
@@ -828,81 +831,35 @@ async function processDemoReturn(){
  u.searchParams.delete('wp_demo');u.searchParams.delete('wp_demo_cancelled');
  history.replaceState(null,'',u.pathname+u.search+'#agenda');
  const p=pendingDemo();sessionStorage.removeItem(DEMO_PENDING_KEY);hold=null;
- if(cancel){render();demoNotice('Pago cancelado · Prueba','No se registró ninguna reserva. La hora vuelve a estar disponible.',false);return}
+ if(cancel){render();demoNotice('Pago cancelado · Prueba','No se registró ninguna reserva. La hora quedó disponible para otro intento.',false);return}
  let r;
  try{
   if(!receipt||receipt.length>1200)throw Error('receipt');
   const res=await fetch(PAYMENT_API+'/api/webpay-demo/verify?receipt='+encodeURIComponent(receipt),{cache:'no-store'});
-  if(!res.ok)throw Error('server');r=await res.json();
+  if(!res.ok)throw Error('server');
+  r=await res.json();
   if(!r||!['approved','rejected'].includes(r.status)||!SERVICE_TYPES[r.service])throw Error('invalid');
- }catch{render();demoNotice('Resultado no verificado','No se pudo confirmar el resultado de Transbank. No se registró ninguna hora.',false);return}
- if(r.status==='rejected'){render();demoNotice('Pago rechazado · Prueba','Transbank rechazó la operación. No se guardó ninguna reserva; puedes intentarlo nuevamente.',false);return}
+ }catch{render();demoNotice('Resultado no verificado','No se pudo comprobar el pago en el servidor. No se guardó ninguna hora.',false);return}
+ if(r.status==='rejected'){
+  render();demoNotice('Pago rechazado · Prueba','Transbank rechazó la operación. No se registró ninguna reserva; puedes intentarlo nuevamente.',false);return
+ }
  if(!p||p.service!==r.service||p.date!==r.date||p.time!==r.time){
-  render();demoNotice('Pago aprobado · Prueba','Transbank aprobó la simulación, pero no se pudo asociar a una hora seleccionada en este navegador.',true);return
+  render();demoNotice('Pago aprobado · Prueba','La simulación fue autorizada, pero no pudo asociarse a una hora válida de este navegador.',true);return
  }
  selectedService=p.service;$('bookingServiceSelect').value=selectedService;
  chosen=p.date;start=monday(chosen);
- const svc=currentService(),savedRecords=bookedRecords(p.date);
- if(savedRecords.some(v=>v.demoOrder===r.order)){
-  render();renderAdmin();demoNotice('Prueba ya registrada','La operación ya figura en este navegador; no se duplicó la reserva.',true);return
+ const svc=currentService(),records=bookedRecords(p.date);
+ if(records.some(v=>v.demoOrder===r.order)){
+  render();renderAdmin();demoNotice('Prueba ya registrada','Esta operación ya figura en este navegador y no se duplicó la hora.',true);return
  }
- if(calendarState!=='ready'||past(p.date,p.time)||!schedule(p.date).includes(p.time)||!fitsSlot(p.time,svc.minutes)
-   ||calendarBusy(p.date,p.time)||localBusy(p.date,p.time,svc.minutes)||savedRecords.length>=MAX){
-  render();demoNotice('Pago aprobado, sin hora confirmada','No se pudo verificar la disponibilidad para simular la reserva. Ninguna hora real fue bloqueada.',false);return
+ if(calendarState!=='ready'||past(p.date,p.time)||!schedule(p.date).includes(p.time)
+    ||!fitsSlot(p.time,svc.minutes)||calendarBusy(p.date,p.time)
+    ||localBusy(p.date,p.time,svc.minutes)||records.length>=MAX){
+  render();demoNotice('Pago aprobado, sin reserva','No pudo verificarse que la hora continúe disponible. No se confirmó una cita real.',false);return
  }
- reservations[p.date]=[...savedRecords,{time:p.time,duration:svc.minutes,service:p.service,demoOrder:r.order}];
+ reservations[p.date]=[...records,{time:p.time,duration:svc.minutes,service:p.service,demoOrder:r.order}];
  save(KEY_BOOK,reservations);render();renderAdmin();
- demoNotice('¡Reserva de prueba confirmada!',svc.title+' · '+p.date+' · '+p.time+' a '+endsAt(p.time,svc.minutes)+' · 
- ev.preventDefault();
- if(!hold||cannotCheck())return;
- if(Date.now()>=hold.expires||hold.service!==selectedService||calendarBusy(hold.date,hold.time)||localBusy(hold.date,hold.time)){hold=null;render();paymentStatus('Horario no disponible. Selecciona nuevamente.');return;}
- const field=$('payerRut');field.setCustomValidity('');
- const rut=field.value.replaceAll('.','').replaceAll('-','').toUpperCase();
- if(rut.length<8||rut.length>9){field.setCustomValidity('RUT inválido');field.reportValidity();return;}
- let total=0,m=2;
- for(let i=rut.length-2;i>=0;i--){const d=Number(rut[i]);if(!Number.isInteger(d)){field.setCustomValidity('RUT inválido');field.reportValidity();return;}total+=d*m;m=m===7?2:m+1;}
- const mod=11-total%11,check=mod===11?'0':mod===10?'K':String(mod);
- if(check!==rut.slice(-1)){field.setCustomValidity('RUT inválido: revisa el dígito verificador');field.reportValidity();return;}
- // El formulario envía únicamente el tipo de servicio. Ningún dato personal se envía al servidor de pruebas.
- $('webpayTestService').value=selectedService;
- $('webpayTestDate').value=hold.date;
- $('webpayTestTime').value=hold.time;
- sessionStorage.setItem(DEMO_PENDING_KEY,JSON.stringify({service:selectedService,date:hold.date,time:hold.time,until:Date.now()+3600000}));
- paymentBusy=true;
- paymentStatus('Conectando al formulario oficial de Webpay Plus (ambiente de integración)…');
- $('webpayPay').disabled=true;
- ev.currentTarget.submit();
-});
-setInterval(()=>{if(hold)tick()},1000);
-setInterval(()=>{if(!document.hidden&&calendarState!=='loading')loadCalendar()},120000);
-render();renderAdmin();loadCalendar();checkWebpayConfig();
-})();
-</script>
-
-<script>
-(function(){
-'use strict';
-const home=document.getElementById('homePage'),app=document.getElementById('appPage');
-function route(){
- let frag=decodeURIComponent((location.hash||'#inicio').slice(1)).toLowerCase();
- let inApp=frag==='agenda'||frag==='admin';
- home.hidden=inApp;app.hidden=!inApp;
- if(inApp){document.getElementById(frag==='admin'?'tabAdmin':'tabPublic').click();document.getElementById('appBread').textContent=frag==='admin'?'Administración de prueba':'Reserva tu hora';document.title=(frag==='admin'?'Administración de prueba':'Reserva tu sesión')+' · Carlos Santibáñez';}
- else{document.title='Carlos Santibáñez | Psicología Online';}
- document.querySelectorAll('[data-nav]').forEach(link=>link.classList.toggle('active',link.getAttribute('data-nav')===frag));
- if(inApp)window.scrollTo({top:0,behavior:'instant'});
- else if(frag!=='inicio'){let dest=document.getElementById(frag);if(dest)requestAnimationFrame(()=>dest.scrollIntoView({block:'start',behavior:'smooth'}));}
- else window.scrollTo({top:0,behavior:'instant'});
-}
-window.addEventListener('hashchange',route);
-const publicTab=document.getElementById('tabPublic'),adminTab=document.getElementById('tabAdmin');
-publicTab.addEventListener('click',()=>{if(location.hash!=='#agenda')location.hash='agenda'});
-adminTab.addEventListener('click',()=>{if(location.hash!=='#admin')location.hash='admin'});
-route();
-})();
-</script>
-
-</body></html>+svc.price.toLocaleString('es-CL')+' CLP. Solo en este navegador, sin cita real.',true);
+ demoNotice('¡Reserva de prueba confirmada!',svc.title+' · '+p.date+' · '+p.time+' a '+endsAt(p.time,svc.minutes)+' · $'+svc.price.toLocaleString('es-CL')+' CLP. Solo en este navegador; no es una cita real.',true);
 }
 
 $('webpayForm').addEventListener('submit',(ev)=>{
@@ -928,10 +885,10 @@ $('webpayForm').addEventListener('submit',(ev)=>{
 });
 setInterval(()=>{if(hold)tick()},1000);
 setInterval(()=>{if(!document.hidden&&calendarState!=='loading')loadCalendar()},120000);
-const returnPending=pendingDemo();
-if(returnPending&&(location.search.includes('wp_demo=')||location.search.includes('wp_demo_cancelled'))){
- selectedService=returnPending.service;$('bookingServiceSelect').value=selectedService;
- chosen=returnPending.date;start=monday(chosen);
+const returning=pendingDemo();
+if(returning&&(location.search.includes('wp_demo=')||location.search.includes('wp_demo_cancelled'))){
+ selectedService=returning.service;$('bookingServiceSelect').value=selectedService;
+ chosen=returning.date;start=monday(chosen);
 }
 render();renderAdmin();
 loadCalendar().then(processDemoReturn).catch(processDemoReturn);
