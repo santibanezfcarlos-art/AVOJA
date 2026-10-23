@@ -76,6 +76,10 @@ def preflight():
     service=data.get("service")
     session=data.get("session")
     email=data.get("email")
+    # El solicitante debe confirmar que controla el correo utilizado.
+    # Solo afecta a transacciones simuladas y no entrega contenido clínico.
+    if data.get("email_consent") is not True:
+        return _reply("EMAIL_CONSENT_REQUIRED",422)
     from booking_holds import CATALOG
     if (not isinstance(order,str) or not ORDER_PATTERN.fullmatch(order)
             or not isinstance(session,str) or not SESSION_PATTERN.fullmatch(session)
@@ -83,8 +87,8 @@ def preflight():
             or not isinstance(data.get("amount"),int)
             or data["amount"]!=CATALOG[service]["amount_clp"]):
         return _reply("INVALID",400)
-    # Piloto público solo acepta el buzón de ensayo autorizado: evita convertir
-    # Webpay de tarjetas ficticias en un servicio de spam a terceros.
+    # El propietario puede habilitar correos de ensayo externos. Nunca se
+    # envían mensajes sin una compra sandbox aprobada ni fuera del límite.
     if allowed_email(email) is None:
         return _reply("TEST_EMAIL_ONLY",422)
     try:
@@ -97,6 +101,16 @@ def preflight():
         if known:
             return _reply("READY" if known["session_id"]==session else "MISMATCH",
                           200 if known["session_id"]==session else 409)
+        # Límites por ventana móvil para impedir abusos del checkout gratuito.
+        # Incluye intentos fallidos: evita enviar correos a terceros repetidamente.
+        with _database_connection() as conn:
+            limit=conn.execute("""SELECT count(*) AS total,
+                         count(*) FILTER (WHERE test_recipient=%s) AS recipient
+                         FROM psychology_demo_payments
+                         WHERE created_at>=now()-interval '24 hours'""",
+                         (email.strip().lower(),)).fetchone()
+        if limit["total"] >= 20 or limit["recipient"] >= 4:
+            return _reply("TEST_LIMIT_REACHED",429)
         if not _calendar_free(start,end):
             return _reply("SLOT_UNAVAILABLE",409)
         hold_id,_secret=_new_hold(service,day,start,end)
