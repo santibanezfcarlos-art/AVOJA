@@ -62,7 +62,9 @@ por ingresar las credenciales.
 - PSICOLOGIA_API_PUBLIC_URL=https://psicologia-carlos-calendar-api.onrender.com
 - PSICOLOGIA_WEBPAY_PRODUCTION_APPROVED=false
 - Para producción únicamente tras activación comercial: PSICOLOGIA_WEBPAY_COMMERCE_CODE y PSICOLOGIA_WEBPAY_API_KEY
-- PSICOLOGIA_BOOKINGS_ENABLED=false (habilitar solo tras pruebas con BD).\n- PSICOLOGIA_DATABASE_URL= (PostgreSQL persistente propio y respaldado).\n- Base de datos de reservas: URL de conexión privada, cifrado de tokens y políticas de respaldo.
+- PSICOLOGIA_BOOKINGS_ENABLED=false (habilitar solo tras pruebas con BD).
+- PSICOLOGIA_DATABASE_URL= (PostgreSQL persistente propio y respaldado).
+- Base de datos de reservas: URL de conexión privada, cifrado de tokens y políticas de respaldo.
 
 ## Diagrama de estados
 
