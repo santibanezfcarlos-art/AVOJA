@@ -206,8 +206,10 @@ def start_demo():
         except bridge.BridgeError as exc:
             if exc.state=="TEST_EMAIL_ONLY":
                 return _page("Correo de prueba requerido",
-                    "En integración solo se pueden enviar confirmaciones al correo de pruebas autorizado. "
-                    "No ingreses información real de pacientes.",status=422)
+                    "Todavía estamos probando la plataforma. En E-mail del receptor usa "
+                    "santibanezf.carlos@gmail.com o santibanezf.carlos+paciente1@gmail.com "
+                    "para simular una persona distinta. Ambos llegan a tu Gmail. "
+                    "No se ha iniciado ningún pago ni reserva.",status=422)
             return _page("No se pudo reservar temporalmente",
                 "No se inició Webpay porque la agenda no pudo confirmar el horario. "
                 "Selecciona otra hora o revisa la conexión con Google Calendar.",status=503)
