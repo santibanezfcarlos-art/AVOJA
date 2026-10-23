@@ -48,6 +48,34 @@ def _run_smoke_test():
     print("PSICOLOGIA_PILOT_SMOKE: hold_created, duplicate_blocked, cancelled, slot_released", flush=True)
 
 
+
+def _probe_google_calendar_read():
+    """Verifica credenciales y permiso de lectura sin revelar eventos, claves ni datos personales."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from google_calendar_writer import CalendarWriter, CalendarHttpError, CalendarIntegrationError
+
+    if (os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") != "true"
+            or os.environ.get("PSICOLOGIA_CALENDAR_WRITE_ENABLED", "false") != "false"):
+        print("PSICOLOGIA_GOOGLE_READ_CHECK: unsafe_pilot_config", flush=True)
+        return
+    try:
+        writer = CalendarWriter()
+        if not writer.settings.configured:
+            print("PSICOLOGIA_GOOGLE_READ_CHECK: credentials_or_id_missing", flush=True)
+            return
+        now = datetime.now(ZoneInfo("America/Santiago"))
+        writer.list_busy(now, now + timedelta(minutes=30))
+        print("PSICOLOGIA_GOOGLE_READ_CHECK: authorized", flush=True)
+    except CalendarHttpError as ex:
+        print("PSICOLOGIA_GOOGLE_READ_CHECK: google_http_status=" + str(ex.status), flush=True)
+    except CalendarIntegrationError:
+        print("PSICOLOGIA_GOOGLE_READ_CHECK: credentials_or_calendar_access_error", flush=True)
+    except Exception as ex:
+        print("PSICOLOGIA_GOOGLE_READ_CHECK: error_type=" + type(ex).__name__, flush=True)
+
+
+
 def main():
     if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
         print("PSICOLOGIA_PILOT_SCHEMA: bootstrap_disabled", flush=True)
@@ -68,6 +96,8 @@ def main():
         with psycopg.connect(url, connect_timeout=10, application_name="psychology-pilot-bootstrap") as conn:
             conn.execute(sql)
         print("PSICOLOGIA_PILOT_SCHEMA: ready", flush=True)
+        if os.environ.get("PSICOLOGIA_GOOGLE_READ_PROBE") == "true":
+            _probe_google_calendar_read()
         if os.environ.get("PSICOLOGIA_HOLDS_DB_SELFTEST") == "true":
             _run_smoke_test()
         return 0
