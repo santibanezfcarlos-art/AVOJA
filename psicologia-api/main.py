@@ -38,6 +38,16 @@ ALLOWED_SITE = "https://psicologia-carlos-demo.onrender.com"
 MAX_FEED_SIZE = 24_000_000
 _feed_cache = {"at": 0.0, "events": []}
 _lock = threading.Lock()
+_refresh_done = threading.Event()
+_refreshing = False
+_retry_after = 0.0
+CALENDAR_WAIT_SECONDS = 3
+CALENDAR_RETRY_SECONDS = 15
+
+
+class CalendarRefreshingError(Exception):
+    """La agenda no está verificada todavía; no ofrecer disponibilidad."""
+    pass
 # Estado seguro de configuración, sin incluir URL, token ni eventos en los registros.
 _calendar_feed_url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
 app.logger.warning("Calendar iCal configurado=%s formato_valido=%s",
@@ -51,63 +61,98 @@ def _to_local(value):
     return datetime(value.year, value.month, value.day, tzinfo=TZ)
 
 
+def _read_busy_intervals(url):
+    """Red y procesamiento fuera del bloqueo compartido de la caché."""
+    req = Request(url, headers={"User-Agent": "PsychologyCalendarAvailability/1.0"})
+    with urlopen(req, timeout=12) as response:
+        # No seguir URLs arbitrarias por redirección.
+        if urlparse(response.geturl()).hostname != "calendar.google.com":
+            raise CalendarConfigurationError("Redirección de calendario no permitida")
+        raw = response.read(MAX_FEED_SIZE + 1)
+    if len(raw) > MAX_FEED_SIZE:
+        app.logger.warning("CALENDAR_READ_STAGE: size_exceeded")
+        raise ValueError("Calendario demasiado grande")
+    try:
+        cal = Calendar.from_ical(raw)
+    except ValueError:
+        app.logger.warning("CALENDAR_READ_STAGE: parse_ical_failed")
+        raise
+    # Se consultan los próximos 70 días; Google iCal admite recurrencias.
+    start = datetime.now(TZ).date() - timedelta(days=1)
+    end = start + timedelta(days=72)
+    start_dt = datetime(start.year, start.month, start.day, tzinfo=TZ)
+    end_dt = datetime(end.year, end.month, end.day, tzinfo=TZ)
+    try:
+        events = recurring_ical_events.of(cal).between(start_dt, end_dt)
+    except ValueError:
+        app.logger.warning("CALENDAR_READ_STAGE: expand_recurrences_failed")
+        raise
+    intervals = []
+    for event in events:
+        if str(event.get("STATUS", "")).upper() == "CANCELLED":
+            continue
+        if str(event.get("TRANSP", "OPAQUE")).upper() == "TRANSPARENT":
+            continue
+        if "DTSTART" not in event:
+            continue
+        try:
+            s = _to_local(event.decoded("DTSTART"))
+            if "DTEND" in event:
+                e = _to_local(event.decoded("DTEND"))
+            elif "DURATION" in event:
+                e = s + event.decoded("DURATION")
+            else:
+                e = s + (timedelta(days=1) if isinstance(event.decoded("DTSTART"), date) and not isinstance(event.decoded("DTSTART"), datetime) else timedelta(hours=1))
+        except ValueError:
+            app.logger.warning("CALENDAR_READ_STAGE: event_date_failed")
+            raise
+        if e > s:
+            intervals.append((s, e))
+    return intervals
+
+
+def _refresh_calendar(url):
+    global _refreshing, _retry_after
+    try:
+        intervals = _read_busy_intervals(url)
+        with _lock:
+            _feed_cache.update(at=time.monotonic(), events=intervals)
+            _retry_after = 0.0
+        app.logger.info("CALENDAR_READ_CHECK: read_ok")
+    except Exception as exc:
+        # No divulgar URL privada ni contenidos de eventos.
+        with _lock:
+            _retry_after = time.monotonic() + CALENDAR_RETRY_SECONDS
+        app.logger.warning("CALENDAR_READ_CHECK: read_failed_%s", type(exc).__name__)
+    finally:
+        with _lock:
+            _refreshing = False
+            _refresh_done.set()
+
+
 def _load_busy_intervals():
+    global _refreshing
     url = os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip()
     if not url:
         return None
     if not valid_calendar_url(url):
         raise CalendarConfigurationError("Formato de dirección iCal incorrecto")
-    now = time.monotonic()
     with _lock:
-        if now - _feed_cache["at"] < CACHE_TTL_SECONDS:
+        now = time.monotonic()
+        if _feed_cache["at"] and now - _feed_cache["at"] < CACHE_TTL_SECONDS:
             return _feed_cache["events"]
-        req = Request(url, headers={"User-Agent": "PsychologyCalendarAvailability/1.0"})
-        with urlopen(req, timeout=12) as response:
-            # No seguir URLs arbitrarias por redirección.
-            if urlparse(response.geturl()).hostname != "calendar.google.com":
-                raise CalendarConfigurationError("Redirección de calendario no permitida")
-            raw = response.read(MAX_FEED_SIZE + 1)
-        if len(raw) > MAX_FEED_SIZE:
-            app.logger.warning("CALENDAR_READ_STAGE: size_exceeded")
-            raise ValueError("Calendario demasiado grande")
-        try:
-            cal = Calendar.from_ical(raw)
-        except ValueError:
-            app.logger.warning("CALENDAR_READ_STAGE: parse_ical_failed")
-            raise
-        # Se consultan los próximos 70 días; Google iCal admite recurrencias.
-        start = datetime.now(TZ).date() - timedelta(days=1)
-        end = start + timedelta(days=72)
-        start_dt = datetime(start.year, start.month, start.day, tzinfo=TZ)
-        end_dt = datetime(end.year, end.month, end.day, tzinfo=TZ)
-        try:
-            events = recurring_ical_events.of(cal).between(start_dt, end_dt)
-        except ValueError:
-            app.logger.warning("CALENDAR_READ_STAGE: expand_recurrences_failed")
-            raise
-        intervals = []
-        for event in events:
-            if str(event.get("STATUS", "")).upper() == "CANCELLED":
-                continue
-            if str(event.get("TRANSP", "OPAQUE")).upper() == "TRANSPARENT":
-                continue
-            if "DTSTART" not in event:
-                continue
-            try:
-                s = _to_local(event.decoded("DTSTART"))
-                if "DTEND" in event:
-                    e = _to_local(event.decoded("DTEND"))
-                elif "DURATION" in event:
-                    e = s + event.decoded("DURATION")
-                else:
-                    e = s + (timedelta(days=1) if isinstance(event.decoded("DTSTART"), date) and not isinstance(event.decoded("DTSTART"), datetime) else timedelta(hours=1))
-            except ValueError:
-                app.logger.warning("CALENDAR_READ_STAGE: event_date_failed")
-                raise
-            if e > s:
-                intervals.append((s, e))
-        _feed_cache.update(at=now, events=intervals)
-        return intervals
+        if not _refreshing:
+            if now < _retry_after:
+                raise CalendarRefreshingError()
+            _refreshing = True
+            _refresh_done.clear()
+            threading.Thread(target=_refresh_calendar, args=(url,), daemon=True).start()
+    # Nunca esperar indefinidamente ni servir datos vencidos como disponibilidad.
+    _refresh_done.wait(timeout=CALENDAR_WAIT_SECONDS)
+    with _lock:
+        if _feed_cache["at"] and time.monotonic() - _feed_cache["at"] < CACHE_TTL_SECONDS:
+            return _feed_cache["events"]
+    raise CalendarRefreshingError()
 
 
 @app.after_request
@@ -154,6 +199,10 @@ def availability():
 
     try:
         intervals = _load_busy_intervals()
+    except CalendarRefreshingError:
+        response = jsonify(status="refreshing", error="Actualizando disponibilidad. Reintentar en unos segundos.")
+        response.headers["Retry-After"] = str(CALENDAR_RETRY_SECONDS)
+        return response, 503
     except CalendarConfigurationError:
         app.logger.warning("GOOGLE_CALENDAR_ICS_URL no tiene un formato iCal válido. No se registran detalles.")
         return jsonify(status="not_configured", reason="calendar_url_invalid", configured=False, blocked={}, duration_minutes=duration)
@@ -186,6 +235,8 @@ def _startup_calendar_diagnostic():
     try:
         values = _load_busy_intervals()
         app.logger.warning("CALENDAR_READ_CHECK: %s", "not_configured" if values is None else "read_ok")
+    except CalendarRefreshingError:
+        app.logger.info("CALENDAR_READ_CHECK: refreshing")
     except CalendarConfigurationError:
         app.logger.warning("CALENDAR_READ_CHECK: invalid_ics_source")
     except Exception as exc:

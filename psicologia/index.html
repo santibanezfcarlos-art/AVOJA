@@ -659,7 +659,7 @@ async function checkWebpayConfig(){
  }catch(e){realPaymentsEnabled=false;paymentStatus('SIMULADOR LOCAL · Sin cargos, cuentas ni reservas reales.');}
  const b=document.getElementById('webpayPay');if(b)b.disabled=!hold||paymentBusy||cannotCheck();
 }
-let calendarState='loading',calendarBlocked={},calendarBlockedShort={},calendarSeq=0;
+let calendarState='loading',calendarBlocked={},calendarBlockedShort={},calendarSeq=0,calendarRetry=null;
 function calendarBusy(date,time){
  if(calendarState!=='ready')return false;
  if((calendarBlocked[date]||[]).includes(time))return true;
@@ -679,7 +679,8 @@ function updateCalendarMessage(){
 }
 async function loadCalendar(){
  const req=++calendarSeq,from=start<todayISO()?todayISO():start;
- calendarState='loading';calendarBlocked={};calendarBlockedShort={};hold=null;render();
+ clearTimeout(calendarRetry);
+ calendarState='loading';calendarBlocked={};calendarBlockedShort={};render();
  try{
   const base=CAL_API+'?from='+from+'&to='+plus(from,20);
   const duration=currentService().minutes;
@@ -687,6 +688,10 @@ async function loadCalendar(){
    fetch(base+'&duration='+duration,{cache:'no-store'}),
    fetch(base+'&duration=45',{cache:'no-store'})
   ]);
+  if(res.status===503||shortRes.status===503){
+   if(req===calendarSeq)calendarRetry=setTimeout(loadCalendar,15000);
+   throw Error('Disponibilidad temporalmente no disponible');
+  }
   if(!res.ok||!shortRes.ok)throw Error('Sin conexión');
   const [data,shortData]=await Promise.all([res.json(),shortRes.json()]);
   if(data.duration_minutes!==duration||shortData.duration_minutes!==45)throw Error('Duración inesperada');
@@ -695,6 +700,9 @@ async function loadCalendar(){
   else if(data.configured===false){calendarState='demo';calendarBlocked={}}
   else throw Error('Respuesta inválida');
  }catch(e){if(req!==calendarSeq)return;calendarState='error';calendarBlocked={}}
+ if(hold&&calendarState==='ready'&&(hold.expires<=Date.now()||hold.service!==selectedService||calendarBusy(hold.date,hold.time)||localBusy(hold.date,hold.time)||booked(hold.date).length>=MAX||!schedule(hold.date).includes(hold.time)||!fitsSlot(hold.time)||past(hold.date,hold.time))){
+  hold=null;message('El horario seleccionado expiró o ya no está disponible. Elige otra hora.');
+ }
  render();
 }
 const DEFAULT={weekly:{0:[],1:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],2:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],3:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],4:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],5:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'],6:['10:00','11:00','12:00']},closedWeekdays:[],exceptions:{}};
