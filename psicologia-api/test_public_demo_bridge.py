@@ -96,7 +96,7 @@ class BridgePostgresTests(unittest.TestCase):
 
     def prepare(self):
         data={"order":ORDER,"session":self.session,"service":"psicoterapia",
-              "date":self.day,"time":"18:00","amount":30000,"email":MAIL}
+              "date":self.day,"time":"18:00","amount":30000,"email":MAIL,"email_consent":True}
         return self.post("/internal/psicologia/demo/preflight",data)
 
     def finalize(self,outcome):
@@ -128,11 +128,28 @@ class BridgePostgresTests(unittest.TestCase):
         self.assertEqual(self.post("/internal/psicologia/demo/preflight",{
             "order":"PSCD"+"B"*18,"session":self.session.replace("a"*28,"b"*28),
             "service":"psicoterapia","date":self.day,"time":"18:00",
-            "amount":30000,"email":MAIL}).status_code,409)
+            "amount":30000,"email":MAIL,"email_consent":True}).status_code,409)
         self.assertEqual(self.post("/internal/psicologia/demo/preflight",{
             "order":"PSCD"+"C"*18,"session":self.session.replace("a"*28,"c"*28),
             "service":"psicoterapia","date":self.day,"time":"19:00",
-            "amount":30000,"email":"unverified@example.com"}).get_json()["state"],"TEST_EMAIL_ONLY")
+            "amount":30000,"email":"unverified@example.com","email_consent":True}).get_json()["state"],"TEST_EMAIL_ONLY")
+
+    def test_customer_email_external_requires_opt_in_and_consent(self):
+        order="PSCD"+"D"*18
+        values={"order":order,"session":self.session.replace("a"*28,"d"*28),
+                "service":"psicoterapia","date":self.day,"time":"19:00",
+                "amount":30000,"email":"cliente.pruebas@outlook.com"}
+        self.assertEqual(self.post("/internal/psicologia/demo/preflight",values).get_json()["state"],
+                         "EMAIL_CONSENT_REQUIRED")
+        values["email_consent"]=True
+        self.assertEqual(self.post("/internal/psicologia/demo/preflight",values).get_json()["state"],
+                         "TEST_EMAIL_ONLY")
+        with patch.dict(os.environ,{"PSICOLOGIA_PILOT_ALLOW_EXTERNAL_TEST_EMAILS":"true"}):
+            self.assertEqual(self.post("/internal/psicologia/demo/preflight",values).get_json()["state"],
+                             "READY")
+            with psycopg.connect(DB) as conn:
+                stored=conn.execute("SELECT test_recipient FROM psychology_demo_payments WHERE order_id=%s",(order,)).fetchone()
+                self.assertEqual(stored[0],"cliente.pruebas@outlook.com")
 
 if __name__=="__main__":
     unittest.main()
