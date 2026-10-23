@@ -385,10 +385,9 @@ async function checkWebpayConfig(){
   const r=await fetch(PAYMENT_API+'/api/bookings/config',{cache:'no-store'});
   if(!r.ok)throw Error('not-ready');
   const data=await r.json();
-  realPaymentsEnabled=data.bookings_enabled===true&&['integration','production'].includes(data.webpay_mode);
-  paymentStatus(realPaymentsEnabled
-    ?(data.webpay_mode==='integration'?'Webpay en ambiente de pruebas: sin dinero real.':'Webpay disponible para pagar y confirmar tu reserva.')
-    :'La recepción de pagos está pendiente de activación. Sin cargos reales.');
+  // El backend Webpay aún no admite precios y duraciones por servicio: sin cobros.
+  realPaymentsEnabled=false;
+  paymentStatus('Webpay pendiente de adaptar al precio y duración del servicio seleccionado. No se realizan cargos.');
  }catch(e){realPaymentsEnabled=false;paymentStatus('Webpay aún no está conectado al calendario de reservas. Sin cargos reales.');}
  const b=document.getElementById('webpayPay');if(b)b.disabled=!realPaymentsEnabled||!hold||paymentBusy||cannotCheck();
 }
