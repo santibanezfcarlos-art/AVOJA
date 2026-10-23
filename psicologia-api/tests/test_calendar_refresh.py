@@ -1,6 +1,7 @@
 """Pruebas sin calendario real ni datos de pacientes."""
 import os
 import sys
+import subprocess
 import threading
 import time
 import unittest
@@ -30,6 +31,18 @@ class CalendarRefreshTests(unittest.TestCase):
         main._refresh_done.wait(1)
         self.wait.stop()
         self.env.stop()
+
+    def test_import_with_configured_calendar_starts_no_thread_before_fork(self):
+        script = """
+from unittest.mock import patch
+with patch('threading.Thread.start') as start:
+    import main
+    assert not start.called, 'No iniciar hilos durante importación/preload'
+    assert main._refreshing is False
+"""
+        subprocess.run([sys.executable, '-c', script],
+                       cwd=Path(main.__file__).parent, check=True,
+                       capture_output=True, timeout=10)
 
     def test_slow_read_is_shared_and_requests_finish_without_stale_data(self):
         release = threading.Event()

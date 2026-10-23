@@ -230,21 +230,9 @@ def availability():
                    duration_minutes=duration, timezone="America/Santiago")
 
 
-def _startup_calendar_diagnostic():
-    """Prueba de salud: nunca imprimir contenidos ni secretos del calendario."""
-    try:
-        values = _load_busy_intervals()
-        app.logger.warning("CALENDAR_READ_CHECK: %s", "not_configured" if values is None else "read_ok")
-    except CalendarRefreshingError:
-        app.logger.info("CALENDAR_READ_CHECK: refreshing")
-    except CalendarConfigurationError:
-        app.logger.warning("CALENDAR_READ_CHECK: invalid_ics_source")
-    except Exception as exc:
-        app.logger.warning("CALENDAR_READ_CHECK: read_failed_%s", type(exc).__name__)
-
-# Ejecutar la prueba una sola vez durante el arranque, sin bloquear el servidor.
-if os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip():
-    threading.Thread(target=_startup_calendar_diagnostic, daemon=True).start()
+# Iniciar la lectura solo desde una petición del worker. No crear hilos durante
+# la importación: Gunicorn puede cargar la aplicación antes de hacer fork,
+# y el hijo heredaría _refreshing=True sin heredar el hilo que lo resuelve.
 
 
 if __name__ == "__main__":
