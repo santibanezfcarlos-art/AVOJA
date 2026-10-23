@@ -9,6 +9,7 @@ from datetime import timezone
 from html import escape
 import json
 import os
+import re
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -22,11 +23,26 @@ class NotificationError(Exception):
 
 
 def allowed_email(email):
+    """Buzón de ensayo principal o sus alias Gmail, sin admitir destinos arbitrarios.
+
+    Ej.: usuario+paciente1@gmail.com llega al mismo Gmail del dueño, pero permite
+    distinguir el correo de profesional del correo del paciente de prueba.
+    """
     candidate = (email or "").strip().lower()
     trusted = os.environ.get("PSICOLOGIA_PILOT_TEST_EMAIL", "").strip().lower()
     professional = os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL", "").strip().lower()
-    # Privacidad: no enviar a correos externos sin una lista explícita de ensayo.
-    return candidate if candidate and candidate == trusted and professional == trusted else None
+    if not trusted or not candidate or professional != trusted:
+        return None
+    if candidate == trusted:
+        return candidate
+    if trusted.endswith("@gmail.com"):
+        local = trusted[:-len("@gmail.com")]
+        prefix = local + "+"
+        if candidate.startswith(prefix) and candidate.endswith("@gmail.com"):
+            alias = candidate[len(prefix):-len("@gmail.com")]
+            if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", alias):
+                return candidate
+    return None
 
 
 def configured():
