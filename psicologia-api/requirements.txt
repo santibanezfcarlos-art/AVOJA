@@ -3,3 +3,4 @@ Gunicorn>=23,<26
 icalendar>=6.2,<8
 recurring-ical-events>=3.7,<4
 psycopg[binary]>=3.2,<4
+google-auth[requests]>=2.35,<3
