@@ -120,3 +120,26 @@ sin respaldo automático. No almacenar reservas de pacientes allí.
 No registra rutas Flask, no reemplaza `webpay_demo.py`, no cambia la web,
 no crea reservas, no emite boletas, no escribe Google Calendar y **no hace cobros**.
 Solo encapsula el futuro cliente seguro de Webpay Plus.
+
+## Verificación técnica realizada el 23 de octubre de 2026
+
+Se creó en Render PostgreSQL **psicologia-holds-piloto** (plan Free,
+región Virginia, ID `dpg-dbdrg6fb9u1s73b9coag-a`). Está disponible,
+pero **NO está vinculado** al sitio principal ni al backend público.
+Su fecha de expiración informada por Render es el **22 de noviembre de 2026**.
+No almacenar pacientes ni pagos en esa instancia efímera.
+
+GitHub Actions, rama `psicologia-webpay-produccion-preparacion`,
+ejecución `40013841627`: **20 pruebas superadas**, entre ellas 6
+ejecutadas contra un contenedor PostgreSQL 18 real (sin Transbank),
+verificando 2 solicitudes simultáneas a una misma hora, límite de 3,
+expiración y cancelación con secreto. Estas pruebas no han utilizado
+ni inicializado el PostgreSQL de Render.
+
+**Pendiente de configuración privada por el propietario en Render:**
+obtener la URL interna del nuevo PostgreSQL, ponerla solo en el
+entorno de un backend de pruebas separado, migrar el esquema y preparar
+la clave piloto. La conexión externa de Render está bloqueada mediante
+allowlist vacía; no abrirla públicamente para facilitar la configuración.
+Se recomienda no utilizar la instancia Free para producción ni
+modificar las credenciales del backend publicado.
