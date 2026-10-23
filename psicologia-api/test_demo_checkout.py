@@ -105,7 +105,7 @@ class CheckoutDemoTests(unittest.TestCase):
             with app.test_client() as client:
                 page=client.get("/demo")
             self.assertEqual(page.status_code,200)
-            self.assertIn(b"test",page.data.lower())
+            self.assertIn(b"prueba",page.data.lower())
             self.assertNotIn(b'name="email"',page.data)
 
     def test_post_to_transbank_is_manual_and_requires_official_url(self):
