@@ -189,5 +189,10 @@ if os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip():
     threading.Thread(target=_startup_calendar_diagnostic, daemon=True).start()
 
 
+# Las rutas de reserva siguen DESACTIVADAS hasta configurar BD y Webpay.
+from booking_api import booking_bp
+app.register_blueprint(booking_bp)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
