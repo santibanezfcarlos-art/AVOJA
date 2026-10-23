@@ -99,39 +99,143 @@ def ics_text(hold_id, start, end):
             "STATUS:TENTATIVE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
 
 
+def _brand():
+    """Parámetros de presentación reutilizables para otros profesionales."""
+    name = os.environ.get("PSICOLOGIA_BRAND_NAME", "Ps. Carlos Santibáñez Fica").strip()[:90]
+    subtitle = os.environ.get("PSICOLOGIA_BRAND_SUBTITLE",
+                              "Psicólogo · Atención online").strip()[:110]
+    contact = os.environ.get("PSICOLOGIA_BRAND_CONTACT",
+                             "contacto@pscsantibanez.cl").strip()[:120]
+    website = os.environ.get("PSICOLOGIA_BRAND_WEBSITE",
+                             "https://pscsantibanez.cl").strip()[:200]
+    if not re.fullmatch(r"https://[a-z0-9.-]+(?:/[a-z0-9/_-]*)?", website, re.I):
+        website = "https://pscsantibanez.cl"
+    return name or "Ps. Carlos Santibáñez Fica", subtitle, contact, website
+
+
 def template(role, order, service, start, end, *, correction=False):
-    """Servicio y horario en Chile; Postgres devuelve marcas con TZ UTC."""
-    service_name = {"psicoterapia": "Psicoterapia breve", "empleabilidad": "Asesoría en empleabilidad",
-                    "competencias": "Potencia tus competencias"}[service]
-    local_start=start.astimezone(ZoneInfo("America/Santiago"))
-    local_end=end.astimezone(ZoneInfo("America/Santiago"))
+    """Email institucional, seguro y adaptable al servicio y al profesional.
+
+    Fechas siempre en Chile; sin información clínica ni URLs de sesión inventadas.
+    """
+    if role not in ("patient", "professional"):
+        raise NotificationError("Rol de notificación inválido")
+    services = {
+        "psicoterapia": "Psicoterapia breve",
+        "empleabilidad": "Asesoría en empleabilidad",
+        "competencias": "Potencia tus competencias",
+    }
+    service_name = services[service]
+    zone = ZoneInfo("America/Santiago")
+    local_start = start.astimezone(zone)
+    local_end = end.astimezone(zone)
     date_label = local_start.strftime("%d/%m/%Y")
     hour_label = local_start.strftime("%H:%M")
     end_label = local_end.strftime("%H:%M")
-    intro = ("Recibiste una reserva de prueba en tu agenda." if role == "professional"
-             else "Esta es tu confirmación de reserva de prueba.")
-    subject = (("PRUEBA · Nueva reserva — " if role == "professional" else
-                "PRUEBA · Confirmación de tu hora — ") + date_label + " " + hour_label)
+    long_date = (f"{local_start.day} de "
+                 + ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+                    "julio", "agosto", "septiembre", "octubre", "noviembre",
+                    "diciembre"][local_start.month - 1]
+                 + f" de {local_start.year}")
+    duration = round((end - start).total_seconds() / 60)
+    name, subtitle, contact, website = _brand()
+    is_pro = role == "professional"
+    subject = (("PRUEBA · Nueva reserva · " if is_pro
+                else "PRUEBA · Tu hora confirmada · ")
+               + service_name + " · " + date_label + " · " + hour_label + " h")
     if correction:
         subject = "CORRECCIÓN DE HORARIO · " + subject
-    body = (
-        "<div style='font-family:Arial,sans-serif;max-width:590px;color:#153e32'>"
-        "<h2>Ps. Carlos Santibáñez F.</h2><p><strong>PRUEBA TÉCNICA — SIN COBRO REAL</strong></p>"
-        + ("<p><strong>Corrección:</strong> el correo anterior pudo mostrar el horario "
-           "en UTC. El horario correcto para Chile es el que aparece abajo. "
-           "Disculpa la confusión.</p>" if correction else "")
-        + f"<p>{escape(intro)}</p>"
-        f"<p><strong>Servicio:</strong> {escape(service_name)}<br>"
-        f"<strong>Fecha:</strong> {escape(date_label)}<br>"
-        f"<strong>Horario (Chile):</strong> {escape(hour_label)}–{escape(end_label)}<br>"
-        "<strong>Modalidad:</strong> Online</p>"
-        f"<p><strong>Orden de prueba:</strong> {escape(order)}</p>"
-        "<p>La transacción se procesó exclusivamente en el ambiente de "
-        "integración de Transbank. No se emitió boleta ni se realizó cobro real.</p>"
-        "<p>El enlace de videollamada y la agenda productiva se habilitarán "
-        "cuando la plataforma entre en funcionamiento.</p></div>"
+    heading = "Nueva reserva registrada" if is_pro else "Tu reserva está confirmada"
+    description = ("Se ha registrado una nueva reserva de prueba en tu agenda."
+                   if is_pro else
+                   "Tu solicitud fue confirmada. Aquí encontrarás los datos "
+                   "de la atención que reservaste.")
+    notes = ("Puedes revisar el evento en tu Google Calendar."
+             if is_pro else
+             "La atención será online. Procura contar con una conexión estable "
+             "y un espacio privado. El enlace de acceso todavía no se genera "
+             "automáticamente en esta versión de prueba.")
+    summary = "12:00–12:45"
+    summary = hour_label + "–" + end_label
+    correction_notice = (
+        "<tr><td style='padding:15px 25px;background:#fff2e5;"
+        "color:#754724;font-size:14px;line-height:1.5'>"
+        "<strong>Corrección de horario:</strong> un correo anterior pudo "
+        "mostrar la hora en UTC. Esta comunicación contiene el horario "
+        "correcto de Chile.</td></tr>" if correction else "")
+    def esc(value):
+        return escape(str(value), quote=True)
+    def field(label, value):
+        return ("<tr><td style='padding:9px 0;color:#64796f;"
+                "font-size:13px;vertical-align:top;width:37%'>"
+                + esc(label) + "</td><td style='padding:9px 0;color:#163f34;"
+                "font-size:15px;font-weight:600'>"+esc(value)+"</td></tr>")
+    table = "".join([
+        field("Servicio", service_name),
+        field("Fecha", long_date),
+        field("Hora (Chile)", summary),
+        field("Duración", str(duration) + " minutos"),
+        field("Modalidad", "Online"),
+        field("Referencia", order),
+    ])
+    intro = esc(description)
+    html = (
+        "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>" + esc(heading) + "</title></head>"
+        "<body style='margin:0;padding:0;background:#f3f6f2;"
+        "font-family:Arial,Helvetica,sans-serif;color:#173e32'>"
+        "<div style='display:none;max-height:0;overflow:hidden;opacity:0'>"
+        + esc(service_name + " · " + long_date + " · " + hour_label + " h")
+        + "</div>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;background:#f3f6f2'><tr><td "
+        "style='padding:32px 12px' align='center'>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;max-width:590px;background:#ffffff;"
+        "border:1px solid #dbe7df;border-radius:18px;overflow:hidden'>"
+        "<tr><td style='padding:27px 30px;background:#194a3a;color:white'>"
+        "<div style='font-size:22px;font-weight:700;line-height:1.25'>"
+        + esc(name) + "</div><div style='margin-top:5px;font-size:13px;"
+        "color:#d3e6db'>" + esc(subtitle) + "</div></td></tr>"
+        "<tr><td style='padding:18px 30px 2px;color:#4d8268;"
+        "font-size:12px;font-weight:bold;letter-spacing:1.6px'>"
+        "CONFIRMACIÓN DE RESERVA · PRUEBA</td></tr>"
+        + correction_notice +
+        "<tr><td style='padding:12px 30px 4px'>"
+        "<h1 style='font-size:27px;line-height:1.2;margin:0;color:#194a3a'>"
+        + esc(heading) + "</h1><p style='font-size:15px;"
+        "line-height:1.7;color:#49695b;margin:17px 0 0'>"
+        + intro + "</p></td></tr>"
+        "<tr><td style='padding:15px 30px'>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;border:1px solid #dce9df;"
+        "border-radius:12px;background:#f7faf7'>"
+        "<tr><td style='padding:16px 20px'>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;border-collapse:collapse'>"
+        + table + "</table></td></tr></table></td></tr>"
+        "<tr><td style='padding:2px 30px 22px;font-size:14px;"
+        "line-height:1.7;color:#4b665a'>"
+        + esc(notes) + "<p style='margin:15px 0 0'>"
+        "<strong>PRUEBA TÉCNICA — SIN COBRO REAL.</strong> "
+        "Esta reserva corresponde exclusivamente al ambiente de integración "
+        "de Transbank; no representa una sesión pagada ni se ha emitido boleta."
+        "</p><p style='margin:14px 0 0'>Se adjunta un archivo de calendario "
+        "para facilitar el registro personal de la hora de prueba.</p>"
+        "</td></tr>"
+        "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
+        "padding:20px 30px;font-size:12px;line-height:1.7;"
+        "color:#577166'><strong style='color:#194a3a'>"
+        + esc(name) + "</strong><br>"
+        + esc(contact) + " · <a href='" + esc(website)
+        + "' style='color:#276b50;text-decoration:underline'>"
+        + esc(website.replace("https://", "")) + "</a><br>"
+        "Notificación automática relativa a una reserva de prueba. "
+        "No contiene antecedentes clínicos."
+        "</td></tr></table></td></tr></table></body></html>"
     )
-    return subject, body
+    return subject, html
 
 
 def send(role, order, hold_id, recipient, service, start, end, *, transport=None, correction=False):
