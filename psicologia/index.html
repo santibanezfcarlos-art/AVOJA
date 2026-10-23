@@ -399,12 +399,22 @@ function textDate(isoDate,opt){return new Intl.DateTimeFormat('es-CL',{timeZone:
 function dayIndex(isoDate){return dateObj(isoDate).getUTCDay()}
 function goodHour(h){if(!/^\d{2}:\d{2}$/.test(h))return false;const [hh,mm]=h.split(':').map(Number),mins=hh*60+mm;return mm%15===0&&mins>=540&&mins+60<=1200}
 function normalize(a){return [...new Set((Array.isArray(a)?a:[]).filter(x=>typeof x==='string'&&goodHour(x)))].sort()}
-function booked(isoDate){return Array.isArray(reservations[isoDate])?normalize(reservations[isoDate]):[]}
+function booked(isoDate){return bookedRecords(isoDate).map(v=>v.time)}
+function bookedRecords(date){
+ const raw=Array.isArray(reservations[date])?reservations[date]:[];
+ return raw.map(v=>typeof v==='string'?{time:v,duration:60,service:'psicoterapia'}:v)
+  .filter(v=>v&&typeof v.time==='string'&&goodHour(v.time)&&Number.isInteger(v.duration)&&v.duration>=30&&v.duration<=120);
+}
+function localBusy(date,time,duration=currentService().minutes){
+ const st=minutesOf(time),en=st+duration;
+ return bookedRecords(date).some(v=>st<minutesOf(v.time)+v.duration&&minutesOf(v.time)<en);
+}
+
 function baseSchedule(isoDate){const wd=dayIndex(isoDate);return settings.closedWeekdays.includes(wd)?[]:normalize(settings.weekly[wd])}
 function schedule(isoDate){const ex=settings.exceptions[isoDate];return ex?ex.closed?[]:normalize(ex.slots):baseSchedule(isoDate)}
 function past(isoDate,time){const t=todayISO();if(isoDate<t)return true;if(isoDate>t)return false;const p=nowParts();return time<=p.hour+':'+p.minute}
-function availableDay(isoDate){return isoDate>=todayISO()&&schedule(isoDate).some(h=>!past(isoDate,h)&&!calendarBusy(isoDate,h))}
-function publicDayHasCups(isoDate){return availableDay(isoDate)&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>!past(isoDate,h)&&!booked(isoDate).includes(h)&&!calendarBusy(isoDate,h))}
+function availableDay(isoDate){return isoDate>=todayISO()&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
+function publicDayHasCups(isoDate){return availableDay(isoDate)}
 function message(t){$('message').textContent=t;$('message').hidden=false}
 function clearMessage(){$('message').hidden=true}
 function adminMessage(t){$('adminMessage').textContent=t;$('adminMessage').hidden=false}
@@ -427,7 +437,7 @@ function render(){
  $('dateHeading').textContent=textDate(chosen,{weekday:'long',day:'numeric',month:'long'});
  const taken=booked(chosen),slots=schedule(chosen);$('capacity').textContent=taken.length+' de '+MAX+' cupos de prueba';$('hours').replaceChildren();
  if(!slots.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No hay horarios habilitados para este día.';$('hours').append(empty)}
- else for(const time of slots){const reserved=taken.includes(time),exhausted=taken.length>=MAX,isPast=past(chosen,time),isBusy=calendarBusy(chosen,time),notChecked=cannotCheck(),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast||isBusy||notChecked;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=reserved?'Reservado':isPast?'Hora pasada':exhausted?'Sin cupos':isBusy?'Ocupado en Calendar':calendarState==='error'?'Sin conexión':calendarState==='loading'?'Comprobando…':calendarState==='demo'?'Demo · disponible':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{hold={date:chosen,time,expires:Date.now()+600000};clearMessage();render()};$('hours').append(b)}
+ else for(const time of slots){const reserved=localBusy(chosen,time),exhausted=taken.length>=MAX,isPast=past(chosen,time),isBusy=calendarBusy(chosen,time),tooLate=!fitsSlot(time),notChecked=cannotCheck(),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast||isBusy||tooLate||notChecked;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=tooLate?'Fuera de horario':reserved?'Horario ocupado':isPast?'Hora pasada':exhausted?'Sin cupos':isBusy?'Ocupado en Calendar':calendarState==='error'?'Sin conexión':calendarState==='loading'?'Comprobando…':calendarState==='demo'?'Demo · disponible':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{hold={date:chosen,time,service:selectedService,expires:Date.now()+600000};clearMessage();render()};$('hours').append(b)}
  updateCalendarMessage();$('selectedDate').textContent=hold?textDate(hold.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Selecciona una fecha';$('selectedTime').textContent=hold?hold.time:'Sin seleccionar';$('confirm').disabled=!hold||cannotCheck()||(hold&&calendarBusy(hold.date,hold.time));$('cancel').hidden=!hold;tick();
 }
 function tick(){if(!hold){$('hold').hidden=true;return}const remaining=hold.expires-Date.now();if(remaining<=0){hold=null;render();message('La selección de prueba expiró. Elige otra hora.');return}const m=Math.floor(remaining/60000),s=Math.floor(remaining%60000/1000);$('hold').hidden=false;$('hold').textContent='Selección temporal: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' restantes. Solo en este navegador.'}
