@@ -15,6 +15,22 @@ jobs:
   backend-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: psychology_hold_test
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: not-a-real-password-local-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d psychology_hold_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      TEST_HOLDS_DATABASE_URL: postgresql://test_runner:not-a-real-password-local-test@localhost:5432/psychology_hold_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,4 +43,4 @@ jobs:
       - name: Pruebas unitarias sin pagos ni conexiones de producción
         run: |
           cd psicologia-api
-          python -m unittest -v test_booking_holds test_webpay_gateway
+          python -m unittest -v test_booking_holds test_webpay_gateway test_booking_holds_postgres
