@@ -16,6 +16,9 @@ app.register_blueprint(bp)
 from demo_checkout import demo_bp, pilot_enabled
 app.register_blueprint(demo_bp)
 
+from public_demo_bridge import public_bridge_bp
+app.register_blueprint(public_bridge_bp)
+
 
 @app.get("/")
 @app.get("/health")
@@ -41,6 +44,8 @@ def health():
         production_payments=False,
         patient_bookings=False,
         demo_checkout_enabled=pilot_enabled(),
+        demo_notifications_configured=__import__("demo_notifications").configured(),
+        public_demo_bridge_enabled=__import__("public_demo_bridge")._enabled(),
         database_configured=db_configured,
         database_reachable=database_reachable,
         schema_ready=schema_ready,
