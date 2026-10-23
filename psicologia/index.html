@@ -654,8 +654,19 @@ async function checkWebpayConfig(){
  }catch(e){realPaymentsEnabled=false;paymentStatus('Webpay aún no está conectado al calendario de reservas. Sin cargos reales.');}
  const b=document.getElementById('webpayPay');if(b)b.disabled=!realPaymentsEnabled||!hold||paymentBusy||cannotCheck();
 }
-let calendarState='loading',calendarBlocked={},calendarSeq=0;
-function calendarBusy(date,time){return calendarState==='ready'&&(calendarBlocked[date]||[]).includes(time)}
+let calendarState='loading',calendarBlocked={},calendarBlockedShort={},calendarSeq=0;
+function calendarBusy(date,time){
+ if(calendarState!=='ready')return false;
+ if((calendarBlocked[date]||[]).includes(time))return true;
+ if(currentService().minutes>45){
+  for(let offset=15;offset<currentService().minutes;offset+=15){
+   const m=minutesOf(time)+offset;
+   if(m>=1200)break;
+   if((calendarBlockedShort[date]||[]).includes(clockAt(m)))return true;
+  }
+ }
+ return false;
+}
 function cannotCheck(){return calendarState==='loading'||calendarState==='error'}
 function updateCalendarMessage(){
  const el=document.getElementById('calendarSyncStatus');if(!el)return;
@@ -663,13 +674,19 @@ function updateCalendarMessage(){
 }
 async function loadCalendar(){
  const req=++calendarSeq,from=start<todayISO()?todayISO():start;
- calendarState='loading';calendarBlocked={};render();
+ calendarState='loading';calendarBlocked={};calendarBlockedShort={};hold=null;render();
  try{
-  const res=await fetch(CAL_API+'?from='+from+'&to='+plus(from,20)+'&duration='+currentService().minutes,{cache:'no-store'});
-  if(!res.ok)throw Error('Sin conexión');
-  const data=await res.json();
+  const base=CAL_API+'?from='+from+'&to='+plus(from,20);
+  const duration=currentService().minutes;
+  const [res,shortRes]=await Promise.all([
+   fetch(base+'&duration='+duration,{cache:'no-store'}),
+   fetch(base+'&duration=45',{cache:'no-store'})
+  ]);
+  if(!res.ok||!shortRes.ok)throw Error('Sin conexión');
+  const [data,shortData]=await Promise.all([res.json(),shortRes.json()]);
+  if(data.duration_minutes!==duration||shortData.duration_minutes!==45)throw Error('Duración inesperada');
   if(req!==calendarSeq)return;
-  if(data.configured===true&&data.status==='ok'){calendarState='ready';calendarBlocked=data.blocked||{}}
+  if(data.configured===true&&data.status==='ok'&&shortData.configured===true&&shortData.status==='ok'){calendarState='ready';calendarBlocked=data.blocked||{};calendarBlockedShort=shortData.blocked||{}}
   else if(data.configured===false){calendarState='demo';calendarBlocked={}}
   else throw Error('Respuesta inválida');
  }catch(e){if(req!==calendarSeq)return;calendarState='error';calendarBlocked={}}
