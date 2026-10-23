@@ -812,7 +812,7 @@ $('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración 
 
 function pendingDemo(){
  try{const p=JSON.parse(sessionStorage.getItem(DEMO_PENDING_KEY)||'null');
- return p&&SERVICE_TYPES[p.service]&&/^\\d{4}-\\d{2}-\\d{2}$/.test(p.date)&&/^\\d{2}:\\d{2}$/.test(p.time)&&Number.isFinite(p.until)&&p.until>Date.now()?p:null;
+ return p&&SERVICE_TYPES[p.service]&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(p.date)&&/^[0-9]{2}:[0-9]{2}$/.test(p.time)&&Number.isFinite(p.until)&&p.until>Date.now()?p:null;
  }catch{return null}
 }
 function demoNotice(title,description,positive){
