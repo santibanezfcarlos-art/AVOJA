@@ -186,6 +186,10 @@ def start_demo():
     if request.form.get('billing_required') != '1':
         return _page("Datos incompletos",
             "Debes completar todos los datos del receptor antes de comenzar.",status=400)
+    if request.form.get("test_email_ownership") != "1":
+        return _page("Confirmación de correo requerida",
+            "Para enviar el comprobante de simulación, confirma que puedes recibir correos "
+            "en la dirección indicada antes de continuar.", status=422)
     person = None
     if request.form.get('billing_required') == '1':
         if not billing.configured():
@@ -202,14 +206,21 @@ def start_demo():
     if person and bridge.enabled():
         try:
             state=bridge.preflight(order=order,session=session,service=service,
-                   day=day,hour=hour,amount=SERVICES[service],email=person["email"])
+                   day=day,hour=hour,amount=SERVICES[service],email=person["email"],
+                   email_consent=True)
         except bridge.BridgeError as exc:
             if exc.state=="TEST_EMAIL_ONLY":
                 return _page("Correo de prueba requerido",
-                    "Todavía estamos probando la plataforma. En E-mail del receptor usa "
-                    "santibanezf.carlos@gmail.com o santibanezf.carlos+paciente1@gmail.com "
-                    "para simular una persona distinta. Ambos llegan a tu Gmail. "
-                    "No se ha iniciado ningún pago ni reserva.",status=422)
+                    "Verifica que el correo tenga un formato válido. Podrás probar con "
+                    "cualquier dirección a la que tengas autorización de enviar un mensaje "
+                    "de prueba. No se inició ningún pago ni reserva.",status=422)
+            if exc.state=="TEST_LIMIT_REACHED":
+                return _page("Límite de pruebas alcanzado",
+                    "Para evitar envíos repetitivos de correos de prueba, el sistema tiene "
+                    "un límite diario. Intenta nuevamente mañana.",status=429)
+            if exc.state=="EMAIL_CONSENT_REQUIRED":
+                return _page("Falta autorización del correo",
+                    "Debes indicar que puedes recibir el mensaje en la dirección ingresada.",status=422)
             return _page("No se pudo reservar temporalmente",
                 "No se inició Webpay porque la agenda no pudo confirmar el horario. "
                 "Selecciona otra hora o revisa la conexión con Google Calendar.",status=503)
