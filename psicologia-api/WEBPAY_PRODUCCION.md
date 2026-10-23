@@ -72,6 +72,49 @@ python -m unittest test_webpay_gateway.py
 
 Estas pruebas usan diccionarios ficticios. No llaman a Transbank.
 
+
+## Piloto de retención PostgreSQL (incorporado en esta rama, apagado)
+
+Se implementaron `booking_holds.py`, `schema_holds.sql` y
+`test_booking_holds.py`. Registro aislado en Flask con estos endpoints:
+
+- `GET /api/holds/pilot/config`: muestra si el piloto está habilitado.
+- `POST /api/holds/pilot/create`: retiene una fecha/hora durante **600 segundos**;
+  exige una clave administrativa HTTP `X-Pilot-Key`, que **jamás** debe
+  exponerse en el navegador de los pacientes. Body JSON:
+  `{"service":"psicoterapia","date":"AAAA-MM-DD","time":"HH:MM"}`.
+- `POST /api/holds/pilot/cancel`: recibe `hold_id` y `cancel_secret`
+  más `X-Pilot-Key`, libera una retención propia que aún esté activa.
+
+**No está habilitado para pacientes.** Los registros de prueba no contienen
+nombre, RUT, correo, historial médico ni datos de tarjetas. Los filtros
+de fechas/servicios y los precios se deciden en el servidor. El lock
+`psychology_booking_days FOR UPDATE` serializa reservas simultáneas;
+se verifica un límite de tres holds vigentes por día y los solapamientos.
+Los estados HELD expiran a 10 minutos sin depender de un proceso de fondo,
+porque las lecturas y escrituras consultan `expires_at` en SQL.
+
+Nunca se crean eventos en Google Calendar ni se confirma un pago real.
+La consulta de iCal es de solo lectura y puede tener retraso incluso
+descargándola fresca: **falta integración de escritura para producción**.
+
+Requisitos para utilizarlo en **un entorno aislado de pruebas**:
+1. PostgreSQL exclusivo de Psicología, sin conexión a Valhalla.
+2. Aplicar `schema_holds.sql` mediante un cliente SQL autenticado antes
+   de iniciar pruebas; este módulo **no** ejecuta migraciones al arrancar.
+3. Configurar variables privadas:
+   `PSICOLOGIA_HOLDS_DATABASE_URL`, `PSICOLOGIA_HOLDS_PILOT_KEY`
+   (mínimo 32 caracteres) y `PSICOLOGIA_HOLDS_ENABLED=true`.
+   Predeterminado: deshabilitado.
+4. Ejecutar pruebas locales: `python -m unittest test_booking_holds test_webpay_gateway`.
+5. Verificar con PostgreSQL real que las solicitudes simultáneas no
+   permiten duplicados, que la retención expira y que la cancelación se
+   aplica correctamente. Las pruebas unitarias escritas no reemplazan
+   esta prueba de concurrencia real.
+
+Render Postgres Free está pensado para pruebas y caduca a los 30 días,
+sin respaldo automático. No almacenar reservas de pacientes allí.
+
 ## Qué NO hace el nuevo módulo
 
 No registra rutas Flask, no reemplaza `webpay_demo.py`, no cambia la web,
