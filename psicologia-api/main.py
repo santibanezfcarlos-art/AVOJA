@@ -35,7 +35,7 @@ OPEN_MINUTES = 9 * 60
 CLOSE_MINUTES = 20 * 60
 CACHE_TTL_SECONDS = 120
 ALLOWED_SITE = "https://psicologia-carlos-demo.onrender.com"
-MAX_FEED_SIZE = 4_000_000
+MAX_FEED_SIZE = 24_000_000
 _feed_cache = {"at": 0.0, "events": []}
 _lock = threading.Lock()
 # Estado seguro de configuración, sin incluir URL, token ni eventos en los registros.
