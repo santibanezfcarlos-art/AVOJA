@@ -19,7 +19,7 @@ from booking_holds import (
     _lock_day, slot_window,
 )
 from demo_checkout import _confirm_calendar, _notify
-from demo_notifications import allowed_email
+from demo_notifications import allowed_email, configured as notification_ready
 
 TZ=ZoneInfo("America/Santiago")
 public_bridge_bp=Blueprint("psychology_public_demo_bridge",__name__)
@@ -70,6 +70,8 @@ def preflight():
     data=_authorize()
     if not data:
         return _reply("NOT_AUTHORIZED",403)
+    if not notification_ready():
+        return _reply("NOTIFICATIONS_DISABLED",503)
     order=data.get("order")
     service=data.get("service")
     session=data.get("session")
