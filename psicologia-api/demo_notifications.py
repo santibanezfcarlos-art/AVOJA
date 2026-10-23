@@ -19,7 +19,20 @@ SENDER_NAME = "Ps. Carlos Santibáñez F."
 
 
 class NotificationError(Exception):
-    pass
+    def __init__(self, message, *, http_status=None, provider_code=None):
+        super().__init__(message)
+        self.http_status = http_status
+        self.provider_code = provider_code
+
+
+def safe_error_label(exc):
+    """Solo códigos de Resend y estado HTTP; nunca emails ni datos de solicitudes."""
+    status = getattr(exc, "http_status", None)
+    code = getattr(exc, "provider_code", None)
+    status_label = ("HTTP_" + str(status)) if isinstance(status, int) else "NETWORK_OR_CONFIG"
+    code_label = (code if isinstance(code, str) and re.fullmatch(r"[a-z_]{1,48}", code)
+                  else "unspecified")
+    return status_label + ":" + code_label
 
 
 def allowed_email(email):
@@ -141,8 +154,19 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
         try:
             with urlopen(request, timeout=12) as response:
                 result = json.loads(response.read(10000).decode("utf-8"))
-        except (HTTPError, URLError, OSError, ValueError, TimeoutError):
-            raise NotificationError("El proveedor de correo no confirmó el envío") from None
+        except HTTPError as exc:
+            provider_code = None
+            try:
+                response = json.loads(exc.read(1200).decode("utf-8"))
+                if isinstance(response, dict):
+                    provider_code = response.get("name")
+            except (ValueError, UnicodeError, OSError):
+                pass
+            raise NotificationError("Resend rechazó el envío",
+                http_status=exc.code,provider_code=provider_code) from None
+        except (URLError, OSError, ValueError, TimeoutError) as exc:
+            raise NotificationError("Resend no confirmó el envío",
+                provider_code="transport_error") from None
     if not isinstance(result,dict) or not isinstance(result.get("id"),str):
         raise NotificationError("Respuesta de proveedor de correo inválida")
     return result["id"]
