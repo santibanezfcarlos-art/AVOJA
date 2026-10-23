@@ -261,7 +261,11 @@ def _notify(order):
         if not claim:
             continue
         try:
-            mail_send(role,order,data["hold_id"],data["test_recipient"],data["service"],
+            # Los dos mensajes son distintos: el profesional usa el buzón
+            # configurado y el paciente de prueba su alias Gmail autorizado.
+            recipient=(os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","")
+                       if role=="professional" else data["test_recipient"])
+            mail_send(role,order,data["hold_id"],recipient,data["service"],
                       data["starts_at"],data["ends_at"])
             with _database_connection() as conn:
                 conn.execute("""UPDATE psychology_demo_notifications
