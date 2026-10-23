@@ -241,5 +241,9 @@ def availability():
 from webpay_demo import webpay_demo_bp
 app.register_blueprint(webpay_demo_bp)
 
+# Piloto de retención persistente: desactivado sin llave y BD exclusivas.
+from booking_holds import bp as holds_pilot_bp
+app.register_blueprint(holds_pilot_bp)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
