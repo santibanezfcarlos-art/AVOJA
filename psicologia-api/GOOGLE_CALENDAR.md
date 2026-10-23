@@ -104,3 +104,58 @@ Fuentes oficiales:
 https://developers.google.com/workspace/calendar/api/v3/reference/events/insert
 https://developers.google.com/workspace/calendar/api/v3/reference/events/delete
 https://support.google.com/calendar/answer/37082?hl=es
+
+## Flujo de ensayo integrado con Transbank — 23 de octubre de 2026
+
+Módulos:
+- `demo_checkout.py`: checkout cerrado por código de acceso y correo de
+  prueba autorizado; usa el **ambiente oficial de integración** de Webpay Plus.
+  Retorno `/demo/return`, nunca el endpoint de cobro productivo.
+- `demo_notifications.py`: correos separados para profesional y paciente
+  ficticio, con invitación adjunta `.ics`, enviados por Resend solo a correo
+  previamente autorizado en el servidor.
+- `schema_holds.sql`: tablas `psychology_demo_payments` y
+  `psychology_demo_notifications`, con estados y control de idempotencia.
+- `test_demo_checkout_postgres.py`: ensayo aprobado/rechazado, comprobación
+  de reintento, conflictos y calendario con escritura desactivada,
+  utilizando PostgreSQL temporal real y Transbank/Google simulados.
+
+El proyecto de pruebas vive en
+https://psicologia-retenciones-piloto.onrender.com/demo
+y **NO** ha sido conectado a la página pública `pscsantibanez.cl`.
+
+Variables en Render del **servidor piloto**, no del frontend:
+- `PSICOLOGIA_API_PUBLIC_URL=https://psicologia-retenciones-piloto.onrender.com`
+- `PSICOLOGIA_PILOT_WEBPAY_TEST_ENABLED=true`
+- `PSICOLOGIA_HOLDS_ISOLATED_PILOT=true`
+- `PSICOLOGIA_HOLDS_CALENDAR_POLICY=google_api`
+- `PSICOLOGIA_CALENDAR_WRITE_ENABLED=true` únicamente para eventos
+  claramente titulados **PRUEBA TÉCNICA** en el calendario autorizado.
+- `PSICOLOGIA_DEMO_ACCESS_CODE`: clave de ensayo, guardada solo en Render
+  y facilitada al propietario, NUNCA publicada en GitHub.
+- `PSICOLOGIA_PILOT_TEST_EMAIL` y `PSICOLOGIA_PILOT_PRO_EMAIL`: ambos
+  **idénticos al correo del propietario** durante estas pruebas.
+- `PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED=false` hasta configurar
+  el proveedor de correo en Render.
+- `PSICOLOGIA_PILOT_RESEND_API_KEY`: únicamente en Environment de Render,
+  generada por el titular desde https://resend.com/api-keys.
+- `PSICOLOGIA_WEBPAY_MODE=disabled` y
+  `PSICOLOGIA_CHECKOUT_MODE=disabled`: los cobros de producción continúan
+  apagados; el ensayo utiliza solamente credenciales públicas de integración.
+
+Para habilitar los correos de ensayo, guardar la clave privada bajo
+`PSICOLOGIA_PILOT_RESEND_API_KEY`, comprobar que el dominio remitente
+`pscsantibanez.cl` esté validado en esa misma cuenta Resend y cambiar
+`PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED=true` únicamente en el servicio
+piloto. Mantener los dos destinatarios limitados al propietario.
+
+El pago autorizado no garantiza una cita: solo pasa a `CONFIRMED`
+cuando Google verifica el evento creado. Ante error conserva
+`CALENDAR_PENDING` o `RECONCILIATION_REQUIRED`. Un pago rechazado
+cancela el hold, sin Google ni correos. Si la misma orden retorna dos
+veces, no repite Calendar ni envíos ya marcados.
+
+**Atención:** Render PostgreSQL Free es efímero; el módulo es únicamente
+un piloto funcional, no apto para pacientes o dinero real. La transición
+a producción requiere persistencia con backups, controles de acceso,
+registro privado de paciente y conciliación confiable.
