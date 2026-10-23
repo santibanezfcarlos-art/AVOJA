@@ -193,6 +193,20 @@ class CalendarWriter:
     def is_free(self, start, end):
         return not bool(self.list_busy(start, end))
 
+    def own_event_exists(self, *, hold_id, service, start, end):
+        """Permite reconocer un evento creado si hubo pérdida del ACK de Google."""
+        self._check()
+        event_id=event_id_for_hold(hold_id)
+        try:
+            event=self.transport("GET",self._calendar_path+"/"+event_id,{},None)
+        except CalendarHttpError as exc:
+            if exc.status==404:
+                return False
+            raise
+        return bool(event.get("id")==event_id and
+                    _owns(event,hold_id,start=start,end=end,service=service))
+
+
     def create_paid_appointment(self, *, hold_id, service, start, end, payment_verified=False, demo_only=False):
         """Uso interno FUTURO tras commit Transbank y comparación con BD persistente.
 
