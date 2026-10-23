@@ -327,6 +327,67 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 #prestaciones .consult-reason-icon svg{width:20px;height:20px}
 @media(max-width:560px){#prestaciones .consult-reasons{padding:17px;margin-bottom:17px}#prestaciones .consult-reasons-list{grid-template-columns:1fr}#prestaciones .consult-reasons h5{font-size:16px}}
 
+
+/* Identidad cromática idéntica entre tarjetas superiores y explicación inferior. */
+#prestaciones .service-detail-panel.detail-tone-forest{
+ --detail-ink:#194b39;--detail-bg:#194b39;--detail-border:#467861;
+ --detail-number:#356f52;--detail-item:#f5faf6;--detail-check:#d9ede0;
+ --detail-title:#ffffff;--detail-body:#e0eee4;--detail-divider:#507d65;
+}
+#prestaciones .service-detail-panel.detail-tone-sage{
+ --detail-ink:#347459;--detail-bg:#347459;--detail-border:#75a48c;
+ --detail-number:#4c896b;--detail-item:#f8fcf9;--detail-check:#deeee3;
+ --detail-title:#ffffff;--detail-body:#f0faf3;--detail-divider:#82ad95;
+}
+#prestaciones .service-detail-panel.detail-tone-mist{
+ --detail-ink:#285d43;--detail-bg:#dcecdf;--detail-border:#b3d2bc;
+ --detail-number:#bfdac7;--detail-item:#f8fcf8;--detail-check:#e1f1e4;
+ --detail-title:#164734;--detail-body:#315d47;--detail-divider:#afcdb9;
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist){
+ background:var(--detail-bg);border:1px solid var(--detail-border);border-top:5px solid var(--detail-ink);
+ box-shadow:0 12px 30px rgba(24,68,45,.08);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-text h4{
+ color:var(--detail-title);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-text p,
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-foot span{
+ color:var(--detail-body);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-number.detail-main-icon{
+ background:var(--detail-number);color:var(--detail-title);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .detail-icon-index{
+ background:var(--detail-item);color:var(--detail-ink);border-color:var(--detail-bg);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-item{
+ background:var(--detail-item);border-color:var(--detail-border);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-item h5{
+ color:#194b39;
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-item p{
+ color:#516d5e;
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-foot{
+ border-color:var(--detail-divider);
+}
+#prestaciones .service-detail-panel.detail-tone-forest .service-detail-foot a,
+#prestaciones .service-detail-panel.detail-tone-sage .service-detail-foot a{
+ color:#ffffff;
+}
+#prestaciones .service-detail-panel.detail-tone-mist .service-detail-foot a{
+ color:#164734;
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage) .service-detail-foot a:hover{
+ text-decoration:underline;
+}
+#prestaciones .service-detail-panel.detail-tone-forest .consult-reasons,
+#prestaciones .service-detail-panel.detail-tone-sage .consult-reasons{
+ background:#f7fbf8;border-color:#b5d4bd;
+}
+
 </style>
 </head><body>
 
