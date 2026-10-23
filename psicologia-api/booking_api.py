@@ -56,7 +56,7 @@ def _slot(dstr, tstr):
     except (ValueError, TypeError):
         raise BookingProblem("Fecha u hora inválida", 400) from None
     mins = t.hour * 60 + t.minute
-    if t.second or t.microsecond or mins < 9*60 or mins > 19*60 or mins % 15:
+    if t.tzinfo is not None or t.second or t.microsecond or mins < 9*60 or mins > 19*60 or mins % 15:
         raise BookingProblem("El inicio debe ser entre las 09:00 y las 19:00, cada 15 minutos.", 400)
     dt = datetime.combine(d, t, TZ)
     now = datetime.now(TZ)
@@ -159,12 +159,16 @@ def checkout():
     except ValueError:
         raise BookingProblem("Reserva temporal inválida",400) from None
     with connection() as conn:
+        day_row=conn.execute("SELECT slot_date FROM psychology_booking_holds WHERE id=%s",(hold_id,)).fetchone()
+        if not day_row:
+            raise BookingProblem("La retención no existe",404)
+        # Orden único de locks: primero el día, luego la retención.
+        _lock_day(conn,day_row["slot_date"])
         hold=conn.execute("SELECT * FROM psychology_booking_holds WHERE id=%s FOR UPDATE",(hold_id,)).fetchone()
         if not hold or hold["status"] != "HELD" or hold["expires_at"]<=datetime.now(TZ):
             raise BookingProblem("La retención ha expirado o ya está en pago",409)
         if not _calendar_free(hold["slot_date"],hold["starts_at"].strftime("%H:%M")):
             raise BookingProblem("La hora pasó a estar ocupada",409)
-        _lock_day(conn,hold["slot_date"])
         _expire(conn,hold["slot_date"])
         if _slot_taken(conn,hold["slot_date"],hold["starts_at"],exclude_id=hold_id):
             raise BookingProblem("Ya no hay cupos disponibles",409)
@@ -260,11 +264,15 @@ def webpay_return():
         return _status_page("review")
     paid=approved_payment(response,buy_order=at["buy_order"],session_id=at["session_id"])
     with connection() as conn:
+        day_row=conn.execute("SELECT slot_date FROM psychology_booking_holds WHERE id=%s",
+                             (at["hold_id"],)).fetchone()
+        if not day_row:
+            return _status_page("review")
+        _lock_day(conn,day_row["slot_date"])
         hold=conn.execute("SELECT * FROM psychology_booking_holds WHERE id=%s FOR UPDATE",
                           (at["hold_id"],)).fetchone()
         if not hold:
             return _status_page("review")
-        _lock_day(conn,hold["slot_date"])
         _expire(conn,hold["slot_date"])
         if paid:
             # Siempre cotejar cupo antes de asignar una transacción autorizada tardíamente.
