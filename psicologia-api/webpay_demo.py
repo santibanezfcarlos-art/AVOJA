@@ -179,6 +179,13 @@ def start_demo():
                 raise ValueError()
         except ValueError:
             return _page("Horario inválido", "Elige una fecha y hora futura válida.", status=400)
+    # No comenzar Webpay si falta la infraestructura de reservas y correos.
+    if not bridge.enabled():
+        return _page("Agenda en configuración",
+            "La compra de prueba se encuentra temporalmente pausada mientras se verifica la integración de reservas y correos. No se realizó ningún cobro.",status=503)
+    if request.form.get('billing_required') != '1':
+        return _page("Datos incompletos",
+            "Debes completar todos los datos del receptor antes de comenzar.",status=400)
     person = None
     if request.form.get('billing_required') == '1':
         if not billing.configured():
