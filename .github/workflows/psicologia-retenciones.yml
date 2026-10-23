@@ -43,4 +43,4 @@ jobs:
       - name: Pruebas unitarias sin pagos ni conexiones de producción
         run: |
           cd psicologia-api
-          python -m unittest -v test_booking_holds test_webpay_gateway test_booking_holds_postgres test_google_calendar_writer test_demo_checkout test_demo_checkout_postgres
+          python -m unittest -v test_booking_holds test_webpay_gateway test_booking_holds_postgres test_google_calendar_writer test_demo_checkout test_demo_checkout_postgres test_public_demo_bridge
