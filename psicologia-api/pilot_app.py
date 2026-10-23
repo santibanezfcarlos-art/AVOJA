@@ -12,6 +12,10 @@ from booking_holds import bp, enabled
 app = Flask(__name__)
 app.register_blueprint(bp)
 
+# Checkout de pruebas aislado; no habilita cobros ni pacientes reales.
+from demo_checkout import demo_bp, pilot_enabled
+app.register_blueprint(demo_bp)
+
 
 @app.get("/")
 @app.get("/health")
@@ -36,6 +40,7 @@ def health():
         mode="TEST_ONLY",
         production_payments=False,
         patient_bookings=False,
+        demo_checkout_enabled=pilot_enabled(),
         database_configured=db_configured,
         database_reachable=database_reachable,
         schema_ready=schema_ready,
