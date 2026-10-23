@@ -859,12 +859,15 @@ async function processDemoReturn(){
  // En la integración nueva, la confirmación real del ensayo pertenece al
  // servidor/Google Calendar, nunca al almacenamiento de este navegador.
  if(r.reservation_status&&r.reservation_status!=='LEGACY'){
-  if(r.reservation_status==='CONFIRMED'){
+  if(r.reservation_status==='CONFIRMED'||r.reservation_status==='CONFIRMED_EMAIL_PENDING'){
    await loadCalendar();
    render();renderAdmin();
-   const svc=SERVICE_TYPES[r.service];
+   const svc=SERVICE_TYPES[r.service],emailsOk=r.reservation_status==='CONFIRMED';
    demoNotice('¡Reserva de prueba confirmada en Google Calendar!',
-      svc.title+' · '+r.date+' · '+r.time+'. Compra simulada autorizada. La cita fue registrada como PRUEBA TÉCNICA en Google Calendar. Los correos se enviarán únicamente al buzón de pruebas autorizado.',true);
+      svc.title+' · '+r.date+' · '+r.time+
+      '. Compra simulada autorizada: se registró PRUEBA TÉCNICA en Google Calendar. '+
+      (emailsOk?'Se enviaron dos confirmaciones al correo de pruebas autorizado.':
+       'Los correos aún están pendientes; la reserva figura en Google Calendar.'),true);
   }else{
    render();demoNotice('Pago simulado aprobado · Reserva pendiente',
       'Transbank aprobó la simulación, pero Google Calendar aún no confirmó una cita. No se considera reservada la hora; revisa el estado en la administración antes de repetir.',false);
