@@ -209,7 +209,12 @@ def _confirm_calendar(order):
         return
     try:
         if not writer.is_free(payment["starts_at"],payment["ends_at"]):
-            raise CalendarIntegrationError("La hora ya figura ocupada en Google")
+            # Si un intento anterior creó el evento y perdió el ACK, tratarlo
+            # como idempotente solo cuando ID/horario/servicio coinciden.
+            if not writer.own_event_exists(
+                    hold_id=payment["hold_id"],service=payment["service"],
+                    start=payment["starts_at"],end=payment["ends_at"]):
+                raise CalendarIntegrationError("La hora ya figura ocupada en Google")
         event=writer.create_paid_appointment(
             hold_id=payment["hold_id"],service=payment["service"],start=payment["starts_at"],
             end=payment["ends_at"],payment_verified=True,demo_only=True)
