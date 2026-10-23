@@ -192,6 +192,90 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 @media(max-width:1050px){.service-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.service-detail-panel{padding:20px}.service-detail-grid{grid-template-columns:1fr}.service-detail-heading{display:block}.service-detail-lead{gap:12px}.service-detail-text h4{font-size:19px}.service-detail-item{padding:15px}.service-detail-foot{align-items:flex-start;flex-direction:column;gap:9px}}
 
+
+/* Paleta coordinada por servicio: verde bosque / verde salvia / verde niebla.
+   Las tarjetas superiores y el desarrollo de cada prestación comparten tono. */
+#prestaciones .offer-tone-forest{
+ --tone-bg:#194b39;--tone-text:#fff;--tone-muted:#e0eee4;
+ --tone-halo:#356b51;--tone-type:#e1f0e5;--tone-icon-bg:#356f52;
+ --tone-icon-fg:#fff;--tone-chip-bg:#2b5f47;--tone-chip-border:#477960;
+ --tone-chip-text:#f4faf5;--tone-divider:#527863;--tone-caption:#d4e8d9;
+ --tone-old:#d6e6d9;--tone-button-bg:#edf7ef;--tone-button-fg:#164734;
+ --tone-button-hover:#deeee1;--tone-more:#e0f1e4;
+}
+#prestaciones .offer-tone-sage{
+ --tone-bg:#347459;--tone-text:#fff;--tone-muted:#f1faf3;
+ --tone-halo:#4e8a6e;--tone-type:#eff9f1;--tone-icon-bg:#4c896b;
+ --tone-icon-fg:#fff;--tone-chip-bg:#2c654d;--tone-chip-border:#61957b;
+ --tone-chip-text:#fff;--tone-divider:#719c83;--tone-caption:#edf9ef;
+ --tone-old:#e1f0e5;--tone-button-bg:#eff8f1;--tone-button-fg:#194b39;
+ --tone-button-hover:#d9ecdf;--tone-more:#eff8f1;
+}
+#prestaciones .offer-tone-mist{
+ --tone-bg:#dcecdf;--tone-text:#164734;--tone-muted:#285942;
+ --tone-halo:#c5decd;--tone-type:#245b40;--tone-icon-bg:#bfdac7;
+ --tone-icon-fg:#21553c;--tone-chip-bg:#eaf4eb;--tone-chip-border:#bad9c3;
+ --tone-chip-text:#25583e;--tone-divider:#b0d0b9;--tone-caption:#32684d;
+ --tone-old:#4c7660;--tone-button-bg:#1b4d38;--tone-button-fg:#fff;
+ --tone-button-hover:#2e6b50;--tone-more:#295f46;
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist){
+ background:var(--tone-bg);border-color:var(--tone-bg);color:var(--tone-text);
+ box-shadow:0 14px 32px rgba(24,67,45,.12);
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist):before{
+ border-color:var(--tone-halo);
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-type{color:var(--tone-type)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-icon{
+ background:var(--tone-icon-bg);color:var(--tone-icon-fg);
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) h3{color:var(--tone-text)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-copy{color:var(--tone-muted)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-facts span{
+ background:var(--tone-chip-bg);border-color:var(--tone-chip-border);color:var(--tone-chip-text);
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-bottom{border-color:var(--tone-divider)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-caption{color:var(--tone-caption)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-current,
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-current small{color:var(--tone-text)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-was{color:var(--tone-old)}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-cta{
+ background:var(--tone-button-bg);border-color:var(--tone-button-bg);color:var(--tone-button-fg);
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-cta:hover{
+ background:var(--tone-button-hover);
+}
+#prestaciones .offer-card:is(.offer-tone-forest,.offer-tone-sage,.offer-tone-mist) .offer-more{color:var(--tone-more)}
+#prestaciones .service-detail-panel.detail-tone-forest{
+ --detail-ink:#205b41;--detail-bg:#e3f0e7;--detail-border:#a7cdb3;
+ --detail-number:#c5e0ce;--detail-item:#f6fbf7;--detail-check:#cee6d4;
+}
+#prestaciones .service-detail-panel.detail-tone-sage{
+ --detail-ink:#317255;--detail-bg:#e9f3ed;--detail-border:#c1ddc9;
+ --detail-number:#d4e9da;--detail-item:#fbfdfb;--detail-check:#ddede1;
+}
+#prestaciones .service-detail-panel.detail-tone-mist{
+ --detail-ink:#438066;--detail-bg:#f1f7f0;--detail-border:#cde3d2;
+ --detail-number:#e0f0e3;--detail-item:#fff;--detail-check:#e8f3ea;
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist){
+ background:var(--detail-bg);border-color:var(--detail-border);
+ border-top:4px solid var(--detail-ink);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-number{
+ background:var(--detail-number);color:var(--detail-ink);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-item{
+ background:var(--detail-item);border-color:var(--detail-border);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-item h5:before{
+ background:var(--detail-check);color:var(--detail-ink);
+}
+#prestaciones .service-detail-panel:is(.detail-tone-forest,.detail-tone-sage,.detail-tone-mist) .service-detail-foot a{
+ color:var(--detail-ink);
+}
+
 </style>
 </head><body>
 
@@ -220,7 +304,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
  </div>
  <div class="offer-subtitle"><span>Atención 100% online</span><span>Valores claros</span></div>
  <div class="offer-grid">
-  <article class="offer-card offer-featured">
+  <article class="offer-card offer-featured offer-tone-forest">
    <div class="offer-card-top"><span class="offer-type">Atención clínica</span><span class="offer-icon" aria-hidden="true">✳</span></div>
    <h3>Sesión de Psicoterapia Breve</h3>
    <p class="offer-copy">Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y trabajar objetivos terapéuticos concretos.</p>
@@ -228,7 +312,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
    <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
     <a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad de prueba para psicoterapia breve">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-psicoterapia">Qué incluye este servicio ↓</a></div>
   </article>
-  <article class="offer-card">
+  <article class="offer-card offer-tone-sage">
    <div class="offer-card-top"><span class="offer-type">Orientación laboral</span><span class="offer-icon" aria-hidden="true">↗</span></div>
    <h3>Asesoría en Empleabilidad</h3>
    <p class="offer-copy">Revisa tu perfil laboral, mejora tu currículum, prepara entrevistas y fortalece tu estrategia de búsqueda de trabajo.</p>
@@ -236,7 +320,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
    <div class="offer-bottom"><div class="offer-caption">Valor de la asesoría</div><div class="offer-values"><strong class="offer-current">$45.000 <small>CLP</small></strong><span class="offer-was">$60.000</span></div>
     <a class="offer-cta" href="#agenda" data-service="empleabilidad" aria-label="Ver agenda de prueba para asesoría en empleabilidad">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-empleabilidad">Qué incluye este servicio ↓</a></div>
   </article>
-  <article class="offer-card">
+  <article class="offer-card offer-tone-mist">
    <div class="offer-card-top"><span class="offer-type">Desarrollo personal y laboral</span><span class="offer-icon" aria-hidden="true">◇</span></div>
    <h3>Desarrollo de Competencias</h3>
    <p class="offer-copy">Fortalece la comunicación, el autoconocimiento, la organización y las habilidades necesarias para alcanzar objetivos personales y profesionales.</p>
@@ -255,7 +339,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
    </div>
   </div>
   <div class="service-detail-stack">
-   <article class="service-detail-panel clinical" id="detalle-psicoterapia" aria-labelledby="tituloDetallePsicoterapia">
+   <article class="service-detail-panel clinical detail-tone-forest" id="detalle-psicoterapia" aria-labelledby="tituloDetallePsicoterapia">
     <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">01</div><div class="service-detail-text"><h4 id="tituloDetallePsicoterapia">Psicoterapia breve: trabajar con foco y colaboración</h4><p>Un proceso clínico orientado a comprender el motivo de consulta, identificar recursos y construir alternativas. La duración total del proceso se acuerda y revisa de acuerdo con tus necesidades.</p></div></div>
     <div class="service-detail-grid">
      <div class="service-detail-item"><h5>Definición de objetivos</h5><p>Identificamos qué te gustaría cambiar y qué avances serían importantes para ti.</p></div>
@@ -264,7 +348,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
     </div>
     <div class="service-detail-foot"><span>Atención psicológica individual para personas adultas · 45 minutos</span><a href="#agenda" data-service="psicoterapia">Ver disponibilidad →</a></div>
    </article>
-   <article class="service-detail-panel" id="detalle-empleabilidad" aria-labelledby="tituloDetalleEmpleabilidad">
+   <article class="service-detail-panel detail-tone-sage" id="detalle-empleabilidad" aria-labelledby="tituloDetalleEmpleabilidad">
     <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">02</div><div class="service-detail-text"><h4 id="tituloDetalleEmpleabilidad">Asesoría en empleabilidad: prepararte para nuevas oportunidades</h4><p>Revisamos tu perfil y las exigencias de los cargos a los que quieres postular, con orientación práctica para comunicar mejor tu experiencia y enfrentar procesos de selección.</p></div></div>
     <div class="service-detail-grid">
      <div class="service-detail-item"><h5>Currículum y perfil profesional</h5><p>Revisión de estructura, logros, fortalezas y presentación de tu experiencia laboral.</p></div>
@@ -276,7 +360,7 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
     </div>
     <div class="service-detail-foot"><span>Asesoría personalizada · 90 minutos · El trabajo se ajusta a tus objetivos</span><a href="#agenda" data-service="empleabilidad">Ver disponibilidad →</a></div>
    </article>
-   <article class="service-detail-panel" id="detalle-competencias" aria-labelledby="tituloDetalleCompetencias">
+   <article class="service-detail-panel detail-tone-mist" id="detalle-competencias" aria-labelledby="tituloDetalleCompetencias">
     <div class="service-detail-lead"><div class="service-detail-number" aria-hidden="true">03</div><div class="service-detail-text"><h4 id="tituloDetalleCompetencias">Desarrollo de competencias: fortalecer habilidades para tu trabajo</h4><p>Las competencias pueden entrenarse mediante reflexión, ejercicios y aplicación a situaciones reales. Estas son algunas de las más trabajadas en contextos personales y laborales.</p></div></div>
     <div class="service-detail-grid">
      <div class="service-detail-item"><h5>Comunicación efectiva</h5><p>Expresar ideas con claridad, escuchar activamente y abordar conversaciones difíciles.</p></div>
