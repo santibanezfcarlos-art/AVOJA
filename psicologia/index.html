@@ -856,6 +856,21 @@ async function processDemoReturn(){
  if(r.status==='rejected'){
   render();demoNotice('Pago rechazado · Prueba','Transbank rechazó la operación. No se registró ninguna reserva; puedes intentarlo nuevamente.',false);return
  }
+ // En la integración nueva, la confirmación real del ensayo pertenece al
+ // servidor/Google Calendar, nunca al almacenamiento de este navegador.
+ if(r.reservation_status&&r.reservation_status!=='LEGACY'){
+  if(r.reservation_status==='CONFIRMED'){
+   await loadCalendar();
+   render();renderAdmin();
+   const svc=SERVICE_TYPES[r.service];
+   demoNotice('¡Reserva de prueba confirmada en Google Calendar!',
+      svc.title+' · '+r.date+' · '+r.time+'. Compra simulada autorizada. La cita fue registrada como PRUEBA TÉCNICA en Google Calendar. Los correos se enviarán únicamente al buzón de pruebas autorizado.',true);
+  }else{
+   render();demoNotice('Pago simulado aprobado · Reserva pendiente',
+      'Transbank aprobó la simulación, pero Google Calendar aún no confirmó una cita. No se considera reservada la hora; revisa el estado en la administración antes de repetir.',false);
+  }
+  return;
+ }
  if(!p||p.service!==r.service||p.date!==r.date||p.time!==r.time){
   render();demoNotice('Pago aprobado · Prueba','La simulación fue autorizada, pero no pudo asociarse a una hora válida de este navegador.',true);return
  }
