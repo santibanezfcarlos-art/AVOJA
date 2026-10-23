@@ -76,6 +76,51 @@ def _probe_google_calendar_read():
 
 
 
+def _diagnose_and_recover_demo_notifications():
+    """Examina y reintenta solo el ensayo confirmado más reciente si se autoriza.
+
+    No imprime IDs, horarios, correos, RUT ni datos privados.
+    No toca Calendar ni Transbank. Nunca reenvía estados 'sent'/'sending'.
+    """
+    from booking_holds import _database_connection
+    from demo_notifications import configured
+    from demo_checkout import _notify
+    if os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") != "true":
+        return
+    with _database_connection() as conn:
+        stats=conn.execute("""
+            SELECT n.recipient_role,n.status,count(*) AS total
+            FROM psychology_demo_notifications n
+            JOIN psychology_demo_payments p ON p.order_id=n.order_id
+            WHERE p.created_at >= now()-interval '2 hours'
+            GROUP BY n.recipient_role,n.status
+            ORDER BY n.recipient_role,n.status
+        """).fetchall()
+        for row in stats:
+            print("PSICOLOGIA_MAIL_DIAG: role=" + row["recipient_role"]
+                  + " status=" + row["status"]
+                  + " count=" + str(row["total"]),flush=True)
+        candidate=conn.execute("""
+            SELECT p.order_id FROM psychology_demo_payments p
+            JOIN psychology_demo_notifications n ON n.order_id=p.order_id
+            WHERE p.state='CONFIRMED'
+              AND p.calendar_event_id IS NOT NULL
+              AND p.created_at >= now()-interval '90 minutes'
+              AND n.status IN ('failed','pending')
+            GROUP BY p.order_id,p.created_at
+            ORDER BY p.created_at DESC LIMIT 1
+        """).fetchone()
+    if os.environ.get("PSICOLOGIA_PILOT_EMAIL_RECOVERY_ENABLED") != "true":
+        print("PSICOLOGIA_MAIL_RECOVERY: disabled",flush=True)
+    elif not configured():
+        print("PSICOLOGIA_MAIL_RECOVERY: mail_unavailable",flush=True)
+    elif candidate:
+        print("PSICOLOGIA_MAIL_RECOVERY: retrying_latest_confirmed_test_only",flush=True)
+        _notify(candidate["order_id"])
+    else:
+        print("PSICOLOGIA_MAIL_RECOVERY: nothing_pending",flush=True)
+
+
 def main():
     if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
         print("PSICOLOGIA_PILOT_SCHEMA: bootstrap_disabled", flush=True)
@@ -101,6 +146,10 @@ def main():
         from public_demo_bridge import _enabled as bridge_ready
         print("PSICOLOGIA_PILOT_BRIDGE: " + ("ready" if bridge_ready() else "not_configured"), flush=True)
         print("PSICOLOGIA_PILOT_CALENDAR_WRITE: " + ("enabled" if os.environ.get("PSICOLOGIA_CALENDAR_WRITE_ENABLED") == "true" else "disabled"), flush=True)
+        try:
+            _diagnose_and_recover_demo_notifications()
+        except Exception as error:
+            print("PSICOLOGIA_MAIL_RECOVERY: error_type=" + type(error).__name__,flush=True)
         if os.environ.get("PSICOLOGIA_GOOGLE_READ_PROBE") == "true":
             _probe_google_calendar_read()
         if os.environ.get("PSICOLOGIA_HOLDS_DB_SELFTEST") == "true":
