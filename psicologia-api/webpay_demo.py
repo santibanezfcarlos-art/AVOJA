@@ -302,7 +302,7 @@ def return_demo():
             except bridge.BridgeError:
                 bridge_state="RECONCILIATION_REQUIRED" if approved else "REJECTED"
     else:
-        bridge_state="LEGACY"
+        bridge_state="RECONCILIATION_REQUIRED" if approved else "REJECTED"
     data = {"billing_saved": saved, "status": ("approved" if approved else "rejected"), "service": parsed["service"],
             "date": parsed["date"], "time": parsed["time"],
             "reservation_status": bridge_state,
