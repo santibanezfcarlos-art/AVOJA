@@ -20,7 +20,7 @@ from booking_holds import (
     HoldProblem, _calendar_free, _cancel_hold, _database_connection,
     _lock_day, _new_hold, slot_window, TZ,
 )
-from demo_notifications import allowed_email, configured as mail_configured, send as mail_send, NotificationError
+from demo_notifications import allowed_email, configured as mail_configured, send as mail_send, NotificationError, safe_error_label
 from google_calendar_writer import CalendarWriter, CalendarIntegrationError
 from webpay_gateway import (
     Gateway, GatewaySettings, GatewayError, AMOUNTS, is_authorized
@@ -271,7 +271,10 @@ def _notify(order):
                 conn.execute("""UPDATE psychology_demo_notifications
                     SET status='sent',sent_at=now() WHERE order_id=%s AND recipient_role=%s""",
                     (order,role))
-        except NotificationError:
+            print("PSICOLOGIA_MAIL: role=" + role + " result=accepted", flush=True)
+        except NotificationError as exc:
+            print("PSICOLOGIA_MAIL: role=" + role + " result=failed code="
+                  + safe_error_label(exc), flush=True)
             with _database_connection() as conn:
                 conn.execute("""UPDATE psychology_demo_notifications
                     SET status='failed' WHERE order_id=%s AND recipient_role=%s""",
