@@ -24,3 +24,36 @@ CREATE INDEX IF NOT EXISTS psychology_holds_date_state
 -- La fila del día se bloquea FOR UPDATE antes de contar cupos y crear/cancelar holds.
 -- El diseño es intencionalmente sin nombres, RUT, teléfonos, tarjetas ni información clínica.
 COMMIT;
+
+-- Solo ensayos: identificadores Transbank y estado de confirmación.
+-- No se guardan números de tarjetas, RUT, fichas clínicas ni pacientes reales.
+BEGIN;
+CREATE TABLE IF NOT EXISTS psychology_demo_payments (
+  order_id varchar(26) PRIMARY KEY,
+  hold_id uuid NOT NULL UNIQUE REFERENCES psychology_booking_holds(id),
+  session_id varchar(61) NOT NULL UNIQUE,
+  token_sha256 char(64) UNIQUE,
+  service varchar(32) NOT NULL CHECK(service IN ('psicoterapia','empleabilidad','competencias')),
+  amount_clp integer NOT NULL CHECK(amount_clp > 0),
+  test_recipient varchar(254) NOT NULL,
+  state varchar(32) NOT NULL DEFAULT 'STARTING'
+    CHECK(state IN ('STARTING','PAYMENT_PENDING','COMMITTING','AUTHORIZED',
+                    'REJECTED','CANCELLED','CALENDAR_PENDING','CONFIRMED',
+                    'RECONCILIATION_REQUIRED')),
+  calendar_event_id varchar(80),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  verified_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS psychology_demo_payments_states
+  ON psychology_demo_payments(state,created_at);
+CREATE TABLE IF NOT EXISTS psychology_demo_notifications (
+  order_id varchar(26) NOT NULL REFERENCES psychology_demo_payments(order_id),
+  recipient_role varchar(16) NOT NULL CHECK(recipient_role IN ('professional','patient')),
+  status varchar(16) NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending','sending','sent','failed')),
+  attempted_at timestamptz,
+  sent_at timestamptz,
+  PRIMARY KEY(order_id,recipient_role)
+);
+COMMIT;
