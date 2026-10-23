@@ -116,6 +116,29 @@ class CheckoutDemoTests(unittest.TestCase):
         self.assertEqual(captured[0]["to"],[alias])
         self.assertIn("Confirmación",captured[0]["subject"])
 
+    def test_external_email_only_with_opt_in_and_professional_fixed(self):
+        receiver="cliente.pruebas@outlook.com"
+        captured=[]
+        with patch.dict(os.environ,{**DEMO_ENV,
+             "PSICOLOGIA_PILOT_ALLOW_EXTERNAL_TEST_EMAILS":"true",
+             "PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED":"true",
+             "PSICOLOGIA_PILOT_RESEND_API_KEY":"test-only-key-not-real-"+("z"*30)},clear=True):
+            self.assertEqual(allowed_email(receiver),receiver)
+            self.assertIsNone(allowed_email("malformed_address"))
+            self.assertIsNone(allowed_email("someone@localhost"))
+            self.assertIsNone(allowed_email("bad..name@domain.com"))
+            sent=send("patient","PSI0123456789",uuid.uuid4(),receiver,"psicoterapia",
+                      NOW,NOW+timedelta(minutes=45),
+                      transport=lambda payload:captured.append(payload) or {"id":"email_external_demo"})
+            self.assertEqual(sent,"email_external_demo")
+            self.assertEqual(captured[0]["to"],[receiver])
+            with self.assertRaises(NotificationError):
+                send("professional","PSI0123456789",uuid.uuid4(),receiver,"psicoterapia",
+                     NOW,NOW+timedelta(minutes=45),
+                     transport=lambda payload:{"id":"oops"})
+        with patch.dict(os.environ,DEMO_ENV,clear=True):
+            self.assertIsNone(allowed_email(receiver))
+
     def test_form_does_not_accept_real_patient_recipient(self):
         with patch.dict(os.environ,DEMO_ENV,clear=True):
             with app.test_client() as client:
