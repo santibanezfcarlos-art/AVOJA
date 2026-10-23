@@ -8,6 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: psychotest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d psychotest"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PSICOLOGIA_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/psychotest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,5 +31,9 @@ jobs:
         run: pip install -r psicologia-api/requirements.txt
       - name: Comprobar sintaxis Python
         run: python -m compileall -q psicologia-api
-      - name: Ejecutar tests sin banco ni base de datos
+      - name: Crear tablas en PostgreSQL efímera
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d psychotest -f psicologia-api/schema.sql
+      - name: Ejecutar tests con banco simulado y BD efímera
         run: python -m unittest discover -s psicologia-api/tests -p 'test_*.py' -v
