@@ -874,23 +874,9 @@ async function processDemoReturn(){
   }
   return;
  }
- if(!p||p.service!==r.service||p.date!==r.date||p.time!==r.time){
-  render();demoNotice('Pago aprobado · Prueba','La simulación fue autorizada, pero no pudo asociarse a una hora válida de este navegador.',true);return
- }
- selectedService=p.service;$('bookingServiceSelect').value=selectedService;
- chosen=p.date;start=monday(chosen);
- const svc=currentService(),records=bookedRecords(p.date);
- if(records.some(v=>v.demoOrder===r.order)){
-  updateBillingDetail();render();renderAdmin();demoNotice('Prueba ya registrada','Esta operación ya figura en este navegador y no se duplicó la hora.',true);return
- }
- if(calendarState!=='ready'||past(p.date,p.time)||!schedule(p.date).includes(p.time)
-    ||!fitsSlot(p.time,svc.minutes)||calendarBusy(p.date,p.time)
-    ||localBusy(p.date,p.time,svc.minutes)||records.length>=MAX){
-  render();demoNotice('Pago aprobado, sin reserva','No pudo verificarse que la hora continúe disponible. No se confirmó una cita real.',false);return
- }
- reservations[p.date]=[...records,{time:p.time,duration:svc.minutes,service:p.service,demoOrder:r.order}];
- save(KEY_BOOK,reservations);updateBillingDetail();render();renderAdmin();
- demoNotice('¡Reserva de prueba confirmada!',svc.title+' · '+p.date+' · '+p.time+' a '+endsAt(p.time,svc.minutes)+' · $'+svc.price.toLocaleString('es-CL')+' CLP. Solo en este navegador; no es una cita real.',true);
+ render();renderAdmin();
+ demoNotice('Transacción de prueba sin reserva',
+  'La compra fue aprobada por Transbank, pero no hay confirmación del calendario del servidor. No se reservó la hora. Comprueba el resultado antes de reintentar.',false);
 }
 
 $('webpayForm').addEventListener('submit',async (ev)=>{
