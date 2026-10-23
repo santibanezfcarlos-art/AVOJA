@@ -44,7 +44,11 @@ def pilot_enabled():
 
 def gateway():
     # Credenciales oficiales del ambiente de integración; prohibida producción.
-    return Gateway(settings=GatewaySettings.from_environment(mode="integration"))
+    settings=GatewaySettings.from_environment(mode="integration")
+    # El retorno debe ir al checkout de ensayo, no a la API productiva.
+    settings=GatewaySettings(settings.environment,settings.commerce_code,settings.api_key,
+                             settings.host,TRIAL_SITE + "/demo/return")
+    return Gateway(settings=settings)
 
 
 def _page(title, content, status=200):
