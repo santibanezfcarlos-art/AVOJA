@@ -159,7 +159,7 @@ def _load_busy_intervals():
 @app.after_request
 def _cors(response):
     origin = request.headers.get("Origin")
-    if origin in ALLOWED_ORIGINS:
+    if origin in ALLOWED_ORIGINS and not request.path.startswith("/admin/boletas"):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
     response.headers["Cache-Control"] = "no-store"
@@ -240,6 +240,9 @@ def availability():
 # Prueba separada de Webpay Plus: sin cargos ni reservas reales.
 from webpay_demo import webpay_demo_bp
 app.register_blueprint(webpay_demo_bp)
+from billing import billing_bp
+app.register_blueprint(billing_bp)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
