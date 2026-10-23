@@ -6,6 +6,7 @@ servidor; el cliente nunca puede escoger receptores arbitrarios.
 """
 import base64
 from datetime import timezone
+from zoneinfo import ZoneInfo
 from html import escape
 import json
 import os
@@ -98,21 +99,28 @@ def ics_text(hold_id, start, end):
             "STATUS:TENTATIVE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
 
 
-def template(role, order, service, start, end):
-    """Texto mínimo: solo servicio y horario; sin datos sensibles."""
+def template(role, order, service, start, end, *, correction=False):
+    """Servicio y horario en Chile; Postgres devuelve marcas con TZ UTC."""
     service_name = {"psicoterapia": "Psicoterapia breve", "empleabilidad": "Asesoría en empleabilidad",
                     "competencias": "Potencia tus competencias"}[service]
-    date_label = start.strftime("%d/%m/%Y")
-    hour_label = start.strftime("%H:%M")
-    end_label = end.strftime("%H:%M")
+    local_start=start.astimezone(ZoneInfo("America/Santiago"))
+    local_end=end.astimezone(ZoneInfo("America/Santiago"))
+    date_label = local_start.strftime("%d/%m/%Y")
+    hour_label = local_start.strftime("%H:%M")
+    end_label = local_end.strftime("%H:%M")
     intro = ("Recibiste una reserva de prueba en tu agenda." if role == "professional"
              else "Esta es tu confirmación de reserva de prueba.")
     subject = (("PRUEBA · Nueva reserva — " if role == "professional" else
                 "PRUEBA · Confirmación de tu hora — ") + date_label + " " + hour_label)
+    if correction:
+        subject = "CORRECCIÓN DE HORARIO · " + subject
     body = (
         "<div style='font-family:Arial,sans-serif;max-width:590px;color:#153e32'>"
         "<h2>Ps. Carlos Santibáñez F.</h2><p><strong>PRUEBA TÉCNICA — SIN COBRO REAL</strong></p>"
-        f"<p>{escape(intro)}</p>"
+        + ("<p><strong>Corrección:</strong> el correo anterior pudo mostrar el horario "
+           "en UTC. El horario correcto para Chile es el que aparece abajo. "
+           "Disculpa la confusión.</p>" if correction else "")
+        + f"<p>{escape(intro)}</p>"
         f"<p><strong>Servicio:</strong> {escape(service_name)}<br>"
         f"<strong>Fecha:</strong> {escape(date_label)}<br>"
         f"<strong>Horario (Chile):</strong> {escape(hour_label)}–{escape(end_label)}<br>"
@@ -126,7 +134,7 @@ def template(role, order, service, start, end):
     return subject, body
 
 
-def send(role, order, hold_id, recipient, service, start, end, *, transport=None):
+def send(role, order, hold_id, recipient, service, start, end, *, transport=None, correction=False):
     if not configured():
         raise NotificationError("Envio de correo de prueba deshabilitado")
     email = allowed_email(recipient)
@@ -134,7 +142,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
     if (not email or role not in ("professional", "patient")
             or (role == "professional" and email != professional)):
         raise NotificationError("Destinatario no permitido")
-    subject, body = template(role, order, service, start, end)
+    subject, body = template(role, order, service, start, end, correction=correction)
     attachment = {
         "filename": "reserva-prueba.ics",
         "content": base64.b64encode(ics_text(hold_id,start,end).encode("utf-8")).decode("ascii"),
@@ -152,7 +160,8 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
                      "Content-Type": "application/json",
                      "Accept": "application/json",
                      "User-Agent": "pscsantibanez-reservas/1.0",
-                     "Idempotency-Key": "psc-demo-" + order + "-" + role})
+                     "Idempotency-Key": "psc-demo-" + order + "-" + role
+                         + ("-tz-correction-v1" if correction else "")})
         try:
             with urlopen(request, timeout=12) as response:
                 result = json.loads(response.read(10000).decode("utf-8"))
