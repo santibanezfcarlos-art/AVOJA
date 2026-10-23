@@ -65,7 +65,11 @@ class CheckoutDemoTests(unittest.TestCase):
     def test_google_and_mail_always_use_allowlisted_test_address(self):
         with patch.dict(os.environ,DEMO_ENV,clear=True):
             self.assertEqual(allowed_email(MAIL),MAIL)
+            self.assertEqual(allowed_email("santibanezf.carlos+paciente1@gmail.com"),
+                             "santibanezf.carlos+paciente1@gmail.com")
             self.assertIsNone(allowed_email("another@example.com"))
+            self.assertIsNone(allowed_email("santibanezf.carlos+bad!@gmail.com"))
+            self.assertIsNone(allowed_email("santibanezf.carlos+paciente1@outlook.com"))
             self.assertFalse(email_configured())
 
     def test_preview_does_not_contain_card_or_personal_details(self):
@@ -99,6 +103,18 @@ class CheckoutDemoTests(unittest.TestCase):
             with self.assertRaises(NotificationError):
                 send("patient","PSI0123456789",uuid.uuid4(),"random@example.com",
                      "competencias",NOW,NOW+timedelta(minutes=45),transport=fake_transport)
+
+    def test_patient_alias_email_goes_to_same_google_mailbox(self):
+        captured=[]
+        alias="santibanezf.carlos+paciente1@gmail.com"
+        with patch.dict(os.environ,{**DEMO_ENV,
+             "PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED":"true",
+             "PSICOLOGIA_PILOT_RESEND_API_KEY":"test-only-key-not-real-"+("z"*30)},clear=True):
+            send("patient","PSI0123456789",uuid.uuid4(),alias,"psicoterapia",
+                 NOW,NOW+timedelta(minutes=45),
+                 transport=lambda message: captured.append(message) or {"id":"test_email"})
+        self.assertEqual(captured[0]["to"],[alias])
+        self.assertIn("Confirmación",captured[0]["subject"])
 
     def test_form_does_not_accept_real_patient_recipient(self):
         with patch.dict(os.environ,DEMO_ENV,clear=True):
