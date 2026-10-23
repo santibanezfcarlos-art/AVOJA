@@ -627,6 +627,7 @@ function updateBillingDetail(){$('billingDetail').value=BILLING_DETAILS[selected
 async function billingReady(){try{const r=await fetch(PAYMENT_API+'/api/billing/config',{cache:'no-store'});const c=await r.json();if(!r.ok||!c.ready)throw Error();$('billingReadiness').textContent='Datos protegidos en el historial privado de compras.';return true}catch{$('billingReadiness').textContent='El historial está pendiente de activación. El pago quedará detenido para evitar perder tus datos.';return false}}
 billingReady();
 $('payerRut').addEventListener('input',()=> $('payerRut').setCustomValidity(''));
+$('payerEmail').addEventListener('input',()=> $('payerEmail').setCustomValidity(''));
 const DEMO_PENDING_KEY='psico_webpay_demo_pending_v1';
 let realPaymentsEnabled=false, paymentBusy=false;
 function paymentStatus(text){const el=document.getElementById('webpayNotice');if(el)el.textContent=text;}
@@ -890,6 +891,16 @@ $('webpayForm').addEventListener('submit',async (ev)=>{
  for(let i=rut.length-2;i>=0;i--){const d=Number(rut[i]);if(!Number.isInteger(d)){field.setCustomValidity('RUT inválido');field.reportValidity();return;}total+=d*m;m=m===7?2:m+1;}
  const mod=11-total%11,check=mod===11?'0':mod===10?'K':String(mod);
  if(check!==rut.slice(-1)){field.setCustomValidity('RUT inválido: revisa el dígito verificador');field.reportValidity();return;}
+ // Solo correo propio o su alias Gmail durante las pruebas: evita salir de la
+ // web hasta Transbank cuando no se admitiría el destinatario del ensayo.
+ const emailField=$('payerEmail'),email=(emailField.value||'').trim().toLowerCase();
+ const authorizedEmail=email==='santibanezf.carlos@gmail.com'
+    || /^santibanezf\.carlos\+[a-z0-9][a-z0-9._-]{0,31}@gmail\.com$/.test(email);
+ if(!authorizedEmail){
+  emailField.setCustomValidity('Durante las pruebas usa santibanezf.carlos@gmail.com o santibanezf.carlos+paciente1@gmail.com');
+  emailField.reportValidity();return;
+ }
+ emailField.setCustomValidity('');
  paymentBusy=true;$('webpayPay').disabled=true;
  if(!await billingReady()){paymentBusy=false;render();return;}
  if(!hold||Date.now()>=hold.expires||hold.service!==selectedService){paymentBusy=false;hold=null;render();return;}
