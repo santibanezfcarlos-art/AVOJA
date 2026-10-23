@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#173e35">
+<title>Prueba Webpay Plus | Ps. Carlos Santibáñez F.</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7f3;color:#173e33;font:15px/1.65 system-ui,-apple-system,sans-serif}
+header{background:#fff;border-bottom:1px solid #dce7df;padding:18px max(20px,calc((100vw - 980px)/2))}
+.brand{display:flex;align-items:center;gap:13px;text-decoration:none;color:inherit;width:max-content;max-width:100%}
+.mark{width:48px;height:48px;background:#143e35;color:#fff;border-radius:14px;display:grid;place-items:center;font-size:22px;font-weight:800}
+.brand small{display:block;color:#748a7c;font-size:12px}.brand strong{font-size:16px}
+main{max-width:750px;margin:50px auto 70px;padding:0 20px}
+.card{background:white;border:1px solid #dce8de;border-radius:22px;padding:28px}
+.flag{font-size:12px;letter-spacing:1.4px;font-weight:800;color:#347459;text-transform:uppercase}
+h1{font-size:clamp(28px,4vw,42px);letter-spacing:-1px;line-height:1.15;margin:10px 0 19px}
+.notice{background:#e7f1e7;padding:15px 18px;border-radius:12px;color:#265c3f}
+label{display:block;font-weight:700;margin:24px 0 8px}
+select{width:100%;font:inherit;padding:14px;border:1px solid #a6c4b1;border-radius:10px;background:white;color:#173e33}
+button{display:block;background:#194b39;border:0;color:white;border-radius:11px;padding:15px 22px;font:700 15px system-ui;cursor:pointer;margin:22px 0;width:100%}
+button:hover{background:#267253}
+.back{color:#194b39;font-weight:700}
+p{color:#516e5f}.notice strong{color:#173e33}
+</style></head><body>
+<header><a class="brand" href="./#inicio"><div class="mark">CS</div><div><strong>Carlos Santibáñez Fica</strong><small>Psicólogo · Atención online</small><small>Asesoría Clínica, Laboral y Forense</small></div></a></header>
+<main><p><a class="back" href="./#agenda">← Volver a la agenda</a></p>
+<section class="card">
+<div class="flag">Prueba técnica · Transbank</div>
+<h1>Simular un pago con Webpay Plus</h1>
+<p>Este ensayo utiliza el <strong>ambiente oficial de integración</strong> de Transbank. Podrás introducir una tarjeta de prueba en su formulario y conocer si la operación fue aprobada o rechazada.</p>
+<p class="notice"><strong>Sin dinero real.</strong> No se registra ningún paciente, no se bloquea ninguna hora en Google Calendar, no se confirma una reserva y no se emite boleta.</p>
+<form action="https://psicologia-carlos-calendar-api.onrender.com/api/webpay-demo/start" method="post">
+<label for="service">Servicio a simular</label>
+<select id="service" name="service" required>
+<option value="psicoterapia">Psicoterapia breve · $30.000 CLP</option>
+<option value="empleabilidad">Asesoría en empleabilidad · $45.000 CLP</option>
+<option value="competencias">Potencia tus competencias · $30.000 CLP</option>
+</select>
+<button type="submit">Ir al Webpay de prueba →</button>
+</form>
+<p>Cuando Transbank solicite los datos de una tarjeta, utiliza <strong>exclusivamente tarjetas de integración</strong> publicadas por Transbank. No ingreses una tarjeta bancaria real.</p>
+<p>Al finalizar regresarás a una pantalla que indica el resultado de la simulación.</p>
+</section></main></body></html>
