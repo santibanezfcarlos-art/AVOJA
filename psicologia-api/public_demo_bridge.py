@@ -160,6 +160,11 @@ def complete():
                                  (order,)).fetchone()
         if not updated:
             return _reply("UNAVAILABLE",503)
+        if updated["state"]=="CONFIRMED":
+            with _database_connection() as conn:
+                sent=conn.execute("""SELECT count(*) AS n FROM psychology_demo_notifications
+                                     WHERE order_id=%s AND status='sent'""",(order,)).fetchone()["n"]
+            return _reply("CONFIRMED" if sent==2 else "CONFIRMED_EMAIL_PENDING")
         return _reply(updated["state"])
     except Exception:
         return _reply("RECONCILIATION_REQUIRED",503)
