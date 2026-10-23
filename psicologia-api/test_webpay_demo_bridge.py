@@ -38,7 +38,7 @@ class DemoPublicTests(unittest.TestCase):
  def tearDown(self):self.env.stop()
  def form(self):
   return {"service":"psicoterapia","date":self.date,"time":"18:00",
-          "billing_required":"1","billing_email":MAIL}
+          "billing_required":"1","billing_email":MAIL,"test_email_ownership":"1"}
 
  def test_bridge_disabled_by_default(self):
   with patch.dict(os.environ,{"PSICOLOGIA_DEMO_BRIDGE_ENABLED":"false"}):
@@ -90,6 +90,14 @@ class DemoPublicTests(unittest.TestCase):
     response=self.client.post("/api/webpay-demo/start",data=self.form(),
                              headers={"Origin":"https://pscsantibanez.cl"})
     self.assertEqual(response.status_code,503)
+   bank.assert_not_called()
+
+ def test_email_permission_required_before_payment(self):
+  with patch("webpay_demo._send") as bank:
+   form=self.form();form.pop("test_email_ownership")
+   response=self.client.post("/api/webpay-demo/start",data=form,
+                             headers={"Origin":"https://pscsantibanez.cl"})
+   self.assertEqual(response.status_code,422)
    bank.assert_not_called()
 
  def test_bank_callback_confirms_via_signed_bridge(self):
