@@ -109,12 +109,14 @@ def _token_digest(token):
 def _auto_submit(token,checkout_url):
     # Únicamente el endpoint de Transbank previamente validado por Gateway.
     content = ("<p>Abriendo el formulario oficial de integración…</p>"
-               "<form method='post' action='" + escape(checkout_url,quote=True) + "'>"
+               "<form id='tbk' method='post' action='" + escape(checkout_url,quote=True) + "'>"
                "<input type='hidden' name='token_ws' value='" + escape(token,quote=True) + "'>"
-               "<button type='submit'>Continuar a Webpay Plus de prueba</button></form>")
+               "<noscript><button type='submit'>Continuar a Webpay Plus de prueba</button></noscript>"
+               "</form><script>document.getElementById('tbk').submit();</script>")
     page=_page("Pago de prueba iniciado",content)
     page.headers["Content-Security-Policy"] = (
-        "default-src 'none'; style-src 'unsafe-inline'; form-action https://webpay3gint.transbank.cl; base-uri 'none'")
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+        "form-action https://webpay3gint.transbank.cl; base-uri 'none'")
     return page
 
 
