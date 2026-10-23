@@ -71,6 +71,27 @@ class DemoPublicTests(unittest.TestCase):
    self.assertEqual(resp.status_code,503)
    bank.assert_not_called()
 
+ def test_no_date_or_time_never_calls_bank(self):
+  with patch("webpay_demo._send") as bank:
+   for day,hour in [("",""),(self.date,""),("","18:00")]:
+    form=self.form();form["date"]=day;form["time"]=hour
+    result=self.client.post("/api/webpay-demo/start",data=form,
+                          headers={"Origin":"https://pscsantibanez.cl"})
+    self.assertEqual(result.status_code,400)
+   bank.assert_not_called()
+
+ def test_missing_receiver_or_bridge_unavailable_stops_before_bank(self):
+  with patch("webpay_demo._send") as bank:
+   form=self.form();form.pop("billing_required")
+   response=self.client.post("/api/webpay-demo/start",data=form,
+                           headers={"Origin":"https://pscsantibanez.cl"})
+   self.assertEqual(response.status_code,400)
+   with patch.dict(os.environ,{"PSICOLOGIA_DEMO_BRIDGE_ENABLED":"false"}):
+    response=self.client.post("/api/webpay-demo/start",data=self.form(),
+                             headers={"Origin":"https://pscsantibanez.cl"})
+    self.assertEqual(response.status_code,503)
+   bank.assert_not_called()
+
  def test_bank_callback_confirms_via_signed_bridge(self):
   day=self.date
   with patch("webpay_demo.bridge.complete",return_value="CONFIRMED_EMAIL_PENDING") as complete,\
