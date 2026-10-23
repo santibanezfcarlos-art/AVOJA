@@ -131,7 +131,7 @@ class PilotCheckoutIntegrationTests(unittest.TestCase):
         with app.test_client() as c:
             page=c.get(callback.location)
             self.assertIn(b"Google Calendar",page.data)
-            self.assertIn(b"no configurado",page.data)
+            self.assertIn("pendiente o falló".encode("utf-8"),page.data)
         self.assertEqual(self.finish(gw).status_code,303)
         self.assertEqual(gw.commit_count,1)
         self.assertEqual(len(FakeCalendarWriter.events),1)
