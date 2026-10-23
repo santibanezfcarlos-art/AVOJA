@@ -193,7 +193,7 @@ class CalendarWriter:
     def is_free(self, start, end):
         return not bool(self.list_busy(start, end))
 
-    def create_paid_appointment(self, *, hold_id, service, start, end, payment_verified=False):
+    def create_paid_appointment(self, *, hold_id, service, start, end, payment_verified=False, demo_only=False):
         """Uso interno FUTURO tras commit Transbank y comparación con BD persistente.
 
         El indicador payment_verified NO se obtiene del navegador y aún NO
@@ -209,10 +209,10 @@ class CalendarWriter:
         hold_id = str(uuid.UUID(str(hold_id)))
         body = {
             "id": event_id,
-            "summary": SUMMARY,
+            "summary": ("PRUEBA TÉCNICA · Reserva simulada" if demo_only else SUMMARY),
             "visibility": "private",
             "transparency": "opaque",
-            "description": "Reserva confirmada en la plataforma de Psicología. Sin datos personales.",
+            "description": ("TRANSBANK INTEGRACIÓN: sin cobro real ni atención confirmada." if demo_only else "Reserva confirmada en la plataforma de Psicología. Sin datos personales."),
             "start": {"dateTime": start.isoformat(), "timeZone": "America/Santiago"},
             "end": {"dateTime": end.isoformat(), "timeZone": "America/Santiago"},
             "extendedProperties": {"private": {
