@@ -516,14 +516,14 @@ function renderAdmin(){
  $('adminBookings').replaceChildren();
  if(!taken.length)emptyChip($('adminBookings'),'No hay reservas simuladas para esta fecha.');
  taken.forEach(h=>{
-  const line=document.createElement('div');line.className='booked-line';const desc=document.createElement('div');const t=document.createElement('strong');t.textContent=h+' h';const small=document.createElement('small');small.textContent='Reserva de demostración · sin paciente';desc.append(t,small);
+  const line=document.createElement('div');line.className='booked-line';const desc=document.createElement('div');const t=document.createElement('strong');t.textContent=h+' h';const small=document.createElement('small');const item=bookedRecords(adminDate).find(v=>v.time===h);small.textContent='Reserva de demostración · '+((item&&SERVICE_TYPES[item.service])?SERVICE_TYPES[item.service].title:'Sesión')+' ('+(item?item.duration:60)+' min)';desc.append(t,small);
   const b=document.createElement('button');b.type='button';b.className='small-btn ghost';b.textContent='Liberar';b.setAttribute('aria-label','Liberar reserva de prueba '+h);
-  b.onclick=()=>{if(!window.confirm('¿Liberar la reserva simulada del '+adminDate+' a las '+h+'?'))return;reservations[adminDate]=taken.filter(x=>x!==h);save(KEY_BOOK,reservations);renderAdmin();render();adminMessage('Reserva simulada de las '+h+' liberada.');};line.append(desc,b);$('adminBookings').append(line);
+  b.onclick=()=>{if(!window.confirm('¿Liberar la reserva simulada del '+adminDate+' a las '+h+'?'))return;reservations[adminDate]=bookedRecords(adminDate).filter(v=>v.time!==h);save(KEY_BOOK,reservations);renderAdmin();render();adminMessage('Reserva simulada de las '+h+' liberada.');};line.append(desc,b);$('adminBookings').append(line);
  });
 }
 function emptyChip(parent,txt){const e=document.createElement('p');e.className='helper';e.textContent=txt;parent.append(e)}
 function ensureException(d){if(!settings.exceptions[d])settings.exceptions[d]={closed:settings.closedWeekdays.includes(dayIndex(d)),slots:normalize(settings.weekly[dayIndex(d)])};return settings.exceptions[d]}
-function persistSettings(msg){save(KEY_SETTINGS,settings);if(hold&&(!schedule(hold.date).includes(hold.time)||booked(hold.date).length>=MAX||calendarBusy(hold.date,hold.time)))hold=null;renderAdmin();render();adminMessage(msg)}
+function persistSettings(msg){save(KEY_SETTINGS,settings);if(hold&&(!schedule(hold.date).includes(hold.time)||booked(hold.date).length>=MAX||calendarBusy(hold.date,hold.time)||!fitsSlot(hold.time)||localBusy(hold.date,hold.time)))hold=null;renderAdmin();render();adminMessage(msg)}
 function showTab(which){activeTab=which;const isAdmin=which==='admin';$('patientView').hidden=isAdmin;$('adminView').hidden=!isAdmin;
  $('tabPublic').classList.toggle('active',!isAdmin);$('tabAdmin').classList.toggle('active',isAdmin);
  $('tabPublic').setAttribute('aria-selected',String(!isAdmin));$('tabAdmin').setAttribute('aria-selected',String(isAdmin));if(isAdmin)renderAdmin();else render();}
@@ -533,7 +533,17 @@ $('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage()
 $('cancel').onclick=()=>{hold=null;clearMessage();render()};
 $('bookingServiceSelect').onchange=e=>chooseService(e.target.value);
 document.querySelectorAll('[data-service]').forEach(a=>a.addEventListener('click',()=>chooseService(a.dataset.service)));
-$('confirm').onclick=()=>{if(!hold)return;if(hold.expires<Date.now()){tick();return}const {date,time}=hold,r=booked(date);if(!schedule(date).includes(time)||r.includes(time)||r.length>=MAX||past(date,time)||calendarBusy(date,time)||cannotCheck()){hold=null;render();message('Ya no está disponible ese horario.');return}reservations[date]=[...r,time];save(KEY_BOOK,reservations);hold=null;render();message('Reserva simulada: '+textDate(date,{day:'numeric',month:'long'})+' a las '+time+'. No se ha cobrado ni reservado una atención real.')};
+$('confirm').onclick=()=>{
+ if(!hold)return;
+ if(hold.expires<Date.now()){tick();return}
+ const {date,time}=hold,service=currentService(),r=bookedRecords(date);
+ if(hold.service!==selectedService||!schedule(date).includes(time)||!fitsSlot(time)||localBusy(date,time)||r.length>=MAX||past(date,time)||calendarBusy(date,time)||cannotCheck()){
+  hold=null;render();message('Ya no está disponible ese horario para este servicio.');return
+ }
+ reservations[date]=[...r,{time,duration:service.minutes,service:selectedService}];
+ save(KEY_BOOK,reservations);hold=null;render();renderAdmin();
+ message('Reserva simulada de '+service.title+': '+textDate(date,{day:'numeric',month:'long'})+' de '+time+' a '+endsAt(time,service.minutes)+' · $'+service.price.toLocaleString('es-CL')+'. No se ha cobrado ni reservado una atención real.')
+ };
 $('clear').onclick=()=>{if(!window.confirm('¿Eliminar todas las reservas simuladas?'))return;reservations={};save(KEY_BOOK,reservations);hold=null;render();renderAdmin();message('Se borraron las reservas de prueba.')};
 $('weeklyToggle').onclick=()=>{settings.closedWeekdays= settings.closedWeekdays.includes(weekday)?settings.closedWeekdays.filter(x=>x!==weekday):[...settings.closedWeekdays,weekday];persistSettings('Disponibilidad semanal actualizada para '+WEEK_FULL[weekday]+'.')};
 $('weeklyAddForm').onsubmit=e=>{e.preventDefault();const h=$('weeklyTime').value;if(!goodHour(h))return adminMessage('Solo se admiten inicios entre 09:00 y 19:00, cada 15 minutos.');settings.weekly[weekday]=normalize([...settings.weekly[weekday],h]);persistSettings('Hora '+h+' agregada a '+WEEK_FULL[weekday]+'.')};
