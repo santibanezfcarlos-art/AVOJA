@@ -562,8 +562,14 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
   <input id="payerName" type="text" autocomplete="name" maxlength="120" minlength="2" required placeholder="Nombre y apellido" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
   <label for="payerEmail" style="display:block;font-size:12px;margin:12px 0 4px">Correo para tu confirmación</label>
   <input id="payerEmail" type="email" autocomplete="email" maxlength="254" required placeholder="tu@correo.cl" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
-  <button class="primary" id="webpayPay" type="submit" disabled>Pagar $30.000 con Webpay Plus</button>
+  <fieldset style="border:1px solid #dbe6df;border-radius:9px;margin:12px 0;padding:12px"><legend>Modalidad de compra</legend><label style="display:block"><input name="accountMode" type="radio" value="guest" checked> Comprar como invitado</label><label style="display:block"><input name="accountMode" type="radio" value="create"> Crear una cuenta (próximamente)</label><label style="display:block"><input name="accountMode" type="radio" value="login"> Ingresar con mi cuenta (próximamente)</label><p class="small">Por ahora no se crean ni autentican cuentas.</p></fieldset>
+  <label for="payerRut" style="display:block;margin:10px 0 4px">RUT para futura boleta de EIRL</label><input id="payerRut" required maxlength="12" placeholder="12.345.678-9" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
+  <label for="payerPhone" style="display:block;margin:10px 0 4px">Teléfono</label><input id="payerPhone" type="tel" required autocomplete="tel" maxlength="20" placeholder="+56 9 1234 5678" style="width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px">
+  <p class="small">Documento previsto: boleta electrónica no afecta o exenta de IVA. En pruebas no se emiten boletas.</p>
+  <label style="display:block;margin:10px 0"><input id="mockTerms" type="checkbox" required> Entiendo que este pago es solo simulado, sin cargos ni reserva real.</label>
+    <button class="primary" id="webpayPay" type="submit" disabled>Simular pago Webpay (sin cargos)</button>
  </form>
+ <div id="mockOutcome" class="card" role="status" hidden style="margin-top:10px;padding:14px;background:#eaf4eb"></div>
  <p class="small" style="margin-top:10px">El pago se realizará en el sitio seguro de Transbank. Nunca solicitaremos datos de tarjeta en esta página.</p>
 </div>
 <button type="button" class="primary" id="confirm" disabled>Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">No se procesan pagos, bonos Fonasa ni boletas en este prototipo. Una confirmación aquí solo sirve para probar el calendario.</p></aside></div>
@@ -650,9 +656,9 @@ async function checkWebpayConfig(){
   const data=await r.json();
   // El backend Webpay aún no admite precios y duraciones por servicio: sin cobros.
   realPaymentsEnabled=false;
-  paymentStatus('Webpay pendiente de adaptar al precio y duración del servicio seleccionado. No se realizan cargos.');
- }catch(e){realPaymentsEnabled=false;paymentStatus('Webpay aún no está conectado al calendario de reservas. Sin cargos reales.');}
- const b=document.getElementById('webpayPay');if(b)b.disabled=!realPaymentsEnabled||!hold||paymentBusy||cannotCheck();
+  paymentStatus('Simulador de compra local habilitado. Sin cargos reales ni conexión a Transbank.');
+ }catch(e){realPaymentsEnabled=false;paymentStatus('Simulador local habilitado. No se realizan cargos ni reservas reales.');}
+ const b=document.getElementById('webpayPay');if(b)b.disabled=!hold||paymentBusy||cannotCheck();
 }
 let calendarState='loading',calendarBlocked={},calendarBlockedShort={},calendarSeq=0;
 function calendarBusy(date,time){
@@ -834,7 +840,60 @@ $('resetConfig').onclick=()=>{if(!window.confirm('¿Restaurar el horario semanal
 $('resetDemo').onclick=()=>{if(!window.confirm('¿Borrar toda la configuración y las reservas de esta demostración?'))return;reservations={};settings=clone(DEFAULT);save(KEY_BOOK,reservations);save(KEY_SETTINGS,settings);hold=null;render();renderAdmin();adminMessage('Se borraron todos los datos locales de prueba.')};
 $('webpayForm').addEventListener('submit',async (ev)=>{
  ev.preventDefault();
- if(!realPaymentsEnabled||!hold||paymentBusy||cannotCheck())return;
+ if(!hold||cannotCheck())return;
+  if(!/^([0-9]{7,8})-?([0-9kK])$/.test($('payerRut').value.replaceAll('.',''))){$('payerRut').setCustomValidity('Revisa el formato de RUT');$('payerRut').reportValidity();return;}
+  const result=$('mockOutcome');result.hidden=false;result.textContent='SIMULACIÓN APROBADA — '+currentService().title+' · '+hold.date+' · '+hold.time+' a '+endsAt(hold.time)+' · 
+ if(Date.now()>=hold.expires){tick();return;}
+ paymentBusy=true;$('webpayPay').disabled=true;
+ paymentStatus('Reteniendo la hora y preparando pago seguro…');
+ try{
+  const body={date:hold.date,time:hold.time,name:$('payerName').value.trim(),email:$('payerEmail').value.trim()};
+  const h=await fetch(PAYMENT_API+'/api/bookings/hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const held=await h.json();
+  if(!h.ok||!held.hold_id)throw Error(held.error||'No fue posible retener la hora.');
+  const c=await fetch(PAYMENT_API+'/api/bookings/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hold_id:held.hold_id})});
+  const payment=await c.json();
+  if(!c.ok||!payment.url||!payment.token_ws)throw Error(payment.error||'No fue posible abrir Transbank.');
+  const u=new URL(payment.url);
+  if(u.protocol!=='https:'||!['webpay3gint.transbank.cl','webpay3g.transbank.cl'].includes(u.hostname)||u.pathname!=='/webpayserver/initTransaction')
+    throw Error('Destino Webpay inesperado. No continúes.');
+  const form=document.createElement('form');form.method='POST';form.action=payment.url;
+  const i=document.createElement('input');i.type='hidden';i.name='token_ws';i.value=payment.token_ws;
+  form.appendChild(i);document.body.appendChild(form);form.submit();
+ }catch(e){paymentStatus(e.message||'No fue posible iniciar el pago. No vuelvas a pagar antes de verificar el estado.');}
+ finally{paymentBusy=false;$('webpayPay').disabled=!hold||cannotCheck();}
+});
+setInterval(()=>{if(hold)tick()},1000);
+setInterval(()=>{if(!document.hidden&&calendarState!=='loading')loadCalendar()},120000);
+render();renderAdmin();loadCalendar();checkWebpayConfig();
+})();
+</script>
+
+<script>
+(function(){
+'use strict';
+const home=document.getElementById('homePage'),app=document.getElementById('appPage');
+function route(){
+ let frag=decodeURIComponent((location.hash||'#inicio').slice(1)).toLowerCase();
+ let inApp=frag==='agenda'||frag==='admin';
+ home.hidden=inApp;app.hidden=!inApp;
+ if(inApp){document.getElementById(frag==='admin'?'tabAdmin':'tabPublic').click();document.getElementById('appBread').textContent=frag==='admin'?'Administración de prueba':'Reserva tu hora';document.title=(frag==='admin'?'Administración de prueba':'Reserva tu sesión')+' · Carlos Santibáñez';}
+ else{document.title='Carlos Santibáñez | Psicología Online';}
+ document.querySelectorAll('[data-nav]').forEach(link=>link.classList.toggle('active',link.getAttribute('data-nav')===frag));
+ if(inApp)window.scrollTo({top:0,behavior:'instant'});
+ else if(frag!=='inicio'){let dest=document.getElementById(frag);if(dest)requestAnimationFrame(()=>dest.scrollIntoView({block:'start',behavior:'smooth'}));}
+ else window.scrollTo({top:0,behavior:'instant'});
+}
+window.addEventListener('hashchange',route);
+const publicTab=document.getElementById('tabPublic'),adminTab=document.getElementById('tabAdmin');
+publicTab.addEventListener('click',()=>{if(location.hash!=='#agenda')location.hash='agenda'});
+adminTab.addEventListener('click',()=>{if(location.hash!=='#admin')location.hash='admin'});
+route();
+})();
+</script>
+
+</body></html>+currentService().price.toLocaleString('es-CL')+'. Compra como invitado o cuenta futura: aún no hay registro de usuario. Boleta exenta EIRL: no emitida. Ningún pago fue procesado.';paymentStatus('Prueba Webpay local completada sin cargos reales.');return;
+  if(!realPaymentsEnabled||!hold||paymentBusy||cannotCheck())return;
  if(Date.now()>=hold.expires){tick();return;}
  paymentBusy=true;$('webpayPay').disabled=true;
  paymentStatus('Reteniendo la hora y preparando pago seguro…');
