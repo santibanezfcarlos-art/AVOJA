@@ -141,7 +141,7 @@ def template(role, order, service, start, end, *, correction=False):
     name, subtitle, contact, website = _brand()
     is_pro = role == "professional"
     subject = (("PRUEBA · Nueva reserva · " if is_pro
-                else "PRUEBA · Tu hora confirmada · ")
+                else "PRUEBA · Confirmación de tu hora · ")
                + service_name + " · " + date_label + " · " + hour_label + " h")
     if correction:
         subject = "CORRECCIÓN DE HORARIO · " + subject
@@ -155,7 +155,6 @@ def template(role, order, service, start, end, *, correction=False):
              "La atención será online. Procura contar con una conexión estable "
              "y un espacio privado. El enlace de acceso todavía no se genera "
              "automáticamente en esta versión de prueba.")
-    summary = "12:00–12:45"
     summary = hour_label + "–" + end_label
     correction_notice = (
         "<tr><td style='padding:15px 25px;background:#fff2e5;"
@@ -252,8 +251,25 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
         "content": base64.b64encode(ics_text(hold_id,start,end).encode("utf-8")).decode("ascii"),
         "content_type": "text/calendar",
     }
+    local_start=start.astimezone(ZoneInfo("America/Santiago"))
+    local_end=end.astimezone(ZoneInfo("America/Santiago"))
+    service_title={"psicoterapia":"Psicoterapia breve",
+                   "empleabilidad":"Asesoría en empleabilidad",
+                   "competencias":"Potencia tus competencias"}[service]
+    name, subtitle, contact, website = _brand()
+    plain = (("Nueva reserva de prueba" if role=="professional" else
+              "Confirmación de reserva de prueba") + "\n"
+             + "Profesional: " + name + "\n"
+             + "Servicio: " + service_title + "\n"
+             + "Fecha: " + local_start.strftime("%d/%m/%Y") + "\n"
+             + "Hora (Chile): " + local_start.strftime("%H:%M") + "–"
+             + local_end.strftime("%H:%M") + "\n"
+             + "Modalidad: Online\n"
+             + "Orden: " + order + "\n"
+             + "PRUEBA TÉCNICA — SIN COBRO REAL. No se emitió boleta.\n"
+             + "Contacto: " + contact + "\n" + website)
     payload = {"from": FROM, "to": [email], "subject": subject,
-               "html": body, "attachments": [attachment]}
+               "html": body, "text": plain, "attachments": [attachment]}
     if transport is not None:
         result = transport(payload)
     else:
