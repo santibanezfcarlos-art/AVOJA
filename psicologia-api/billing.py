@@ -109,6 +109,22 @@ def bind_token(order, token):
                     (hashlib.sha256(token.encode()).hexdigest(), order))
 
 
+
+def pending_by_token(token):
+    """Recupera solo identificador/monto para liberar una compra abandonada."""
+    if not configured() or not isinstance(token,str) or len(token)>150:
+        return None
+    try:
+        with db() as con:
+            row=con.execute(
+                "SELECT order_id,amount FROM billing_orders WHERE token_hash=? "
+                "AND environment='integration' AND payment_status='initiated'",
+                (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+            return {"order":row["order_id"],"amount":row["amount"]} if row else None
+    except (RuntimeError, sqlite3.Error, OSError):
+        return None
+
+
 def cancelled(token):
     if not configured():
         return
