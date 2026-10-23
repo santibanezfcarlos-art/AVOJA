@@ -62,6 +62,41 @@ class HoldPolicyTests(unittest.TestCase):
         with patch.dict(os.environ,{"PSICOLOGIA_HOLDS_ENABLED":"true"},clear=True):
             self.assertFalse(enabled())
 
+    def test_synthetic_calendar_is_restricted_to_isolated_nonpayment_pilot(self):
+        from booking_holds import _calendar_free
+        with patch.dict(os.environ, {
+            "PSICOLOGIA_HOLDS_ISOLATED_PILOT": "true",
+            "PSICOLOGIA_HOLDS_CALENDAR_POLICY": "synthetic",
+            "PSICOLOGIA_CHECKOUT_MODE": "disabled",
+            "PSICOLOGIA_WEBPAY_MODE": "disabled",
+        }, clear=True):
+            self.assertTrue(_calendar_free(NOW, NOW + timedelta(minutes=45)))
+        with patch.dict(os.environ, {
+            "PSICOLOGIA_HOLDS_ISOLATED_PILOT": "true",
+            "PSICOLOGIA_HOLDS_CALENDAR_POLICY": "synthetic",
+            "PSICOLOGIA_CHECKOUT_MODE": "production",
+        }, clear=True):
+            with self.assertRaises(HoldProblem):
+                _calendar_free(NOW, NOW + timedelta(minutes=45))
+        with patch.dict(os.environ, {
+            "PSICOLOGIA_HOLDS_CALENDAR_POLICY": "synthetic",
+        }, clear=True):
+            with self.assertRaises(HoldProblem):
+                _calendar_free(NOW, NOW + timedelta(minutes=45))
+
+    def test_pilot_health_does_not_expose_keys_and_is_disabled(self):
+        from pilot_app import app
+        with patch.dict(os.environ, {}, clear=True):
+            with app.test_client() as client:
+                res = client.get("/health")
+                self.assertEqual(res.status_code, 200)
+                data = res.get_json()
+                self.assertFalse(data["holds_enabled"])
+                self.assertFalse(data["database_configured"])
+                self.assertFalse(data["production_payments"])
+                self.assertFalse(data["patient_bookings"])
+                self.assertNotIn("database_url", data)
+
     def test_errors_have_safe_codes(self):
         with self.assertRaises(HoldProblem) as context:
             slot_window("not-a-service","2026-10-26","09:00",now=NOW)
