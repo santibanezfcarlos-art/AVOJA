@@ -534,7 +534,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
   <label for="payerRut">RUT receptor</label><input id="payerRut" name="billing_rut" required maxlength="12" placeholder="12.345.678-9">
   <label for="payerName">Nombre completo del receptor</label><input id="payerName" name="billing_name" autocomplete="name" minlength="2" maxlength="120" required placeholder="Nombre y apellido">
   <label for="payerAddress">Dirección del receptor</label><input id="payerAddress" name="billing_address" autocomplete="street-address" minlength="5" maxlength="200" required placeholder="Calle, número, comuna y ciudad">
-  <label for="payerEmail">E-mail del receptor</label><input id="payerEmail" name="billing_email" type="email" autocomplete="email" maxlength="254" required placeholder="santibanezf.carlos+paciente1@gmail.com" aria-describedby="testEmailHint"><p id="testEmailHint" class="small">Prueba de envíos: utiliza santibanezf.carlos@gmail.com o un alias, como santibanezf.carlos+paciente1@gmail.com. Ambos llegan a tu Gmail. Más adelante habilitaremos otros correos con las validaciones correspondientes.</p>
+  <label for="payerEmail">E-mail del receptor</label><input id="payerEmail" name="billing_email" type="email" autocomplete="email" maxlength="254" required placeholder="cliente@ejemplo.cl" aria-describedby="testEmailHint"><p id="testEmailHint" class="small">Puedes probar con cualquier correo válido al que tengas acceso o permiso para enviar esta confirmación. El correo de prueba del cliente llegará aquí; el aviso profesional llegará al correo del psicólogo.</p><label style="display:block;margin:10px 0;font-weight:normal"><input name="test_email_ownership" value="1" required type="checkbox"> Confirmo que puedo recibir correos en esta dirección o cuento con autorización para utilizarla en esta prueba.</label>
   <label for="payerPhone">Teléfono del receptor</label><input id="payerPhone" name="billing_phone" type="tel" autocomplete="tel" minlength="8" maxlength="20" required placeholder="+56 9 1234 5678">
   <label for="billingDetail">Detalle de la prestación</label><input id="billingDetail" readonly value="Sesión de psicoterapia breve online">
   <p class="small">Boleta electrónica no afecta o exenta de IVA de la E.I.R.L. El detalle se completa según el servicio seleccionado.</p>
@@ -891,16 +891,11 @@ $('webpayForm').addEventListener('submit',async (ev)=>{
  for(let i=rut.length-2;i>=0;i--){const d=Number(rut[i]);if(!Number.isInteger(d)){field.setCustomValidity('RUT inválido');field.reportValidity();return;}total+=d*m;m=m===7?2:m+1;}
  const mod=11-total%11,check=mod===11?'0':mod===10?'K':String(mod);
  if(check!==rut.slice(-1)){field.setCustomValidity('RUT inválido: revisa el dígito verificador');field.reportValidity();return;}
- // Solo correo propio o su alias Gmail durante las pruebas: evita salir de la
- // web hasta Transbank cuando no se admitiría el destinatario del ensayo.
- const emailField=$('payerEmail'),email=(emailField.value||'').trim().toLowerCase();
- const authorizedEmail=email==='santibanezf.carlos@gmail.com'
-    || /^santibanezf\.carlos\+[a-z0-9][a-z0-9._-]{0,31}@gmail\.com$/.test(email);
- if(!authorizedEmail){
-  emailField.setCustomValidity('Durante las pruebas usa santibanezf.carlos@gmail.com o santibanezf.carlos+paciente1@gmail.com');
-  emailField.reportValidity();return;
- }
+ // El backend validará el correo, autorización y límite de pruebas;
+ // no se exige que sea un alias Gmail.
+ const emailField=$('payerEmail');
  emailField.setCustomValidity('');
+ if(!emailField.checkValidity()){emailField.reportValidity();return;}
  paymentBusy=true;$('webpayPay').disabled=true;
  if(!await billingReady()){paymentBusy=false;render();return;}
  if(!hold||Date.now()>=hold.expires||hold.service!==selectedService){paymentBusy=false;hold=null;render();return;}
