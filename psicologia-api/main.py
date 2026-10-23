@@ -247,6 +247,12 @@ app.register_blueprint(webpay_demo_bp)
 from billing import billing_bp
 app.register_blueprint(billing_bp)
 
+# Solo booleans de configuración, nunca credenciales ni datos de pacientes.
+from webpay_demo_bridge import enabled as _demo_bridge_is_ready
+from billing import configured as _billing_is_ready
+print("PSICOLOGIA_PUBLIC_DEMO_BRIDGE: " + ("ready" if _demo_bridge_is_ready() else "not_configured"),flush=True)
+print("PSICOLOGIA_PUBLIC_BILLING: " + ("ready" if _billing_is_ready() else "not_configured"),flush=True)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
