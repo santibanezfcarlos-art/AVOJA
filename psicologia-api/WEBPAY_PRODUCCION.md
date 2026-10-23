@@ -143,3 +143,40 @@ la clave piloto. La conexión externa de Render está bloqueada mediante
 allowlist vacía; no abrirla públicamente para facilitar la configuración.
 Se recomienda no utilizar la instancia Free para producción ni
 modificar las credenciales del backend publicado.
+
+## Backend piloto desplegado en Render
+
+- Servicio independiente: `psicologia-retenciones-piloto`
+  (ID `srv-dbdrmion74is73em6nig`, plan Free, región Virginia).
+- URL de diagnóstico: `https://psicologia-retenciones-piloto.onrender.com/health`.
+- Rama: `psicologia-webpay-produccion-preparacion`; app Flask
+  `psicologia-api/pilot_app.py` SIN endpoints Webpay ni escritura Google.
+- Migración preparada: `bootstrap_holds.py` ejecuta `schema_holds.sql`
+  en el inicio solo cuando `PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP=true`,
+  `PSICOLOGIA_HOLDS_ISOLATED_PILOT=true` y existe URL de BD.
+- Variables ya configuradas en Render: `PSICOLOGIA_HOLDS_ENABLED=false`,
+  `PSICOLOGIA_HOLDS_ISOLATED_PILOT=true`,
+  `PSICOLOGIA_HOLDS_CALENDAR_POLICY=synthetic`,
+  `PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP=true`,
+  `PSICOLOGIA_CHECKOUT_MODE=disabled`,
+  `PSICOLOGIA_WEBPAY_MODE=disabled` y
+  `PSICOLOGIA_HOLDS_PILOT_KEY` privada (valor no consignado aquí).
+- La base temporal `psicologia-holds-piloto` está disponible
+  pero todavía NO enlazada por URL a este backend.
+
+### Único paso manual de conexión segura
+
+1. Abrir la BD en `https://dashboard.render.com/d/dpg-dbdrg6fb9u1s73b9coag-a`,
+   buscar **Connect → Internal Database URL**. No copiar secretos a
+   GitHub ni al chat.
+2. Abrir el servicio `https://dashboard.render.com/web/srv-dbdrmion74is73em6nig`,
+   ir a **Environment** y agregar `PSICOLOGIA_HOLDS_DATABASE_URL` con
+   la URL interna completa de la BD. Render redeplegará la app.
+3. Revisar el endpoint de salud: `database_configured=true`,
+   `database_reachable=true`, `schema_ready=true` y
+   `holds_enabled=false`. Solo después habilitar pruebas
+   administradas; nunca usar datos ni pagos reales.
+
+GitHub Actions (ejecución `40014944902`):
+**22 pruebas completadas con éxito**, incluidas las de concurrencia
+contra PostgreSQL temporal y los límites del entorno aislado.
