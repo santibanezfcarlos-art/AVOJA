@@ -237,5 +237,9 @@ def availability():
 # y el hijo heredaría _refreshing=True sin heredar el hilo que lo resuelve.
 
 
+# Prueba separada de Webpay Plus: sin cargos ni reservas reales.
+from webpay_demo import webpay_demo_bp
+app.register_blueprint(webpay_demo_bp)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
