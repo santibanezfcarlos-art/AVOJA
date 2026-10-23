@@ -393,12 +393,14 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 
 /* Contorno uniforme para la tarjeta superior de Desarrollo de Competencias */
 #prestaciones .offer-card.offer-tone-mist{border:2px solid #b3d2bc;}
+/* Menú accesible en tabletas para abrir las páginas informativas y preguntas frecuentes */
+@media (min-width:511px) and (max-width:980px){.site-header .header-links{display:none}.site-header .mobile-nav{display:flex}}
 </style>
 </head><body>
 
 <header class="site-header"><div class="bar"><div class="brand"><div class="mark">CS</div><div><strong>Carlos Santibáñez Fica</strong><small>Psicólogo · Atención online</small><small>Asesoría Clínica, Laboral y Forense</small></div></div>
-<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#prestaciones" data-nav="prestaciones" class="link-hide">Servicios</a><a href="#enfoque" data-nav="enfoque" class="link-hide">Mi enfoque</a><a href="#formacion" data-nav="formacion" class="link-hide">Formación</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
-<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#prestaciones">Servicios</a><a href="#enfoque">Mi enfoque</a><a href="#formacion">Formación</a><a href="#agenda">Reservar hora →</a></nav></header>
+<nav class="header-links" aria-label="Navegación principal"><a href="#inicio" data-nav="inicio">Inicio</a><a href="#prestaciones" data-nav="prestaciones" class="link-hide">Servicios</a><a href="enfoque.html" target="_blank" rel="noopener noreferrer" class="link-hide" title="Abrir Mi enfoque en una pestaña nueva">Mi enfoque ↗</a><a href="formacion-experiencia.html" target="_blank" rel="noopener noreferrer" class="link-hide" title="Abrir Formación y experiencia en una pestaña nueva">Formación y experiencia ↗</a><a href="#preguntas" data-nav="preguntas" class="link-hide">Preguntas frecuentes</a><a href="#agenda" data-nav="agenda" class="header-cta">Agendar una hora →</a></nav></div>
+<nav class="mobile-nav" aria-label="Navegación para celulares"><a href="#inicio">Inicio</a><a href="#prestaciones">Servicios</a><a href="enfoque.html" target="_blank" rel="noopener noreferrer">Mi enfoque ↗</a><a href="formacion-experiencia.html" target="_blank" rel="noopener noreferrer">Formación y experiencia ↗</a><a href="#preguntas">Preguntas frecuentes</a><a href="#agenda">Reservar hora →</a></nav></header>
 
 <main class="site-main">
 <div id="homePage">
@@ -496,49 +498,6 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
   </div>
  </div>
  <p class="offer-note">Agenda de demostración: cada servicio muestra su duración y valor, pero todavía no se aceptan pagos ni se confirman reservas reales.</p>
-</section>
-<section class="section" id="enfoque"><div class="about-grid"><div class="about-text"><div class="eyebrow">Mi modelo de psicoterapia</div><h2>Psicoterapia breve centrada en soluciones y objetivos concretos.</h2><p>Trabajo con personas adultas desde un enfoque de <strong>Psicoterapia Breve Centrada en Soluciones</strong>. Nos enfocamos en comprender lo que está ocurriendo, reconocer tus recursos y acordar objetivos claros y alcanzables, respetando tu contexto y tus tiempos.</p><p>Según las necesidades de cada proceso, incorporo estrategias de reestructuración cognitiva, regulación emocional, resolución de problemas y fortalecimiento de herramientas personales. Revisamos juntos los avances para ajustar el trabajo cuando sea necesario.</p><p>“Breve” se refiere a una forma de trabajar focalizada y colaborativa, no a una cantidad fija de sesiones ni a resultados garantizados.</p><a href="#formacion" class="text-link">Conoce mi formación →</a></div></div>
- <div class="about-panel"><div class="quote-mark" aria-hidden="true">“</div><p class="quote">La terapia puede ser un espacio para mirar con claridad lo que ocurre y construir nuevas formas de afrontarlo.</p><div class="about-sign">Carlos Santibáñez · Psicólogo</div></div></div></section>
-<section class="section training-section" id="formacion" aria-labelledby="trainingTitle">
- <div class="section-heading">
-  <div class="eyebrow">Formación académica y perfeccionamiento</div>
-  <h2 id="trainingTitle">Formación profesional y actualización continua.</h2>
-  <p>Mi práctica se apoya en estudios universitarios y en formación complementaria en terapia breve, psicodiagnóstico y evaluación de competencias.</p>
- </div>
- <div class="training-highlight">
-  <article class="training-major">
-   <div class="training-label">Título profesional</div>
-   <h3>Psicólogo · Licenciado en Psicología</h3>
-   <p>Universidad del Desarrollo</p>
-  </article>
-  <article class="training-major training-specialization">
-   <div class="training-label">Especialización · Formación posterior al título</div>
-   <h3>Especialización en Terapia Breve</h3>
-   <p>Academia Digital de Psicología y Aprendizaje (ADIPA)</p>
-   <span class="training-meta">120 horas certificadas · Modalidad e-learning</span>
-  </article>
- </div>
- <div class="training-columns">
-  <div class="training-panel">
-   <h3>Psicodiagnóstico clínico y pericial</h3>
-   <ul class="training-list">
-    <li><span>Curso en Psicodiagnóstico Clínico Pericial</span><small>16 horas</small></li>
-    <li><span>Curso de Test de Relaciones Objetales de Philipson (TRO)</span><small>16 horas</small></li>
-    <li><span>Curso de Test de Rorschach</span><small>16 horas</small></li>
-    <li><span>Curso de Psicodiagnóstico: Test de Zulliger</span><small>16 horas</small></li>
-    <li><span>Curso de Psicodiagnóstico: Test de Lüscher</span><small>16 horas</small></li>
-   </ul>
-  </div>
-  <div class="training-panel">
-   <h3>Evaluación de competencias y ámbito organizacional</h3>
-   <ul class="training-list">
-    <li><span>Certificación en Entrevistas por Competencias — Targeted Selection</span><small>16 horas</small></li>
-    <li><span>Curso de Selección de Personal basado en Modelo de Competencias</span><small>24 horas</small></li>
-   </ul>
-   <p class="training-context">Estas capacitaciones complementan mi experiencia en evaluación psicológica y consultoría organizacional.</p>
-  </div>
- </div>
- <div class="training-footer"><p>Formación académica y perfeccionamiento profesional.</p><a href="#agenda" class="text-link">Agendar una sesión →</a></div>
 </section>
 <section class="section" id="preguntas"><div class="section-heading"><div class="eyebrow">Preguntas frecuentes</div><h2>Lo que necesitas saber antes de comenzar.</h2></div>
 <div class="faq-grid"><article class="faq-item"><h3>¿Las sesiones son presenciales?</h3><p>No. Todas las atenciones de esta plataforma están contempladas en modalidad online.</p></article><article class="faq-item"><h3>¿Cuál es el valor de una sesión?</h3><p>El valor de la sesión particular es de $30.000 CLP. La integración para bonos Fonasa se encuentra pendiente de implementación.</p></article><article class="faq-item"><h3>¿Cómo se confirma una reserva?</h3><p>En la plataforma definitiva, la hora se confirmará después de acreditar el pago. En esta demostración no se cobra ni se reserva realmente.</p></article><article class="faq-item"><h3>¿Recibiré una boleta?</h3><p>Estamos contemplando integrar la emisión de documentos tributarios mediante el SII. Esta función todavía no está habilitada.</p></article></div>
