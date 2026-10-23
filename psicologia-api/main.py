@@ -161,5 +161,20 @@ def availability():
                    duration_minutes=SLOT_DURATION_MINUTES, timezone="America/Santiago")
 
 
+def _startup_calendar_diagnostic():
+    """Prueba de salud: nunca imprimir contenidos ni secretos del calendario."""
+    try:
+        values = _load_busy_intervals()
+        app.logger.warning("CALENDAR_READ_CHECK: %s", "not_configured" if values is None else "read_ok")
+    except CalendarConfigurationError:
+        app.logger.warning("CALENDAR_READ_CHECK: invalid_ics_source")
+    except Exception as exc:
+        app.logger.warning("CALENDAR_READ_CHECK: read_failed_%s", type(exc).__name__)
+
+# Ejecutar la prueba una sola vez durante el arranque, sin bloquear el servidor.
+if os.environ.get("GOOGLE_CALENDAR_ICS_URL", "").strip():
+    threading.Thread(target=_startup_calendar_diagnostic, daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
