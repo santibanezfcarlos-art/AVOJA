@@ -35,6 +35,7 @@ OPEN_MINUTES = 9 * 60
 CLOSE_MINUTES = 20 * 60
 CACHE_TTL_SECONDS = 600
 ALLOWED_SITE = "https://psicologia-carlos-demo.onrender.com"
+ALLOWED_ORIGINS = frozenset((ALLOWED_SITE, "https://pscsantibanez.cl"))
 MAX_FEED_SIZE = 24_000_000
 _feed_cache = {"at": 0.0, "events": []}
 _lock = threading.Lock()
@@ -157,8 +158,9 @@ def _load_busy_intervals():
 
 @app.after_request
 def _cors(response):
-    if request.headers.get("Origin") == ALLOWED_SITE:
-        response.headers["Access-Control-Allow-Origin"] = ALLOWED_SITE
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
