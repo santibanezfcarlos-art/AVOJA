@@ -1,0 +1,21 @@
+name: Psicología - pruebas de reservas y Webpay (sin cargos)
+on:
+  push:
+    branches: [psicologia-webpay-sandbox]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar dependencias
+        run: pip install -r psicologia-api/requirements.txt
+      - name: Comprobar sintaxis Python
+        run: python -m compileall -q psicologia-api
+      - name: Ejecutar tests sin banco ni base de datos
+        run: python -m unittest discover -s psicologia-api/tests -p 'test_*.py' -v
