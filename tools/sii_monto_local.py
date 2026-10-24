@@ -106,11 +106,20 @@ def main():
                 print("No avanzaremos a EMITIR sin verificar visualmente el importe.")
             print("HTTP inicial:", response.status if response else "sin respuesta")
             if args.continuar and confirmed:
-                controls = page.get_by_text(re.compile(r"^\\s*emitir\\s*$", re.I))
-                matches = [controls.nth(i) for i in range(min(controls.count(), 20))
-                           if controls.nth(i).is_visible()]
+                # Priorizar controles interactivos del teclado, no nodos de texto
+                # duplicados (por ejemplo span dentro de un botón).
+                candidates = page.locator("button, [role='button'], input[type='button'], input[type='submit']")
+                matches = []
+                for i in range(min(candidates.count(), 100)):
+                    candidate = candidates.nth(i)
+                    if not candidate.is_visible() or not candidate.is_enabled():
+                        continue
+                    label = (candidate.get_attribute("value") or candidate.inner_text(timeout=500)).strip()
+                    if re.fullmatch(r"emitir", label, re.I):
+                        matches.append(candidate)
                 if len(matches) != 1:
-                    print("Primer botón EMITIR ambiguo: cancelado, sin clic.")
+                    print("Controles interactivos EMITIR encontrados:", len(matches))
+                    print("No se pulsó EMITIR: selector todavía ambiguo.")
                     return
                 print("Importe validado; pulsando primer EMITIR del teclado...")
                 matches[0].click(timeout=10000)
