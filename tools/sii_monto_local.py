@@ -90,7 +90,7 @@ def main():
             # e-Boleta puede dibujar "$ 30.000", "$30000" o usar espacios.
             # Leer solo importes del texto visible, sin imprimir otros datos.
             body = page.locator("body").inner_text(timeout=5000)
-            candidates = re.findall(r"\\$\\s*([0-9][0-9.,\\s]*)", body)
+            candidates = re.findall(r"[$]\s*([0-9][0-9.,\s]*)", body)
             parsed = []
             for candidate in candidates:
                 digits = re.sub(r"[^0-9]", "", candidate)
