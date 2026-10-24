@@ -102,3 +102,68 @@ def availability(token):
         return jsonify(available=free,message=("Horario disponible para consulta." if free else "Horario no disponible."))
     except Exception:
         return jsonify(message="No se pudo confirmar disponibilidad."),503
+
+@rebooking_bp.post("/api/reagendar/<token>/confirmar")
+def confirm(token):
+    """One-use operation. Never acknowledges a change unless Google verifies it."""
+    if not enabled() or os.environ.get("PSICOLOGIA_REBOOKING_CONFIRM_ENABLED") != "true":
+        return jsonify(message="La confirmación todavía no está habilitada."),503
+    if not TOKEN_PATTERN.fullmatch(token):
+        return jsonify(message="Enlace inválido"),404
+    body=request.get_json(silent=True) or {}
+    try:
+        from google_calendar_writer import CalendarWriter, CalendarIntegrationError
+        from booking_holds import _lock_day, _expire
+        from rebooking_tokens import digest
+        with _database_connection() as conn:
+            # Serialise this link and the destination slot within one transaction.
+            link=conn.execute("SELECT order_id FROM psychology_reschedule_links WHERE token_sha256=%s FOR UPDATE",
+                              (digest(token),)).fetchone()
+            if not link:
+                return jsonify(message="Enlace inválido"),404
+            payment=conn.execute("""SELECT p.order_id,p.state,p.service,p.hold_id,
+                               h.slot_date,h.starts_at,h.ends_at
+                               FROM psychology_demo_payments p JOIN psychology_booking_holds h ON h.id=p.hold_id
+                               WHERE p.order_id=%s FOR UPDATE OF p,h""",
+                               (link["order_id"],)).fetchone()
+            checked,state=check(conn,token)
+            if state!="eligible" or payment["state"]!="CONFIRMED":
+                return jsonify(message="La reprogramación no está disponible."),409
+            day,start,end=slot_window(payment["service"],body.get("date"),body.get("time"))
+            old_start,old_end=payment["starts_at"],payment["ends_at"]
+            if start==old_start:
+                return jsonify(message="Elige un horario diferente."),400
+            # Locks both day rows in stable order to avoid concurrent deadlocks.
+            for d in sorted({payment["slot_date"],day}):
+                _lock_day(conn,d)
+            _expire(conn,day)
+            windows=conn.execute("""SELECT starts_at,ends_at FROM psychology_booking_holds
+                       WHERE slot_date=%s AND id<>%s AND
+                       (status='CONFIRMED' OR (status IN
+                       ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED') AND expires_at>now()))""",
+                       (day,payment["hold_id"])).fetchall()
+            if not can_hold([(w["starts_at"],w["ends_at"]) for w in windows],start,end):
+                return jsonify(message="La hora ya no está disponible."),409
+            # Calendar writes are allowed only in isolated pilot mode.
+            writer=CalendarWriter()
+            if not writer.is_free(start,end):
+                return jsonify(message="La hora aparece ocupada en Google Calendar."),409
+            event_id=writer.reschedule_own_appointment(hold_id=payment["hold_id"],
+                service=payment["service"],old_start=old_start,old_end=old_end,
+                new_start=start,new_end=end)
+            # If a database write fails here, the server reports an error, not success.
+            # A reconciliation task is required for rare Calendar/DB split failures.
+            conn.execute("""UPDATE psychology_booking_holds SET starts_at=%s,
+                         ends_at=%s,slot_date=%s,updated_at=now() WHERE id=%s""",
+                         (start,end,day,payment["hold_id"]))
+            conn.execute("""INSERT INTO psychology_reschedule_audit
+                         (order_id,old_starts_at,new_starts_at) VALUES (%s,%s,%s)""",
+                         (payment["order_id"],old_start,start))
+            conn.execute("UPDATE psychology_reschedule_links SET redeemed_at=now() WHERE order_id=%s",
+                         (payment["order_id"],))
+        return jsonify(ok=True,message="Tu nueva hora quedó confirmada.",date=day.isoformat(),
+                       time=start.strftime("%H:%M"))
+    except CalendarIntegrationError:
+        return jsonify(message="No se pudo verificar el cambio en Google Calendar."),503
+    except Exception:
+        return jsonify(message="No se pudo completar el cambio. Contacta al profesional para comprobar tu reserva."),503
