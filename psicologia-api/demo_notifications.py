@@ -202,14 +202,26 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
                 "font-size:13px;vertical-align:top;width:37%'>"
                 + esc(label) + "</td><td style='padding:9px 0;color:#163f34;"
                 "font-size:15px;font-weight:600'>"+esc(value)+"</td></tr>")
+    # A clickable Meet URL belongs inside the same appointment-details panel.
+    # Escape data once, not the assembled HTML element.
+    if meet_url:
+        from urllib.parse import urlsplit
+        parts = urlsplit(meet_url)
+        if parts.scheme != "https" or parts.hostname != "meet.google.com":
+            raise NotificationError("Enlace Meet inválido")
+    meet_row = (
+        "<tr><td style='padding:11px 0;color:#64796f;font-size:13px;vertical-align:top;width:37%'>"
+        "Google Meet</td><td style='padding:11px 0;font-size:14px;font-weight:600;word-break:break-all'>"
+        "<a href='" + esc(meet_url) + "' style='color:#176b58;text-decoration:underline'>"
+        + esc(meet_url) + "</a></td></tr>" if meet_url else ""
+    )
     table = "".join(([field("Paciente", patient_name)] if is_pro and patient_name else []) + [
         field("Servicio", service_name),
         field("Fecha", long_date),
         field("Hora (Chile)", summary),
         field("Duración", str(duration) + " minutos"),
         field("Modalidad", "Online"),
-        *([field("Google Meet", "<a href='" + esc(meet_url) + "' style='color:#176b58;text-decoration:underline;word-break:break-all'>" + esc(meet_url) + "</a>")] if meet_url else []),
-    ])
+    ]) + meet_row
     from urllib.parse import urlsplit
     if rebooking_url is not None:
         parsed = urlsplit(rebooking_url)
