@@ -265,8 +265,15 @@ def _notify(order):
             # configurado y el paciente de prueba su alias Gmail autorizado.
             recipient=(os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","")
                        if role=="professional" else data["test_recipient"])
+            rebooking_url = None
+            if role == "patient" and os.environ.get("PSICOLOGIA_REBOOKING_CONFIRM_ENABLED") == "true":
+                from rebooking_tokens import issue
+                with _database_connection() as link_conn:
+                    private_token = issue(link_conn, order)
+                rebooking_url = ("https://psicologia-retenciones-piloto.onrender.com/reagendar?t="
+                                 + private_token)
             mail_send(role,order,data["hold_id"],recipient,data["service"],
-                      data["starts_at"],data["ends_at"])
+                      data["starts_at"],data["ends_at"],rebooking_url=rebooking_url)
             with _database_connection() as conn:
                 conn.execute("""UPDATE psychology_demo_notifications
                     SET status='sent',sent_at=now() WHERE order_id=%s AND recipient_role=%s""",
