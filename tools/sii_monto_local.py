@@ -1,6 +1,6 @@
 """Prueba local de importe en e-Boleta, utilizando una sesión SII autorizada manualmente.
 
-NO pulsa EMITIR, no introduce datos de receptor, no envía documentos.
+Puede pulsar el primer EMITIR con --continuar; no confirma etapas posteriores.
 Ejemplo:
   python sii_monto_local.py --perfil "$env:USERPROFILE\\PSC-SII\\perfil-privado" --monto 30000
 """
@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--perfil", type=Path, required=True)
     parser.add_argument("--monto", type=amount, required=True)
     parser.add_argument("--visible", action="store_true", help="Diagnóstico con navegador visible")
+    parser.add_argument("--continuar", action="store_true", help="Pulsar primer EMITIR tras verificar el monto")
     args = parser.parse_args()
     profile = args.perfil.expanduser().resolve()
     if not profile.is_dir():
@@ -104,7 +105,22 @@ def main():
                 print("Importes con símbolo $ detectados:", parsed[:5])
                 print("No avanzaremos a EMITIR sin verificar visualmente el importe.")
             print("HTTP inicial:", response.status if response else "sin respuesta")
-            print("EMITIR no fue pulsado; no se generó ninguna boleta.")
+            if args.continuar and confirmed:
+                controls = page.get_by_text(re.compile(r"^\\s*emitir\\s*$", re.I))
+                matches = [controls.nth(i) for i in range(min(controls.count(), 20))
+                           if controls.nth(i).is_visible()]
+                if len(matches) != 1:
+                    print("Primer botón EMITIR ambiguo: cancelado, sin clic.")
+                    return
+                print("Importe validado; pulsando primer EMITIR del teclado...")
+                matches[0].click(timeout=10000)
+                page.wait_for_timeout(1800)
+                print("Primer clic realizado. Dominio final:", urlparse(page.url).hostname)
+                print("Botones visibles:", page.get_by_role("button").count())
+                print("Campos de formulario:", page.locator("input").count())
+                print("No se confirma ninguna etapa posterior.")
+            else:
+                print("EMITIR no fue pulsado.")
         finally:
             ctx.close()
 
