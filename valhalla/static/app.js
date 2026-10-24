@@ -219,8 +219,8 @@ function bindGallery() {
         if(valuesOpen)valuesPanel.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});
       };
       const previous=document.querySelector('#photo-previous'),next=document.querySelector('#photo-next');
-      if(previous)previous.onclick=()=>{index=(index+group.photos.length-1)%group.photos.length;show();};
-      if(next)next.onclick=()=>{index=(index+1)%group.photos.length;show();};
+      if(previous)previous.onclick=()=>{index=(index+group.photos.length-1)%group.photos.length;valuesOpen=false;show();modal.scrollTop=0;};
+      if(next)next.onclick=()=>{index=(index+1)%group.photos.length;valuesOpen=false;show();modal.scrollTop=0;};
     };
     show();modal.showModal();
   });
