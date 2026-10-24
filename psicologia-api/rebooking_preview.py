@@ -312,9 +312,15 @@ def confirm(token):
                 for role in ("patient","professional"):
                     recipient=(recipients["test_recipient"] if role=="patient"
                                else os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL",""))
+                    meeting = None
+                    if os.environ.get("PSICOLOGIA_GOOGLE_MEET_ENABLED") == "true":
+                        try:
+                            meeting = CalendarWriter().get_meet_link(payment["hold_id"])
+                        except Exception:
+                            pass
                     mail_send(role,payment["order_id"],payment["hold_id"],recipient,
                               payment["service"],start,end,rescheduled=True,
-                              patient_name=recipients.get("patient_name"))
+                              patient_name=recipients.get("patient_name"),meet_url=meeting)
         except Exception:
             # Fallo de correo no revierte una reserva ya confirmada.
             pass
