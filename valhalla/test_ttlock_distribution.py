@@ -49,9 +49,12 @@ class Tests(unittest.TestCase):
                 # would incorrectly make this delivery test fail as expired.
                 from datetime import datetime
                 from zoneinfo import ZoneInfo
-                with patch("ttlock_distribution.datetime") as clock:
-                    clock.now.return_value=datetime(2026,10,21,23,tzinfo=ZoneInfo("America/Santiago"))
-                    clock.side_effect=lambda *a,**k: datetime(*a,**k)
+                class FrozenDateTime(datetime):
+                    @classmethod
+                    def now(cls, tz=None):
+                        fixed = datetime(2026, 10, 21, 23, tzinfo=ZoneInfo("America/Santiago"))
+                        return fixed.astimezone(tz) if tz is not None else fixed.replace(tzinfo=None)
+                with patch("ttlock_distribution.datetime", FrozenDateTime):
                     self.assertEqual(distribute(db_path,"2026-10-21",mailer=mailer),"accepted")
                     self.assertEqual(len(mailer.sent),2)
                     self.assertEqual([r[0] for r in mailer.sent],
