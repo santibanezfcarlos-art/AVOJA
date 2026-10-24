@@ -267,6 +267,32 @@ def data():
         return jsonify(error='Filtro inválido'), 400
 
 
+@billing_bp.post('/admin/boletas/<order>/sii-preview')
+@private
+def sii_preview(order):
+    """Validate a server-side SII job without visiting SII or issuing a DTE."""
+    if not re.fullmatch(r'PSCD[0-9A-F]{18}', order):
+        return jsonify(error='Orden inválida'), 400
+    with db() as con:
+        row = con.execute(
+            'SELECT order_id,amount,environment,payment_status,invoice_status '
+            'FROM billing_orders WHERE order_id=?', (order,)).fetchone()
+    if row is None:
+        return jsonify(error='Compra no encontrada'), 404
+    if row['environment'] != 'production':
+        return jsonify(error='Compra de prueba: prohibido emitir documentos reales en SII.'), 409
+    if row['payment_status'] != 'approved' or row['invoice_status'] != 'pending':
+        return jsonify(error='Solo se preparan boletas pendientes de pagos aprobados.'), 409
+    return jsonify(
+        status='prepared',
+        order_id=row['order_id'],
+        amount=row['amount'],
+        document_type=41,
+        message='Solicitud validada internamente. La conexión y emisión SII todavía no están habilitadas.',
+        emitted=False,
+    )
+
+
 @billing_bp.post('/admin/boletas/<order>/issued')
 @private
 def mark_issued(order):
