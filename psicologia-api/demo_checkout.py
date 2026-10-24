@@ -219,7 +219,7 @@ def _confirm_calendar(order):
                 raise CalendarIntegrationError("La hora ya figura ocupada en Google")
         event=writer.create_paid_appointment(
             hold_id=payment["hold_id"],service=payment["service"],start=payment["starts_at"],
-            end=payment["ends_at"],payment_verified=True,demo_only=True)
+            end=payment["ends_at"],payment_verified=True,demo_only=True,patient_name=payment.get("patient_name"))
     except CalendarIntegrationError:
         with _database_connection() as conn:
             conn.execute("""UPDATE psychology_demo_payments
@@ -273,7 +273,7 @@ def _notify(order):
                 rebooking_url = ("https://psicologia-retenciones-piloto.onrender.com/reagendar?t="
                                  + private_token)
             mail_send(role,order,data["hold_id"],recipient,data["service"],
-                      data["starts_at"],data["ends_at"],rebooking_url=rebooking_url)
+                      data["starts_at"],data["ends_at"],rebooking_url=rebooking_url,patient_name=data.get("patient_name"))
             with _database_connection() as conn:
                 conn.execute("""UPDATE psychology_demo_notifications
                     SET status='sent',sent_at=now() WHERE order_id=%s AND recipient_role=%s""",
