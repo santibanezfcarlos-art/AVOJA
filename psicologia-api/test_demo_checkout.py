@@ -75,7 +75,7 @@ class CheckoutDemoTests(unittest.TestCase):
     def test_preview_does_not_contain_card_or_personal_details(self):
         subject,body=template("patient","PSI1234567890","psicoterapia",NOW,NOW+timedelta(minutes=45))
         self.assertIn("Tu hora está reservada",subject)
-        self.assertIn("SIN COBRO REAL",body)
+        self.assertIn("el pago es simulado",body)
         self.assertNotIn("RUT",body)
 
     def test_emails_use_local_chile_hour_even_when_postgres_returns_utc(self):
