@@ -51,14 +51,20 @@ def main():
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             response = page.goto(PORTAL, wait_until="domcontentloaded", timeout=45000)
+            # El texto de un botón puede ser "Emitir" aunque CSS lo muestre
+            # como "EMITIR"; identificar sin depender de mayúsculas exactas.
+            emitir = page.get_by_text(re.compile(r"^\\s*emitir\\s*$", re.I)).first
             try:
-                page.get_by_text("EMITIR", exact=True).first.wait_for(state="visible", timeout=25000)
+                emitir.wait_for(state="visible", timeout=25000)
             except Exception:
                 print("No se confirmó la pantalla de monto del SII.")
                 print("Dominio final:", urlparse(page.url).hostname or "desconocido")
                 print("HTTP inicial:", response.status if response else "sin respuesta")
+                print("¿Texto emitir (cualquier mayúscula)?:",
+                      page.get_by_text(re.compile("emitir", re.I)).count() > 0)
+                print("¿Tecla numérica 7?:", page.get_by_text("7", exact=True).count() > 0)
+                print("¿Campo de clave?:", page.locator('input[type="password"]').count() > 0)
                 print("No se ingresó ningún monto ni se emitió una boleta.")
-                print("Si es necesario, vuelve a ejecutar 'autorizar' con este mismo perfil.")
                 return
             if urlparse(page.url).hostname != "eboleta.sii.cl":
                 raise RuntimeError("Sesión vencida o pantalla no autorizada.")
