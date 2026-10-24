@@ -212,6 +212,19 @@ def main():
             print("PSICOLOGIA_TZ_CORRECTION: error_type=" + type(error).__name__,flush=True)
         if os.environ.get("PSICOLOGIA_GOOGLE_READ_PROBE") == "true":
             _probe_google_calendar_read()
+            try:
+                from datetime import datetime, timedelta
+                from zoneinfo import ZoneInfo
+                from booking_holds import _calendar_free, _database_connection
+                now=datetime.now(ZoneInfo("America/Santiago"))
+                _calendar_free(now+timedelta(hours=2),now+timedelta(hours=3))
+                print("PSICOLOGIA_PREFLIGHT_CALENDAR: accessible",flush=True)
+                with _database_connection() as conn:
+                    conn.execute("SELECT count(*) FROM psychology_demo_payments WHERE created_at>now()-interval '1 day'").fetchone()
+                print("PSICOLOGIA_PREFLIGHT_DB: accessible",flush=True)
+            except Exception as exc:
+                print("PSICOLOGIA_PREFLIGHT_PROBE: error_type="+type(exc).__name__
+                      +" status="+str(getattr(exc,"status","unknown")),flush=True)
         if os.environ.get("PSICOLOGIA_HOLDS_DB_SELFTEST") == "true":
             _run_smoke_test()
         return 0
