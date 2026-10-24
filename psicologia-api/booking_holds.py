@@ -53,7 +53,7 @@ def _authorize():
         raise HoldProblem("Origen no permitido.", 403)
 
 
-def slot_window(service, day_text, hour_text, *, now=None):
+def slot_window(service, day_text, hour_text, *, now=None, duration_minutes=None):
     """Valida la hora desde el SERVIDOR; jamás acepta duración/precio del cliente."""
     if service not in CATALOG or not isinstance(day_text, str) or not isinstance(hour_text, str):
         raise HoldProblem("Servicio, fecha u hora inválidos.", 400)
@@ -70,7 +70,7 @@ def slot_window(service, day_text, hour_text, *, now=None):
     if (minutes < 9 * 60 or minutes % 15 != 0 or day > current.date() + timedelta(days=MAX_DAYS_AHEAD)):
         raise HoldProblem("Horario fuera del rango permitido.", 400)
     start = datetime.combine(day, clock, tzinfo=TZ)
-    end = start + timedelta(minutes=CATALOG[service]["minutes"])
+    end = start + timedelta(minutes=duration_minutes or CATALOG[service]["minutes"])
     if end.date() != day or end.hour * 60 + end.minute > 20 * 60 or start <= current:
         raise HoldProblem("La hora debe ser futura y terminar antes de las 20:00.", 400)
     return day, start, end
