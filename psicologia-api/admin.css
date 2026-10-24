@@ -102,3 +102,31 @@ table th{background:#f3f8f4;color:#4d7061}
  box-shadow:0 5px 15px rgba(25,65,44,.07)}
 }
 @media(prefers-reduced-motion:reduce){aside nav button,input,select,textarea,button,.button{transition:none!important}}
+
+/* Refinamiento editorial: navegación cálida y moderna */
+aside{padding:27px 16px 18px;border-radius:0 23px 23px 0}
+aside .brand{gap:12px;padding:5px 4px 19px;border-bottom:1px solid rgba(255,255,255,.14)}
+.brand-mark{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;flex:none;
+ color:#fff;background:linear-gradient(150deg,#347d60,#123f33);border:1px solid rgba(255,255,255,.2);
+ box-shadow:0 8px 20px rgba(0,0,0,.16);font-size:21px!important;letter-spacing:-1px}
+aside nav{gap:9px;margin-top:24px;padding-right:4px}
+aside nav button{display:flex;align-items:center;gap:12px;border-radius:15px;min-height:50px;padding:10px 12px;
+ font-size:13px;line-height:1.35;text-align:left}
+aside nav button.active{background:#e6f2e9;color:#184638;border-color:#d8e8da;
+ box-shadow:0 6px 15px rgba(0,0,0,.09);font-weight:750}
+aside nav button:hover:not(.active){background:rgba(235,250,238,.14)}
+.nav-icon{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:10px;
+ background:rgba(240,255,244,.1);font-size:19px;font-weight:650;color:#d7eade}
+aside nav button.active .nav-icon{background:#cfe7d7;color:#1a6045}
+.nav-text{min-width:0}
+aside .back{border-top:1px solid rgba(255,255,255,.2);border-radius:0;color:#d5e9db;text-decoration:none;font-weight:600}
+aside .back:hover{text-decoration:underline}
+main>header{margin:0 0 12px;padding:8px 0 17px;border-bottom:1px solid #e0eae1}
+h1{font-family:Georgia,serif;font-size:38px}
+.private{display:inline-flex;align-items:center;gap:7px;padding:10px 15px;border-radius:999px}
+.private span{color:#559d70;font-size:10px}
+.card{border-radius:21px}
+.metric{border-radius:20px}
+.toolbar button,.primary,.button{border-radius:12px}
+@media(max-width:850px){aside{border-radius:0;padding:14px 18px}aside .brand{border:0;padding:0}
+ main>header{padding-top:14px}}
