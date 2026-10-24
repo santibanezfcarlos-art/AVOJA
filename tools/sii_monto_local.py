@@ -186,8 +186,24 @@ def main():
                             if len(found) != 1:
                                 print("Campo ambiguo:", label_text, "- se detiene sin confirmar emisión.")
                                 return
-                            found[0].fill(datos[key], timeout=7000)
-                            if found[0].input_value() != datos[key]:
+                            # El selector por etiqueta de MUI puede dejar de coincidir
+                            # al escribir: el label cambia de estado en React.
+                            # Guardar el id del input antes del llenado y verificar
+                            # leyendo el mismo control, no recalculando su etiqueta.
+                            field_id = found[0].get_attribute("id")
+                            tag = found[0].evaluate("(el) => el.tagName.toLowerCase()")
+                            if tag not in ("input", "textarea") or not field_id:
+                                print("Campo sin control de texto identificable:", label_text)
+                                return
+                            # La comprobación final usa el id ya conocido.
+                            stable = page.locator('[id="' + field_id + '"]')
+                            try:
+                                stable.fill(datos[key], timeout=7000)
+                                actual = stable.evaluate("(el) => el.value")
+                            except Exception as exc:
+                                print("Falló campo:", label_text, type(exc).__name__)
+                                return
+                            if actual != datos[key]:
                                 print("No se verificó la carga del campo:", label_text)
                                 return
                             print("Campo completado y verificado:", label_text)
