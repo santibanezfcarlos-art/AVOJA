@@ -246,6 +246,35 @@ class CalendarWriter:
             raise CalendarIntegrationError("No se pudo verificar la cita creada en Google")
         return event_id
 
+    def reschedule_own_appointment(self, *, hold_id, service, old_start, old_end, new_start, new_end):
+        """Change only a verified event owned by this reservation.
+
+        Caller must atomically authorize the one-time change and reserve
+        the destination slot before invoking this method. On failure, keep
+        original booking; never delete and recreate the Google event.
+        """
+        self._check(write=True)
+        if service not in VALID_SERVICES:
+            raise CalendarIntegrationError("Servicio no admitido")
+        _validate_time_window(old_start, old_end)
+        _validate_time_window(new_start, new_end)
+        if new_start == old_start:
+            raise CalendarIntegrationError("Selecciona otro horario")
+        event_id = event_id_for_hold(hold_id)
+        path = self._calendar_path + "/" + event_id
+        current = self.transport("GET", path, {}, None)
+        if not _owns(current, hold_id, start=old_start, end=old_end, service=service):
+            raise CalendarIntegrationError("La reserva original cambió en Google Calendar")
+        # Se modifica el mismo evento; conserva su identidad y metadatos.
+        body = {
+            "start": {"dateTime": new_start.isoformat(), "timeZone": "America/Santiago"},
+            "end": {"dateTime": new_end.isoformat(), "timeZone": "America/Santiago"},
+        }
+        updated = self.transport("PATCH", path, {"sendUpdates": "none"}, body)
+        if not _owns(updated, hold_id, start=new_start, end=new_end, service=service):
+            raise CalendarIntegrationError("No se pudo verificar el nuevo horario en Google Calendar")
+        return event_id
+
     def cancel_own_appointment(self, hold_id):
         """Nunca borra eventos ajenos: comprueba metadatos privados de la reserva."""
         self._check(write=True)
