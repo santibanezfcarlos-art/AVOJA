@@ -89,7 +89,7 @@ function bindWelcomeCarousel() {
   const image=carousel.querySelector('#welcome-photo');
   const pause=carousel.querySelector('#welcome-pause');
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-  let index=0,timer=null,paused=reduced.matches,hovered=false,focused=false;
+  let index=0,timer=null,paused=reduced.matches,hovered=false,focused=false,gesture=null,suppressClick=false;
   const stop=()=>{clearInterval(timer);timer=null;};
   const paint=()=>{
     const slide=slides[index];image.src=slide.image_url;image.alt=slide.alt;
@@ -98,12 +98,37 @@ function bindWelcomeCarousel() {
     carousel.querySelector('#welcome-photo-count').textContent=`${index+1} / ${slides.length}`;
     carousel.querySelectorAll('[data-slide]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.slide)===index)));
   };
-  const schedule=()=>{stop();if(!paused&&!hovered&&!focused&&!document.hidden&&slides.length>1)timer=setInterval(()=>{if(!carousel.isConnected){stop();return;}index=(index+1)%slides.length;paint();},5000);};
+  const schedule=()=>{stop();if(!paused&&!hovered&&!focused&&!gesture&&!document.hidden&&slides.length>1)timer=setInterval(()=>{if(!carousel.isConnected){stop();return;}index=(index+1)%slides.length;paint();},5000);};
   const show=next=>{index=(next+slides.length)%slides.length;paint();schedule();};
   const updatePause=()=>{pause.textContent=paused?'Reanudar':'Pausar';pause.setAttribute('aria-label',paused?'Reanudar carrusel':'Pausar carrusel');pause.setAttribute('aria-pressed',String(paused));};
   carousel.querySelector('#welcome-previous').onclick=()=>show(index-1);
   carousel.querySelector('#welcome-next').onclick=()=>show(index+1);
-  carousel.querySelector('#welcome-photo-next').onclick=()=>show(index+1);
+  const frame=carousel.querySelector('#welcome-photo-next');
+  image.draggable=false;
+  frame.onclick=event=>{if(suppressClick&&event.detail!==0){event.preventDefault();suppressClick=false;return;}show(index+1);};
+  frame.onpointerdown=event=>{
+    if(!event.isPrimary||event.button!==0)return;
+    suppressClick=false;
+    gesture={id:event.pointerId,x:event.clientX,y:event.clientY,vertical:false};
+    frame.setPointerCapture(event.pointerId);schedule();
+  };
+  frame.onpointermove=event=>{
+    if(!gesture||event.pointerId!==gesture.id)return;
+    const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);
+    if(Math.max(dx,dy)>10)suppressClick=true;
+    if(dy>10&&dy>dx)gesture.vertical=true;
+  };
+  frame.onpointerup=event=>{
+    if(!gesture||event.pointerId!==gesture.id)return;
+    const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y;
+    const swipe=!gesture.vertical&&Math.abs(dx)>=40&&Math.abs(dx)>Math.abs(dy)*1.25;
+    suppressClick=suppressClick||Math.max(Math.abs(dx),Math.abs(dy))>10;
+    gesture=null;
+    if(frame.hasPointerCapture(event.pointerId))frame.releasePointerCapture(event.pointerId);
+    if(swipe)show(index+(dx<0?1:-1));else schedule();
+  };
+  const cancelGesture=event=>{if(gesture&&event.pointerId===gesture.id){gesture=null;suppressClick=true;schedule();}};
+  frame.onpointercancel=cancelGesture;frame.onlostpointercapture=cancelGesture;
   carousel.querySelectorAll('[data-slide]').forEach(button=>button.onclick=()=>show(Number(button.dataset.slide)));
   pause.onclick=()=>{paused=!paused;updatePause();schedule();};
   carousel.onmouseenter=()=>{hovered=true;schedule();};carousel.onmouseleave=()=>{hovered=false;schedule();};
