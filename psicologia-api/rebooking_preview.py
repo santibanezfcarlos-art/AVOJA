@@ -7,7 +7,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, Response
-from booking_holds import _database_connection, slot_window, _calendar_free, CATALOG, _active_windows, can_hold, TZ
+from booking_holds import _database_connection, slot_window, _calendar_free, CATALOG, _active_windows, can_hold, TZ, HoldProblem
 from rebooking_tokens import check
 
 rebooking_bp = Blueprint("rebooking_preview", __name__)
@@ -76,7 +76,19 @@ function todayChile(){const parts=new Intl.DateTimeFormat("en-CA",{timeZone:zone
 function initialMonday(d){return add(d,-((d.getDay()+6)%7))}
 async function api(path,opts={}){const r=await fetch("/api/reagendar/"+encodeURIComponent(token)+path,{...opts,cache:"no-store",referrerPolicy:"no-referrer"});return {ok:r.ok,data:await r.json()}}
 function notice(t){el("notice").textContent=t}
-function render(){const start=iso(monday),limit=iso(add(dateOf(todayChile()),60));
+let hours=[],loadingHours=false,requestVersion=0;
+async function chooseDay(day){
+ selectedDay=day;selectedHour=null;hours=[];el("confirm").disabled=true;
+ const version=++requestVersion;loadingHours=true;render();notice("Consultando horarios disponibles…");
+ try{const r=await api("/horarios?date="+encodeURIComponent(day));
+ if(version!==requestVersion)return;
+ hours=r.ok&&Array.isArray(r.data.hours)?r.data.hours:[];
+ notice(r.ok?(hours.length?"Selecciona una de las horas disponibles.":"No hay horas disponibles para este día."):(r.data.message||"No se pudo verificar la disponibilidad."));
+ }catch(e){if(version!==requestVersion)return;hours=[];notice("No se pudo verificar la disponibilidad. Intenta con otra fecha.");}
+ finally{if(version===requestVersion){loadingHours=false;render();}}
+}
+function render(){
+const start=iso(monday),limit=iso(add(dateOf(todayChile()),60));
 el("period").textContent=dateOf(start).toLocaleDateString("es-CL",{month:"long",year:"numeric"});
 el("prev").disabled=iso(add(monday,-7))<iso(initialMonday(dateOf(todayChile())));
 el("week").replaceChildren();
@@ -84,20 +96,18 @@ for(let i=0;i<7;i++){const d=add(monday,i),day=iso(d),b=document.createElement("
 b.type="button";b.className="day"+(selectedDay===day?" selected":"");b.disabled=day<todayChile()||day>limit;
 const wd=document.createElement("span");wd.textContent=["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()];
 const num=document.createElement("strong");num.textContent=d.getDate();
-b.append(wd,num);b.onclick=()=>{selectedDay=day;selectedHour=null;render();};el("week").append(b)}
+b.append(wd,num);b.onclick=()=>chooseDay(day);el("week").append(b)}
 el("dayTitle").textContent=selectedDay?label(selectedDay):"Elige un día";
 el("slots").replaceChildren();
-if(selectedDay){for(let h=9;h<=19;h++){const hour=pad(h)+":00",b=document.createElement("button");
-b.type="button";b.className="slot"+(selectedHour===hour?" selected":"");
-b.textContent=hour;let small=document.createElement("small");small.textContent="Consultar horario";b.append(small);
-b.onclick=async()=>{if(busy)return;busy=true;selectedHour=null;el("confirm").disabled=true;notice("Comprobando disponibilidad…");
-try{const r=await api("/disponibilidad?date="+encodeURIComponent(selectedDay)+"&time="+hour);
-if(r.ok&&r.data.available){selectedHour=hour;notice("Horario disponible. Confirma para reagendar.");}
-else notice(r.data.message||"Este horario no está disponible.");}catch(e){notice("No se pudo comprobar la disponibilidad.");}
-finally{busy=false;el("confirm").disabled=!selectedHour;render()}};el("slots").append(b)}}
+if(selectedDay){if(loadingHours){el("slots").textContent="Buscando horas libres…";}
+else for(const hour of hours){const b=document.createElement("button");b.type="button";
+b.className="slot"+(selectedHour===hour?" selected":"");b.textContent=hour;
+const small=document.createElement("small");small.textContent="Disponible";b.append(small);
+b.onclick=()=>{selectedHour=hour;el("confirm").disabled=false;notice("Hora seleccionada: "+hour+" h.");render()};
+el("slots").append(b)}}
 }
-el("next").onclick=()=>{monday=add(monday,7);selectedDay=null;selectedHour=null;el("confirm").disabled=true;render()};
-el("prev").onclick=()=>{monday=add(monday,-7);selectedDay=null;selectedHour=null;el("confirm").disabled=true;render()};
+el("next").onclick=()=>{monday=add(monday,7);selectedDay=null;selectedHour=null;hours=[];requestVersion++;el("confirm").disabled=true;render()};
+el("prev").onclick=()=>{monday=add(monday,-7);selectedDay=null;selectedHour=null;hours=[];requestVersion++;el("confirm").disabled=true;render()};
 el("confirm").onclick=async()=>{if(!selectedDay||!selectedHour||busy)return;
 if(!confirm("¿Confirmas el cambio para "+label(selectedDay)+" a las "+selectedHour+"? Solo puedes reagendar una vez."))return;
 busy=true;el("confirm").disabled=true;notice("Confirmando el cambio de hora…");
@@ -110,7 +120,7 @@ finally{busy=false}};
 (async()=>{try{const r=await api("/estado");if(!r.ok){notice(r.data.message||"Enlace no disponible");return}
 currentDate=r.data.date;currentTime=r.data.time;
 el("current").textContent="Tu reserva actual: "+label(currentDate)+" a las "+currentTime+" h · "+r.data.service;
-monday=initialMonday(dateOf(todayChile()));selectedDay=currentDate;el("booking").hidden=false;notice("Selecciona un nuevo horario.");render();
+monday=initialMonday(dateOf(todayChile()));el("booking").hidden=false;notice("Selecciona un nuevo horario.");chooseDay(currentDate);
 }catch(e){notice("No se pudo verificar el enlace privado.")}})();
 </script></body></html>""",mimetype="text/html")
 
@@ -133,6 +143,43 @@ def status(token):
     return jsonify(message="Puedes consultar nuevos horarios.",service="Atención online",
                    date=row["starts_at"].astimezone(TZ).date().isoformat(),
                    time=row["starts_at"].astimezone(TZ).strftime("%H:%M"))
+
+
+@rebooking_bp.get("/api/reagendar/<token>/horarios")
+def available_hours(token):
+    if not enabled():
+        return jsonify(message="No disponible"),503
+    try:
+        row,state=_lookup(token)
+        if state!="eligible":
+            return jsonify(message="Este enlace ya no permite reagendar"),410
+        from datetime import date as date_type
+        day_text=request.args.get("date","")
+        day=date_type.fromisoformat(day_text)
+        with _database_connection() as conn:
+            payment=conn.execute("SELECT service,hold_id FROM psychology_demo_payments WHERE order_id=%s",
+                                 (row["order_id"],)).fetchone()
+            if not payment:
+                return jsonify(message="Reserva no encontrada"),404
+            rows=conn.execute("""SELECT starts_at,ends_at FROM psychology_booking_holds
+                  WHERE slot_date=%s AND id<>%s AND (status='CONFIRMED' OR
+                  (status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')
+                   AND expires_at>now()))""",(day,payment["hold_id"])).fetchall()
+        windows=[(r["starts_at"],r["ends_at"]) for r in rows]
+        hours=[]
+        for h in range(9,20):
+            hour=f"{h:02d}:00"
+            try:
+                _,start,end=slot_window(payment["service"],day_text,hour)
+            except HoldProblem:
+                continue
+            if can_hold(windows,start,end) and _calendar_free(start,end):
+                hours.append(hour)
+        return jsonify(hours=hours,date=day_text)
+    except (ValueError,TypeError):
+        return jsonify(message="Fecha inválida"),400
+    except Exception:
+        return jsonify(message="No se pudo comprobar disponibilidad"),503
 
 @rebooking_bp.get("/api/reagendar/<token>/disponibilidad")
 def availability(token):
