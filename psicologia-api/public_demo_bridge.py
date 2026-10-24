@@ -259,8 +259,21 @@ def busy():
                   AND (h.status='CONFIRMED' OR
                        (h.status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')
                         AND h.expires_at>now()))""",(first,last)).fetchall()
-        return jsonify(state="OK",intervals=[
-            [row["starts_at"].isoformat(),row["ends_at"].isoformat()] for row in rows])
+        # La agenda pública debe aplicar también MAX_DAILY, no solo solapamientos.
+        # Cuando ya existen tres reservas/retenciones activas, se bloquea
+        # todo el día para evitar ofrecer horarios que el preflight rechaza.
+        from collections import Counter
+        from datetime import datetime, time, timedelta
+        from booking_holds import MAX_DAILY, TZ
+        counts = Counter(row["starts_at"].astimezone(TZ).date() for row in rows)
+        intervals = [[row["starts_at"].isoformat(), row["ends_at"].isoformat()]
+                     for row in rows]
+        for day, total in counts.items():
+            if total >= MAX_DAILY:
+                begin = datetime.combine(day, time.min, tzinfo=TZ)
+                end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=TZ)
+                intervals.append([begin.isoformat(), end.isoformat()])
+        return jsonify(state="OK",intervals=intervals)
     except Exception:
         return _reply("UNAVAILABLE",503)
 
