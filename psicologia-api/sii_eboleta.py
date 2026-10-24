@@ -10,8 +10,8 @@ import re
 from urllib.parse import urlparse
 
 SII_URL = "https://eboleta.sii.cl/emitir/"
-ALLOWED_HOSTS = {"eboleta.sii.cl", "zeusr.sii.cl", "www.sii.cl", "sii.cl"}
-RUT_PATTERN = re.compile(r"^\\d{7,8}-[0-9Kk]$")
+ALLOWED_HOSTS = {"eboleta.sii.cl", "zeusr.sii.cl", "www.sii.cl", "sii.cl", "clave.w.sii.cl"}
+RUT_PATTERN = re.compile(r"^\d{7,8}-[0-9Kk]$")
 
 
 class SiiAutomationError(RuntimeError):
