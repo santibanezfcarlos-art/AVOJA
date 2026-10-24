@@ -49,7 +49,10 @@ def _first_visible(page, selectors):
 
 def normalize_rut(value: str) -> str:
     """Acepta RUT con puntos, guion o solo dígitos y DV, sin revelar su valor."""
-    cleaned = re.sub(r"[.\\s\\-‐‑‒–—−]", "", value).upper()
+    cleaned = value.strip().upper()
+    for separator in (".", "-", " ", "\\t", "\\n", "‐", "‑", "‒", "–", "—", "−"):
+        cleaned = cleaned.replace(separator, "")
+
     if not re.fullmatch(r"[0-9]{7,8}[0-9K]", cleaned):
         raise SiiAutomationError("SII_RUT tiene una longitud o caracteres inesperados.")
     return cleaned[:-1] + "-" + cleaned[-1]
