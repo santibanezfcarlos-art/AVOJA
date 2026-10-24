@@ -44,7 +44,8 @@ small{color:#526e5e}</style><main><h1>Reagendar mi atención</h1>
 <div id="booking" hidden><p id="summary"></p><label for="day">Nueva fecha</label><input id="day" type="date">
 <label for="hour">Nueva hora</label><input id="hour" type="time" step="900">
 <button type="button" id="check">Comprobar disponibilidad</button>
-<small>La modificación efectiva todavía no está habilitada en esta versión de prueba.</small></div></main>
+<button type="button" id="confirm" disabled>Confirmar cambio de hora</button>
+<small>El cambio solo se confirma cuando el servidor verifica Google Calendar.</small></div></main>
 <script>
 const token=new URLSearchParams(location.search).get('t')||'';
 history.replaceState(null,'','/reagendar');
@@ -59,7 +60,18 @@ document.getElementById('check').onclick=async()=>{
 const date=document.getElementById('day').value,time=document.getElementById('hour').value;
 if(!date||!time)return;status.textContent='Consultando disponibilidad…';
 try{const r=await requestApi('/disponibilidad?date='+encodeURIComponent(date)+'&time='+encodeURIComponent(time));
-status.textContent=r.data.message||'No disponible';}catch(e){status.textContent='No se pudo consultar la disponibilidad.'}};
+status.textContent=r.data.message||'No disponible';
+document.getElementById('confirm').disabled=!r.data.available;
+}catch(e){status.textContent='No se pudo consultar la disponibilidad.'}}; 
+document.getElementById('confirm').onclick=async()=>{
+ if(!window.confirm('¿Confirmas tu única reprogramación? No podrás modificar nuevamente esta hora.'))return;
+ const button=document.getElementById('confirm');button.disabled=true;status.textContent='Confirmando nuevo horario…';
+ try{const r=await requestApi('/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},
+ body:JSON.stringify({date:document.getElementById('day').value,time:document.getElementById('hour').value})});
+ status.textContent=r.data.message||'No se pudo confirmar.';
+ if(r.ok){booking.hidden=true;}
+ }catch(e){status.textContent='No se pudo confirmar. Contacta al profesional antes de volver a intentarlo.'}
+};
 </script></html>""",mimetype="text/html")
 
 def _lookup(token):
