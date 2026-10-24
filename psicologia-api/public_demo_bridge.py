@@ -100,6 +100,11 @@ def preflight():
     service=data.get("service")
     session=data.get("session")
     email=data.get("email")
+    patient_name=data.get("patient_name")
+    if (not isinstance(patient_name,str) or not 2<=len(patient_name.strip())<=120
+            or any(ord(ch)<32 for ch in patient_name)):
+        return _reply("INVALID_NAME",422)
+    patient_name=" ".join(patient_name.split())
     # El solicitante debe confirmar que controla el correo utilizado.
     # Solo afecta a transacciones simuladas y no entrega contenido clínico.
     if data.get("email_consent") is not True:
@@ -161,9 +166,9 @@ def preflight():
         hold_id,_secret=_new_hold(service,day,start,end)
         with _database_connection() as conn:
             conn.execute("""INSERT INTO psychology_demo_payments
-                (order_id,hold_id,session_id,service,amount_clp,test_recipient,state)
-                VALUES (%s,%s,%s,%s,%s,%s,'PAYMENT_PENDING')""",
-                (order,uuid.UUID(hold_id),session,service,data["amount"],email.lower()))
+                (order_id,hold_id,session_id,service,amount_clp,test_recipient,patient_name,state)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'PAYMENT_PENDING')""",
+                (order,uuid.UUID(hold_id),session,service,data["amount"],email.lower(),patient_name))
             conn.execute("""UPDATE psychology_booking_holds
                 SET status='PAYMENT_PENDING',expires_at=now()+interval '20 minutes',updated_at=now()
                 WHERE id=%s""",(uuid.UUID(hold_id),))
