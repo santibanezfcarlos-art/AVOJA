@@ -50,7 +50,15 @@ def main():
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             response = page.goto(PORTAL, wait_until="domcontentloaded", timeout=45000)
-            page.get_by_text("EMITIR", exact=True).first.wait_for(state="visible", timeout=15000)
+            try:
+                page.get_by_text("EMITIR", exact=True).first.wait_for(state="visible", timeout=25000)
+            except Exception:
+                print("No se confirmó la pantalla de monto del SII.")
+                print("Dominio final:", urlparse(page.url).hostname or "desconocido")
+                print("HTTP inicial:", response.status if response else "sin respuesta")
+                print("No se ingresó ningún monto ni se emitió una boleta.")
+                print("Si es necesario, vuelve a ejecutar 'autorizar' con este mismo perfil.")
+                return
             if urlparse(page.url).hostname != "eboleta.sii.cl":
                 raise RuntimeError("Sesión vencida o pantalla no autorizada.")
             # Para comenzar desde cero, localizar la tecla de papelera.
