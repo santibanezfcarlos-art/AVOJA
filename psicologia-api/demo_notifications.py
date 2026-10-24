@@ -283,7 +283,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
     return subject, html
 
 
-def send(role, order, hold_id, recipient, service, start, end, *, transport=None, correction=False, rebooking_url=None, rescheduled=False):
+def send(role, order, hold_id, recipient, service, start, end, *, transport=None, correction=False, rebooking_url=None, rescheduled=False, patient_name=None):
     if not configured():
         raise NotificationError("Envio de correo de prueba deshabilitado")
     email = allowed_email(recipient)
