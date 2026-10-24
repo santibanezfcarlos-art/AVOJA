@@ -101,10 +101,11 @@ def preflight():
     session=data.get("session")
     email=data.get("email")
     patient_name=data.get("patient_name")
-    if (not isinstance(patient_name,str) or not 2<=len(patient_name.strip())<=120
-            or any(ord(ch)<32 for ch in patient_name)):
-        return _reply("INVALID_NAME",422)
-    patient_name=" ".join(patient_name.split())
+    if patient_name is not None:
+        if (not isinstance(patient_name,str) or not 2<=len(patient_name.strip())<=120
+                or any(ord(ch)<32 for ch in patient_name)):
+            return _reply("INVALID_NAME",422)
+        patient_name=" ".join(patient_name.split())
     # El solicitante debe confirmar que controla el correo utilizado.
     # Solo afecta a transacciones simuladas y no entrega contenido clínico.
     if data.get("email_consent") is not True:
