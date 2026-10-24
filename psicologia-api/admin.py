@@ -163,7 +163,7 @@ def validate_communications(payload):
         raise ValueError('Los textos de correo están incompletos.')
     result={}
     for key,value in payload.items():
-        if not isinstance(value,str) or not 3<=len(value.strip())<=700 or any(ord(c)<32 and c not in '\\n\\t' for c in value):
+        if not isinstance(value,str) or not 3<=len(value.strip())<=700 or any(ord(c)<32 and c not in (chr(10),chr(9)) for c in value):
             raise ValueError('Revisa el texto de '+key+'.')
         result[key]=value.strip()
     return result
