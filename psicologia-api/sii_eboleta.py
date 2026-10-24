@@ -95,17 +95,28 @@ def authenticate_sii() -> dict:
                 page.goto(SII_URL, wait_until="domcontentloaded", timeout=30000)
                 if not _safe_host(page.url):
                     raise SiiAutomationError("El portal redirigió fuera de los dominios oficiales del SII.")
+                stage = "esperar formulario de acceso"
+                try:
+                    page.locator('input[type="password"]').first.wait_for(state="visible", timeout=15000)
+                except PlaywrightTimeout:
+                    pass
+                if page.url.startswith("https://eboleta.sii.cl/emitir"):
+                    # Si ya hay sesión válida, no necesitamos volver a autenticar.
+                    if page.get_by_text("Calculadora", exact=False).count() and page.get_by_text("EMITIR", exact=True).count():
+                        return {"status": "authenticated", "emitted": False,
+                                "message": "Sesión activa: se encontró la pantalla de ingreso de monto."}
                 stage = "localizar formulario de acceso"
                 rut_input = _first_visible(page, [
                     'input[name="rut"]', 'input[id="rut"]', 'input[name="RUT"]',
-                    'input[autocomplete="username"]',
+                    'input[autocomplete="username"]', 'input[placeholder*="RUT" i]',
+                    'input[type="text"]',
                 ])
                 pass_input = _first_visible(page, [
                     'input[type="password"]', 'input[name="clave"]',
                 ])
-                if not rut_input or not pass_input:
+                if rut_input is None or pass_input is None:
                     return {"status": "login_form_unrecognized", "emitted": False,
-                            "message": "El formulario de ingreso no coincide con los selectores conocidos."}
+                            "message": "No se encontraron ambos campos de ingreso. Puede haber redirección, carga diferida o un formulario distinto."}
                 stage = "completar formulario de acceso"
                 rut_input.fill(rut)
                 pass_input.fill(password)
