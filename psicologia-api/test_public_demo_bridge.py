@@ -96,11 +96,11 @@ class BridgePostgresTests(unittest.TestCase):
 
     def prepare(self):
         data={"order":ORDER,"session":self.session,"service":"psicoterapia",
-              "date":self.day,"time":"18:00","amount":30000,"email":MAIL,"email_consent":True}
+              "date":self.day,"time":"18:00","amount":30000,"minutes":45,"email":MAIL,"email_consent":True}
         return self.post("/internal/psicologia/demo/preflight",data)
 
     def finalize(self,outcome):
-        data={"order":ORDER,"session":self.session,"amount":30000,"outcome":outcome}
+        data={"order":ORDER,"session":self.session,"amount":30000,"minutes":45,"outcome":outcome}
         return self.post("/internal/psicologia/demo/complete",data)
 
     def test_success_confirmed_calendar_two_emails_pending_and_idempotent(self):
@@ -128,17 +128,17 @@ class BridgePostgresTests(unittest.TestCase):
         self.assertEqual(self.post("/internal/psicologia/demo/preflight",{
             "order":"PSCD"+"B"*18,"session":self.session.replace("a"*28,"b"*28),
             "service":"psicoterapia","date":self.day,"time":"18:00",
-            "amount":30000,"email":MAIL,"email_consent":True}).status_code,409)
+            "amount":30000,"minutes":45,"email":MAIL,"email_consent":True}).status_code,409)
         self.assertEqual(self.post("/internal/psicologia/demo/preflight",{
             "order":"PSCD"+"C"*18,"session":self.session.replace("a"*28,"c"*28),
             "service":"psicoterapia","date":self.day,"time":"19:00",
-            "amount":30000,"email":"unverified@example.com","email_consent":True}).get_json()["state"],"TEST_EMAIL_ONLY")
+            "amount":30000,"minutes":45,"email":"unverified@example.com","email_consent":True}).get_json()["state"],"TEST_EMAIL_ONLY")
 
     def test_customer_email_external_requires_opt_in_and_consent(self):
         order="PSCD"+"D"*18
         values={"order":order,"session":self.session.replace("a"*28,"d"*28),
                 "service":"psicoterapia","date":self.day,"time":"19:00",
-                "amount":30000,"email":"cliente.pruebas@outlook.com"}
+                "amount":30000,"minutes":45,"email":"cliente.pruebas@outlook.com"}
         self.assertEqual(self.post("/internal/psicologia/demo/preflight",values).get_json()["state"],
                          "EMAIL_CONSENT_REQUIRED")
         values["email_consent"]=True
