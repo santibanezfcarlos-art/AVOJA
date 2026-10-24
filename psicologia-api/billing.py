@@ -63,6 +63,8 @@ def db():
     try:
         con.execute('PRAGMA journal_mode=WAL')
         con.executescript(SCHEMA)
+        from dte import SCHEMA as DTE_SCHEMA
+        con.executescript(DTE_SCHEMA)
         with con:
             yield con
     finally:
@@ -255,7 +257,14 @@ def filtered_rows():
         params.extend([query, query, query])
     with db() as con:
         rows = con.execute(sql + ' ORDER BY created_at DESC,order_id DESC', params).fetchall()
-    return [{k:r[k] for k in r.keys() if k != 'token_hash'} for r in rows]
+        # Expose only operational metadata; never credentials, payloads or provider tokens.
+        result = []
+        for r in rows:
+            item = {k:r[k] for k in r.keys() if k != 'token_hash'}
+            job = con.execute("SELECT state,folio,sii_status,email_state,attempts,error FROM dte_jobs WHERE order_id=?", (r['order_id'],)).fetchone()
+            item['dte'] = dict(job) if job else None
+            result.append(item)
+    return result
 
 
 @billing_bp.get('/admin/boletas/data')
@@ -290,6 +299,8 @@ def mark_issued(order):
                 return jsonify(error='Solo se registran boletas de pagos reales aprobados.'), 409
             if day.isoformat() < row['created_at'][:10]:
                 return jsonify(error='La emisión no puede ser anterior a la compra.'), 400
+            if con.execute('SELECT 1 FROM dte_jobs WHERE order_id=?', (order,)).fetchone():
+                return jsonify(error='Esta orden tiene emisión automática registrada. Concilia antes de emitir manualmente.'), 409
             if row['invoice_status'] == 'issued':
                 if row['folio'] == folio and row['issued_date'] == issued:
                     return jsonify(ok=True)
@@ -324,3 +335,66 @@ def export():
     return Response('\ufeff' + output.getvalue(), mimetype='text/csv',
                     headers={'Content-Disposition': 'attachment; filename=boletas-psc.csv'})
 
+
+
+@billing_bp.get('/admin/boletas/<order>/pdf')
+@private
+def dte_pdf(order):
+    with db() as con:
+        row = con.execute("SELECT pdf,folio,environment FROM dte_jobs WHERE order_id=?", (order,)).fetchone()
+    if not row or not row['pdf']:
+        return jsonify(error='PDF todavía no disponible'), 404
+    prefix = 'SIMULACION-' if row['environment'] == 'integration' else 'boleta-'
+    return send_file(io.BytesIO(row['pdf']), mimetype='application/pdf', as_attachment=True,
+                     download_name=prefix + str(row['folio']) + '.pdf')
+
+
+@billing_bp.post('/admin/boletas/<order>/simulate')
+@private
+def dte_simulate(order):
+    from dte import enqueue_simulation
+    try:
+        enqueue_simulation(order)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 409
+    return jsonify(ok=True)
+
+
+@billing_bp.get('/admin/boletas/<order>/audit')
+@private
+def dte_audit(order):
+    with db() as con:
+        rows = con.execute('SELECT action,created_at,actor FROM billing_audit WHERE order_id=? ORDER BY id', (order,)).fetchall()
+    return jsonify(events=[dict(r) for r in rows])
+
+
+@billing_bp.post('/admin/boletas/<order>/retry')
+@private
+def dte_retry(order):
+    import time
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        row=con.execute('SELECT * FROM dte_jobs WHERE order_id=?',(order,)).fetchone()
+        if not row or row['state'] not in ('retry','review','reconciliation','submitted'):
+            return jsonify(error='Esta emisión no admite reintento'), 409
+        if not row['provider_token'] and row['first_attempt'] is not None and time.time()-row['first_attempt']>=23*3600:
+            return jsonify(error='Concilia con el proveedor: no es seguro emitir de nuevo.'), 409
+        con.execute("UPDATE dte_jobs SET state='retry',next_attempt=0 WHERE order_id=?",(order,))
+        con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
+                    (order,'dte_retry_requested',now(),request.authorization.username))
+    return jsonify(ok=True)
+
+
+@billing_bp.post('/admin/boletas/<order>/resend')
+@private
+def dte_resend(order):
+    if (request.get_json(silent=True) or {}).get('confirm') is not True:
+        return jsonify(error='Confirma el reenvío: podría duplicar un correo anterior.'), 400
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        changed=con.execute("UPDATE dte_jobs SET email_state='pending' WHERE order_id=? AND state IN ('accepted','accepted_with_observations') AND email_state IN ('sent','review')",(order,)).rowcount
+        if not changed:
+            return jsonify(error='El correo no admite reenvío en este estado'),409
+        con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
+                    (order,'dte_resend_requested',now(),request.authorization.username))
+    return jsonify(ok=True)
