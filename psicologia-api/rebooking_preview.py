@@ -193,13 +193,14 @@ def confirm(token):
             if mail_ready():
                 with _database_connection() as notify_conn:
                     recipients=notify_conn.execute(
-                        "SELECT test_recipient FROM psychology_demo_payments WHERE order_id=%s",
+                        "SELECT test_recipient,patient_name FROM psychology_demo_payments WHERE order_id=%s",
                         (payment["order_id"],)).fetchone()
                 for role in ("patient","professional"):
                     recipient=(recipients["test_recipient"] if role=="patient"
                                else os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL",""))
                     mail_send(role,payment["order_id"],payment["hold_id"],recipient,
-                              payment["service"],start,end,rescheduled=True)
+                              payment["service"],start,end,rescheduled=True,
+                              patient_name=recipients.get("patient_name"))
         except Exception:
             # Fallo de correo no revierte una reserva ya confirmada.
             pass
