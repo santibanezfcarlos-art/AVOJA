@@ -220,6 +220,17 @@ def availability():
     if intervals is None:
         return jsonify(status="not_configured", reason="calendar_url_missing", configured=False, blocked={}, duration_minutes=duration)
 
+    # Google iCal can lag behind freshly created events; supplement its
+    # intervals with the authoritative booking DB via the signed bridge.
+    # Never display a slot as available if either source cannot be verified.
+    from webpay_demo_bridge import enabled as bridge_ready, busy_intervals, BridgeError
+    if bridge_ready():
+        try:
+            intervals = list(intervals) + busy_intervals(first,last)
+        except (BridgeError,ValueError,TypeError):
+            return jsonify(status="refreshing",
+                error="Verificando las reservas recientes. Reintenta en unos segundos."),503
+
     blocked = {}
     day = first
     while day <= last:
