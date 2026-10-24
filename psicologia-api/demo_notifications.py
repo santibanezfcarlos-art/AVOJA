@@ -113,6 +113,23 @@ def _brand():
     return name or "Ps. Carlos Santibáñez Fica", subtitle, contact, website
 
 
+def _communication_copy():
+    """Lectura opcional; un fallo del panel nunca bloquea un correo confirmado."""
+    try:
+        req=Request("https://psicologia-carlos-calendar-api.onrender.com/api/communications-public",
+                    headers={"Accept":"application/json","User-Agent":"pscsantibanez-mailer/1.0"})
+        with urlopen(req,timeout=3) as response:
+            doc=json.loads(response.read(8000).decode("utf-8"))
+        config=doc.get("communications",{})
+        keys=("patient_heading","patient_message","patient_notes",
+              "professional_heading","professional_message","professional_notes","signature")
+        if all(isinstance(config.get(k),str) and 3<=len(config[k])<=700 for k in keys):
+            return config
+    except Exception:
+        pass
+    return {}
+
+
 def template(role, order, service, start, end, *, correction=False):
     """Email institucional, seguro y adaptable al servicio y al profesional.
 
@@ -158,6 +175,13 @@ def template(role, order, service, start, end, *, correction=False):
              "La atención será online. Te recomendamos buscar un lugar privado "
              "y tranquilo, con conexión estable, y conectarte unos minutos antes. "
              "Si necesitas instrucciones de conexión, contáctanos al correo indicado al final.")
+    copy=_communication_copy()
+    if copy:
+        heading=copy["professional_heading" if is_pro else "patient_heading"]
+        description=copy["professional_message" if is_pro else "patient_message"]
+        notes=copy["professional_notes" if is_pro else "patient_notes"]
+        name=copy["signature"]
+
     summary = hour_label + "–" + end_label
     correction_notice = (
         "<tr><td style='padding:15px 25px;background:#fff2e5;"
