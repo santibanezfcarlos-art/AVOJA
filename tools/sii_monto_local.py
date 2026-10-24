@@ -41,6 +41,7 @@ def main():
     parser.add_argument("--monto", type=amount, required=True)
     parser.add_argument("--visible", action="store_true", help="Diagnóstico con navegador visible")
     parser.add_argument("--continuar", action="store_true", help="Pulsar primer EMITIR tras verificar el monto")
+    parser.add_argument("--mostrar-campos", action="store_true", help="Activar Receptor y Detalle para verificar campos, sin rellenar")
     args = parser.parse_args()
     profile = args.perfil.expanduser().resolve()
     if not profile.is_dir():
@@ -127,6 +128,38 @@ def main():
                 print("Primer clic realizado. Dominio final:", urlparse(page.url).hostname)
                 print("Botones visibles:", page.get_by_role("button").count())
                 print("Campos de formulario:", page.locator("input").count())
+                if args.mostrar_campos:
+                    # Buscar las etiquetas visibles de los dos interruptores.
+                    for text_label in ("Receptor", "Detalle"):
+                        label = page.get_by_text(text_label, exact=True)
+                        visible_labels = [label.nth(k) for k in range(min(label.count(), 12))
+                                          if label.nth(k).is_visible()]
+                        if len(visible_labels) != 1:
+                            print("Etiqueta ambigua o ausente:", text_label, len(visible_labels))
+                            return
+                        switch = visible_labels[0].locator("xpath=preceding-sibling::*[1]")
+                        # Intentar primero checkbox etiquetado accesiblemente por texto.
+                        checkbox = page.get_by_role("checkbox", name=text_label, exact=True)
+                        if checkbox.count() == 1:
+                            if not checkbox.is_checked():
+                                checkbox.check(timeout=5000)
+                        else:
+                            row = visible_labels[0].locator("xpath=..")
+                            candidates = row.locator("input[type='checkbox']")
+                            if candidates.count() != 1:
+                                print("No se reconoce el interruptor de", text_label)
+                                return
+                            if not candidates.is_checked():
+                                visible_labels[0].click(timeout=5000)
+                        print("Interruptor activado:", text_label)
+                    page.wait_for_timeout(700)
+                    for placeholder in ("RUT con DV receptor", "Nombre receptor",
+                                        "Dirección receptor", "E-mail receptor",
+                                        "Teléfono receptor", "Detalle"):
+                        loc = page.get_by_placeholder(placeholder, exact=True)
+                        print("Campo", placeholder, "visible:",
+                              any(loc.nth(k).is_visible() for k in range(min(loc.count(), 5))))
+                    print("No se ingresaron datos ni se confirmó emisión.")
                 print("Diagnóstico de campos visibles (sin valores):")
                 for idx in range(min(page.locator("input, select, textarea").count(), 40)):
                     element = page.locator("input, select, textarea").nth(idx)
