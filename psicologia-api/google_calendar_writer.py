@@ -62,7 +62,7 @@ class CalendarSettings:
 
     @property
     def configured(self):
-        return bool(self.calendar_id and self.service_account_info)
+        return bool(self.calendar_id and (self.service_account_info or (os.environ.get("PSICOLOGIA_GOOGLE_AUTH_MODE") == "oauth" and os.environ.get("PSICOLOGIA_GOOGLE_OAUTH_CLIENT_ID"))))
 
 
 def event_id_for_hold(hold_id):
@@ -135,10 +135,29 @@ class CalendarWriter:
     def _http_request(self, method, path, params, body):
         """Única conexión posible: Google APIs, jamás URLs del navegador."""
         try:
-            from google.oauth2 import service_account
             from google.auth.transport.requests import Request as AuthRequest
-            creds = service_account.Credentials.from_service_account_info(
-                self.settings.service_account_info, scopes=[SCOPE])
+            if os.environ.get("PSICOLOGIA_GOOGLE_AUTH_MODE") == "oauth":
+                from google.oauth2.credentials import Credentials
+                from cryptography.fernet import Fernet
+                from booking_holds import _database_connection
+                with _database_connection() as conn:
+                    record=conn.execute(
+                        "SELECT encrypted_refresh_token FROM psychology_google_oauth WHERE key='owner'"
+                    ).fetchone()
+                if not record:
+                    raise CalendarIntegrationError("Google OAuth todavía no autorizado")
+                refresh_token=Fernet(os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()).decrypt(
+                    record["encrypted_refresh_token"].encode()).decode()
+                creds=Credentials(
+                    token=None,refresh_token=refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=os.environ["PSICOLOGIA_GOOGLE_OAUTH_CLIENT_ID"],
+                    client_secret=os.environ["PSICOLOGIA_GOOGLE_OAUTH_CLIENT_SECRET"],
+                    scopes=[SCOPE])
+            else:
+                from google.oauth2 import service_account
+                creds=service_account.Credentials.from_service_account_info(
+                    self.settings.service_account_info, scopes=[SCOPE])
             creds.refresh(AuthRequest())
             query = ("?" + urlencode(params)) if params else ""
             req = Request(
