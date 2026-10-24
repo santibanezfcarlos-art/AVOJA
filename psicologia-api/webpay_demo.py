@@ -216,7 +216,7 @@ def start_demo():
     if person and bridge.enabled():
         try:
             state=bridge.preflight(order=order,session=session,service=service,
-                   day=day,hour=hour,amount=pricing["price"],email=person["email"],
+                   day=day,hour=hour,amount=pricing["price"],email=person["email"],patient_name=person["name"],
                    email_consent=True,minutes=pricing['minutes'])
         except bridge.BridgeError as exc:
             if exc.state=="TEST_EMAIL_ONLY":
