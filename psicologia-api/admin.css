@@ -28,3 +28,29 @@ main,.card,.view,.toolbar,.day,.service-grid{min-width:0}
  .card{margin:14px 0}
  input,select,textarea{max-width:100%}
 }
+
+/* Panel adaptable y previsualizaciones seguras */
+.mobile-panel-label{display:none}
+input,select,textarea{width:100%;max-width:100%;min-height:43px}
+textarea{font:inherit;line-height:1.55;border:1px solid #c9d7cc;border-radius:8px;padding:12px;resize:vertical;background:#fff;color:#203d34}
+button,.button{min-height:43px}
+.service-preview-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e4e9df;padding:13px 0}
+.service-preview-row:last-child{border:0}
+.service-preview-row strong{display:block}
+.service-preview-row small{display:block;color:#647368;margin-top:4px}
+.service-preview-price{font-weight:700;color:#234d3d}
+.service-preview-row.is-off{opacity:.6}
+.mail-preview{background:#f7f9f5;border:1px solid #dce4da;padding:20px;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+.mail-preview strong{display:block;margin-bottom:8px}
+.preview-selector{max-width:320px;margin:12px 0}
+@media(max-width:850px){
+ .mobile-panel-label{display:grid;gap:8px;position:sticky;top:0;z-index:10;background:#f5f6f2;padding:12px 0 8px}
+ .mobile-panel-label label{font-size:12px;font-weight:700}
+ aside nav{display:none!important}
+ aside{padding:15px 18px}
+ aside .back{margin-top:10px}
+ .toolbar input,.toolbar select,.toolbar button{width:100%}
+ .service-preview-row{align-items:flex-start}
+ .service-preview-price{width:100%}
+}
+@media(max-width:450px){.card{padding:15px}.private{font-size:11px}.service-grid{gap:12px}}
