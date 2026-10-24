@@ -841,9 +841,11 @@ updateBillingDetail();render();renderAdmin();
 // Reintentar la configuración tras un arranque en frío de Render.
 let settingsRetry=null;
 async function initializeBooking(){
+ const durationBefore=currentService().minutes;
  try{
   await loadBookingSettings();
   if(settingsRetry){clearTimeout(settingsRetry);settingsRetry=null;}
+  if(currentService().minutes!==durationBefore)loadCalendar();
  }catch(e){
   configurationReady=false;
   paymentStatus('Actualizando configuración de la agenda. Reintentando automáticamente…');
