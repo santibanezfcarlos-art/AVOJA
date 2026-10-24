@@ -53,8 +53,9 @@ def main():
             response = page.goto(PORTAL, wait_until="domcontentloaded", timeout=45000)
             # El texto de un botón puede ser "Emitir" aunque CSS lo muestre
             # como "EMITIR"; identificar sin depender de mayúsculas exactas.
-            emitir = page.get_by_text(re.compile(r"^\\s*emitir\\s*$", re.I)).first
+            emitir = page.get_by_text(re.compile("emitir", re.I)).first
             try:
+                page.get_by_text("7", exact=True).first.wait_for(state="visible", timeout=25000)
                 emitir.wait_for(state="visible", timeout=25000)
             except Exception:
                 print("No se confirmó la pantalla de monto del SII.")
