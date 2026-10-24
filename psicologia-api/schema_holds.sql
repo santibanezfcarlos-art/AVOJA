@@ -86,3 +86,5 @@ COMMIT;
 
 -- Nombre visible solamente en avisos profesionales y evento privado.
 ALTER TABLE psychology_demo_payments ADD COLUMN IF NOT EXISTS patient_name varchar(120);
+
+CREATE TABLE IF NOT EXISTS psychology_google_oauth (key text PRIMARY KEY,encrypted_refresh_token text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
