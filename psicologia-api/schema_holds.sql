@@ -62,3 +62,24 @@ COMMIT;
 -- Idempotencia también protegida por clave específica en Resend.
 ALTER TABLE psychology_demo_notifications
     ADD COLUMN IF NOT EXISTS timezone_correction_sent_at timestamptz;
+
+-- Enlaces privados y auditoría: piloto de reagendamiento (desactivado por defecto).
+-- El token sin cifrar solo se entrega al paciente mediante el correo.
+BEGIN;
+CREATE TABLE IF NOT EXISTS psychology_reschedule_links (
+ order_id varchar(26) PRIMARY KEY REFERENCES psychology_demo_payments(order_id),
+ token_sha256 char(64) NOT NULL UNIQUE,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ redeemed_at timestamptz,
+ revoked_at timestamptz
+);
+CREATE TABLE IF NOT EXISTS psychology_reschedule_audit (
+ id bigserial PRIMARY KEY,
+ order_id varchar(26) NOT NULL REFERENCES psychology_demo_payments(order_id),
+ old_starts_at timestamptz NOT NULL,
+ new_starts_at timestamptz NOT NULL,
+ changed_at timestamptz NOT NULL DEFAULT now(),
+ channel varchar(20) NOT NULL DEFAULT 'patient_link',
+ CONSTRAINT one_completed_reschedule UNIQUE(order_id)
+);
+COMMIT;
