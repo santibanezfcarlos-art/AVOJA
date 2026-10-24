@@ -204,7 +204,18 @@ def main():
                                 print("Falló campo:", label_text, type(exc).__name__)
                                 return
                             if actual != datos[key]:
-                                print("No se verificó la carga del campo:", label_text)
+                                print("Campo no conservó el valor esperado:", label_text)
+                                print("Longitud esperada:", len(datos[key]), "longitud observada:", len(actual))
+                                print("El portal podría aplicar formato o validación propia; se detiene.")
+                                return
+                            # Disparar blur para que la aplicación valide y comprobar
+                            # nuevamente. RUT puede activar consultas que actualizan nombre.
+                            stable.press("Tab", timeout=5000)
+                            page.wait_for_timeout(900)
+                            observed = stable.evaluate("(el) => el.value") if stable.count() == 1 else ""
+                            if observed != datos[key]:
+                                print("Campo cambiado tras validación:", label_text)
+                                print("Longitud esperada:", len(datos[key]), "longitud observada:", len(observed))
                                 return
                             print("Campo completado y verificado:", label_text)
                         print("Datos cargados en formulario; NO se pulsó el segundo EMITIR.")
