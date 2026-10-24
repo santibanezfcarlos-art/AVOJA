@@ -139,6 +139,69 @@ def manage_settings():
     return jsonify(ok=True,settings=data,version=version+1)
 
 
+
+COMMUNICATION_DEFAULTS = {
+ 'patient_heading':'¡Tu hora está reservada!',
+ 'patient_message':'¡Felicitaciones por dar este paso! Tu horario quedó reservado y estos son los detalles.',
+ 'patient_notes':'La atención será online. Te recomendamos un espacio privado y tranquilo, con conexión estable.',
+ 'professional_heading':'Tienes una nueva sesión agendada',
+ 'professional_message':'Se ha agendado una nueva atención en tu calendario.',
+ 'professional_notes':'Puedes revisar la sesión en tu agenda de Google Calendar.',
+ 'signature':'Ps. Carlos Santibáñez Fica'
+}
+
+def communication_config():
+    if not billing.configured():
+        return dict(COMMUNICATION_DEFAULTS), 0
+    with billing.db() as con:
+        con.execute('CREATE TABLE IF NOT EXISTS admin_communications (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL, version INTEGER NOT NULL)')
+        row=con.execute('SELECT value,version FROM admin_communications WHERE id=1').fetchone()
+    return (json.loads(row['value']),row['version']) if row else (dict(COMMUNICATION_DEFAULTS),0)
+
+def validate_communications(payload):
+    if not isinstance(payload,dict) or set(payload)!=set(COMMUNICATION_DEFAULTS):
+        raise ValueError('Los textos de correo están incompletos.')
+    result={}
+    for key,value in payload.items():
+        if not isinstance(value,str) or not 3<=len(value.strip())<=700 or any(ord(c)<32 and c not in '\\n\\t' for c in value):
+            raise ValueError('Revisa el texto de '+key+'.')
+        result[key]=value.strip()
+    return result
+
+@admin_bp.route('/admin/communications',methods=['GET','POST'])
+@billing.private
+def admin_communications():
+    if request.method=='GET':
+        values,version=communication_config()
+        return jsonify(communications=values,version=version)
+    if (request.content_length or 0)>10000:
+        return jsonify(error='Contenido demasiado extenso.'),413
+    body=request.get_json(silent=True)
+    try:
+        if not isinstance(body,dict) or type(body.get('version')) is not int:
+            raise ValueError('Versión de edición inválida.')
+        values=validate_communications(body.get('communications'))
+    except (ValueError,TypeError) as exc:
+        return jsonify(error=str(exc)),400
+    communication_config()
+    with billing.db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        row=con.execute('SELECT version FROM admin_communications WHERE id=1').fetchone()
+        current=row['version'] if row else 0
+        if current!=body['version']:
+            return jsonify(error='Otra edición fue guardada. Actualiza el panel.'),409
+        con.execute('INSERT INTO admin_communications(id,value,version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value,version=excluded.version',
+                    (json.dumps(values,ensure_ascii=False),current+1))
+    return jsonify(communications=values,version=current+1,ok=True)
+
+@admin_bp.get('/api/communications-public')
+def public_communications():
+    try:
+        values,version=communication_config()
+        return jsonify(communications=values,version=version)
+    except (RuntimeError,sqlite3.Error,OSError):
+        return jsonify(error='Configuración temporalmente no disponible.'),503
+
 @admin_bp.route('/admin/transbank',methods=['GET','POST'])
 @billing.private
 def transbank():
