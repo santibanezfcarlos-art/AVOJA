@@ -39,13 +39,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--perfil", type=Path, required=True)
     parser.add_argument("--monto", type=amount, required=True)
+    parser.add_argument("--visible", action="store_true", help="Diagnóstico con navegador visible")
     args = parser.parse_args()
     profile = args.perfil.expanduser().resolve()
     if not profile.is_dir():
         parser.error("No encuentro el perfil de la sesión autorizada. Ejecute primero el script 'autorizar'.")
     with sync_playwright() as playwright:
         ctx = playwright.chromium.launch_persistent_context(
-            str(profile), headless=True, locale="es-CL", timezone_id="America/Santiago"
+            str(profile), headless=not args.visible, locale="es-CL", timezone_id="America/Santiago"
         )
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -68,6 +69,10 @@ def main():
                 value = display.input_value()
                 if value and re.sub(r"\\D", "", value) not in ("", "0"):
                     raise RuntimeError("Existe un monto previo; borra el valor manualmente antes de probar.")
+            if args.visible:
+                print("Diagnóstico visible: se encontró la pantalla del monto. No se pulsarán teclas.")
+                input("Presiona ENTER para cerrar el navegador sin introducir monto...")
+                return
             for digit in str(args.monto):
                 exactly_one_visible(page, digit).click()
                 page.wait_for_timeout(120)
