@@ -1494,7 +1494,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(raw)
                 return
             if route.path == '/api/gallery':
-                self.respond({'groups': gallery_items()})
+                self.respond({'groups': gallery_items(), 'catalog': [{'hours': hours, 'price': price} for hours, price in CATALOG.values()]})
                 return
             user = self.server.store.session(self.cookie())
             if route.path == '/api/me':

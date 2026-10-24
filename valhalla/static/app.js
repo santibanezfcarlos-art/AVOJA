@@ -13,7 +13,7 @@ const chosenSlot=(box,start)=>selectedBookings.some(slot=>slot.box===box&&slot.s
 let contactsDate='',dailyContacts=null;
 let paymentsMonth='';
 let showArchivedPlans=false;
-let officeGallery = [];
+let officeGallery = [], galleryCatalog = [];
 let googleEnabled = false, microsoftEnabled = false;
 const googleResult = new URLSearchParams(location.search).get('google_result');
 const microsoftResult = new URLSearchParams(location.search).get('microsoft_result');
@@ -200,14 +200,24 @@ function gallerySection() {
   if(!officeGallery.length)return '';
   return `<section class="office-gallery" aria-labelledby="office-gallery-title"><div class="gallery-intro"><div class="eyebrow">CONOCE VALHALLA</div><h2 id="office-gallery-title">Un espacio para cada atención</h2><p>Recorre la entrada, la recepción y nuestros tres boxes. Pulsa una foto para verla completa.</p></div><div class="office-gallery-grid">${officeGallery.map(group=>`<article class="gallery-group"><div class="row spread"><h3>${escapeHTML(group.title)}</h3><span class="pill neutral">${group.photos.length} ${group.photos.length===1?'foto':'fotos'}</span></div><div class="gallery-photos">${group.photos.map((photo,index)=>`<button class="gallery-photo" data-gallery="${escapeHTML(group.id)}" data-photo-index="${index}" aria-label="Ver ${escapeHTML(photo.alt)}"><img src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}" loading="lazy" decoding="async"><span>Ampliar foto ${index+1}</span></button>`).join('')}</div></article>`).join('')}</div></section>`;
 }
+function galleryPlanValues() {
+  const plans=state?.catalog||galleryCatalog;
+  if(!plans.length)return '<p class="muted">Los valores no están disponibles en este momento. Vuelve a intentarlo recargando la página.</p>';
+  return `<table class="gallery-plan-table"><thead><tr><th scope="col">Horas</th><th scope="col">Valor del plan</th></tr></thead><tbody>${plans.map(plan=>`<tr><td>${escapeHTML(String(plan.hours))} ${plan.hours===1?'hora':'horas'}</td><td>${money(plan.price)}</td></tr>`).join('')}</tbody></table>`;
+}
 function bindGallery() {
   document.querySelectorAll('[data-gallery]').forEach(button=>button.onclick=()=>{
     const group=officeGallery.find(group=>group.id===button.dataset.gallery);if(!group)return;
-    let index=Number(button.dataset.photoIndex||0);
+    let index=Number(button.dataset.photoIndex||0),valuesOpen=false;
     const show=()=>{
       const photo=group.photos[index];
-      modal.innerHTML=`<h2 id="modal-title">${escapeHTML(group.title)}</h2><p class="muted">Foto ${index+1} de ${group.photos.length}</p><img class="room-photo-full" src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}"><div class="modal-actions gallery-controls">${group.photos.length>1?`<button class="btn ghost small" id="photo-previous" aria-label="Foto anterior">← Anterior</button><button class="btn ghost small" id="photo-next" aria-label="Foto siguiente">Siguiente →</button>`:''}<button class="btn small" id="photo-close">Cerrar foto</button></div>`;
+      modal.innerHTML=`<h2 id="modal-title">${escapeHTML(group.title)}</h2><p class="muted">Foto ${index+1} de ${group.photos.length}</p><img class="room-photo-full" src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(photo.alt)}"><div class="modal-actions gallery-controls">${group.photos.length>1?`<button class="btn ghost small" id="photo-previous" aria-label="Foto anterior">← Anterior</button><button class="btn ghost small" id="photo-next" aria-label="Foto siguiente">Siguiente →</button>`:''}<button type="button" class="btn secondary small" id="photo-values" aria-expanded="${valuesOpen}" aria-controls="photo-plan-values">Valores asociados</button><button class="btn small" id="photo-close">Cerrar foto</button></div><section id="photo-plan-values" class="gallery-plan-values" aria-label="Valores asociados" ${valuesOpen?'':'hidden'}>${galleryPlanValues()}</section>`;
       document.querySelector('#photo-close').onclick=()=>modal.close();
+      const valuesButton=modal.querySelector('#photo-values'),valuesPanel=modal.querySelector('#photo-plan-values');
+      valuesButton.onclick=()=>{
+        valuesOpen=!valuesOpen;valuesPanel.hidden=!valuesOpen;valuesButton.setAttribute('aria-expanded',String(valuesOpen));
+        if(valuesOpen)valuesPanel.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});
+      };
       const previous=document.querySelector('#photo-previous'),next=document.querySelector('#photo-next');
       if(previous)previous.onclick=()=>{index=(index+group.photos.length-1)%group.photos.length;show();};
       if(next)next.onclick=()=>{index=(index+1)%group.photos.length;show();};
@@ -777,7 +787,7 @@ async function startApp() {
   if(emailConfirmationToken){emailConfirmation();return;}
   const providers=await Promise.all([api('google/config').catch(()=>({enabled:false})),api('microsoft/config').catch(()=>({enabled:false}))]);
   googleEnabled=Boolean(providers[0].enabled);microsoftEnabled=Boolean(providers[1].enabled);
-  try {officeGallery=(await api('gallery')).groups||[];}catch{officeGallery=[];}
+  try {const gallery=await api('gallery');officeGallery=gallery.groups||[];galleryCatalog=gallery.catalog||[];}catch{officeGallery=[];galleryCatalog=[];}
   try{const data=await api('me');state=data;selectedDate=data.earliest_booking_date||data.today;if(paymentReturn){view='packages';toast('Consulta el estado actualizado de tu compra en Comprar horas.');}if(googleResult==='profile_required'||microsoftResult==='profile_required')view='profile';if(hasManagementAccess()){adminData=await api('admin');view='admin';selectedDate=data.today;}applyBookingsDeepLink();await render();}
   catch{auth(false,googleResult==='admin_password'||microsoftResult==='admin_password');}
   const googleMessages={success:'Ingresaste con Google.',profile_required:'Completa tu profesión o especialidad en Mi perfil. Para reservar también necesitas tu identidad validada y saldo.',link_required:'Ya existe una cuenta con ese correo. Ingresa con tu contraseña y selecciona Mi perfil → Vincular Google. Si la olvidaste, puedes recuperarla.',cancelled:'Se canceló el acceso con Google. Puedes volver a intentarlo.',admin_password:'La administración requiere tu contraseña privada. Google está disponible para cuentas profesionales.',error:'No se pudo completar el acceso con Google. Vuelve a intentarlo desde el inicio.'};
