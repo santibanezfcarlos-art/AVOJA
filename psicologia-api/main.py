@@ -248,6 +248,8 @@ from billing import billing_bp
 app.register_blueprint(billing_bp)
 from admin import admin_bp
 app.register_blueprint(admin_bp)
+from reschedules import reschedules_bp
+app.register_blueprint(reschedules_bp)
 
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
