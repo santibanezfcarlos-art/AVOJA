@@ -130,7 +130,7 @@ def _communication_copy():
     return {}
 
 
-def template(role, order, service, start, end, *, correction=False):
+def template(role, order, service, start, end, *, correction=False, rebooking_url=None):
     """Email institucional, seguro y adaptable al servicio y al profesional.
 
     Fechas siempre en Chile; sin información clínica ni URLs de sesión inventadas.
@@ -203,6 +203,20 @@ def template(role, order, service, start, end, *, correction=False):
         field("Duración", str(duration) + " minutos"),
         field("Modalidad", "Online"),
     ])
+    from urllib.parse import urlsplit
+    if rebooking_url is not None:
+        parsed = urlsplit(rebooking_url)
+        if role != "patient" or parsed.scheme != "https" or parsed.netloc != "pscsantibanez.cl" or parsed.path != "/reagendar" or not parsed.query:
+            raise NotificationError("Enlace de reagendamiento no permitido")
+    rebooking_button = (
+        "<tr><td style='padding:8px 30px 22px;text-align:center'>"
+        "<a href='" + esc(rebooking_url) + "' style='display:inline-block;"
+        "background:#235943;color:#fff;padding:15px 28px;border-radius:10px;"
+        "font-weight:bold;text-decoration:none'>Reagendar mi atención</a>"
+        "<p style='font-size:12px;color:#657c6e;line-height:1.6'>"
+        "Una única reprogramación, con al menos 24 horas de anticipación.</p></td></tr>"
+        if rebooking_url else ""
+    )
     intro = esc(description)
     html = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
@@ -249,6 +263,7 @@ def template(role, order, service, start, end, *, correction=False):
         "</p><p style='margin:14px 0 0'>Adjuntamos una invitación de calendario "
         "para que puedas incorporar el horario a tu agenda.</p>"
         "</td></tr>"
+        + rebooking_button +
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
         "padding:20px 30px;font-size:12px;line-height:1.7;"
         "color:#577166'><strong style='color:#194a3a'>"
@@ -262,7 +277,7 @@ def template(role, order, service, start, end, *, correction=False):
     return subject, html
 
 
-def send(role, order, hold_id, recipient, service, start, end, *, transport=None, correction=False):
+def send(role, order, hold_id, recipient, service, start, end, *, transport=None, correction=False, rebooking_url=None):
     if not configured():
         raise NotificationError("Envio de correo de prueba deshabilitado")
     email = allowed_email(recipient)
@@ -270,7 +285,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
     if (not email or role not in ("professional", "patient")
             or (role == "professional" and email != professional)):
         raise NotificationError("Destinatario no permitido")
-    subject, body = template(role, order, service, start, end, correction=correction)
+    subject, body = template(role, order, service, start, end, correction=correction, rebooking_url=rebooking_url)
     attachment = {
         "filename": "reserva.ics",
         "content": base64.b64encode(ics_text(hold_id,start,end).encode("utf-8")).decode("ascii"),
@@ -291,6 +306,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
              + local_end.strftime("%H:%M") + "\n"
              + "Modalidad: Online\n"
              + "Pago simulado en ambiente de demostración; no se emitió boleta.\n"
+             + ("Reagendar mi atención: " + rebooking_url + "\n" if rebooking_url else "")
              + "Contacto: " + contact + "\n" + website)
     payload = {"from": FROM, "to": [email], "subject": subject,
                "html": body, "text": plain, "attachments": [attachment]}
