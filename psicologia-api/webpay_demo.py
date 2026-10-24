@@ -168,7 +168,8 @@ def start_demo():
     except (RuntimeError, sqlite3.Error, OSError):
         return _page("Configuración no disponible", "Intenta más tarde.", status=503)
     service = request.form.get("service", "")
-    if service not in SERVICES:
+    pricing = admin_config['services'].get(service)
+    if service not in SERVICES or not pricing:
         return _page("Servicio no válido", "Selecciona un servicio disponible.", status=400)
     day = request.form.get("date", "")
     hour = request.form.get("time", "")
@@ -179,7 +180,7 @@ def start_demo():
             chosen_day = date.fromisoformat(day)
             chosen_hour = datetime.strptime(hour, "%H:%M")
             start_time = datetime.combine(chosen_day, chosen_hour.time(), tzinfo=TZ)
-            finish_time = start_time + timedelta(minutes={"psicoterapia": 45, "empleabilidad": 90, "competencias": 45}[service])
+            finish_time = start_time + timedelta(minutes=pricing["minutes"])
             if (start_time <= datetime.now(TZ) or chosen_day > datetime.now(TZ).date() + timedelta(days=60)
                 or start_time.hour < 9 or start_time.minute % 15 != 0 or finish_time.date() != chosen_day or finish_time.hour > 20
                 or (finish_time.hour == 20 and finish_time.minute > 0)):
@@ -215,7 +216,7 @@ def start_demo():
     if person and bridge.enabled():
         try:
             state=bridge.preflight(order=order,session=session,service=service,
-                   day=day,hour=hour,amount=SERVICES[service],email=person["email"],
+                   day=day,hour=hour,amount=pricing["price"],email=person["email"],
                    email_consent=True)
         except bridge.BridgeError as exc:
             if exc.state=="TEST_EMAIL_ONLY":
@@ -239,20 +240,20 @@ def start_demo():
                status=409)
     if person:
         try:
-            billing.prepare(order, service, day, hour, SERVICES[service], person, 'integration', detail=admin_config['services'][service]['detail'])
+            billing.prepare(order, service, day, hour, pricing["price"], person, 'integration', detail=admin_config['services'][service]['detail'])
         except (RuntimeError, sqlite3.Error, OSError):
             if bridge.enabled():
-                try: bridge.complete(order=order,session=session,amount=SERVICES[service],outcome="cancelled")
+                try: bridge.complete(order=order,session=session,amount=pricing["price"],outcome="cancelled")
                 except bridge.BridgeError: pass
             return _page('No se guardaron los datos', 'No se inició el pago. Intenta más tarde.', status=503)
     try:
         result = _send("POST", BASE, {
             "buy_order": order, "session_id": session,
-            "amount": SERVICES[service], "return_url": RETURN_URL,
+            "amount": pricing["price"], "return_url": RETURN_URL,
         })
     except (HTTPError, URLError, ValueError, KeyError, TimeoutError):
         if person and bridge.enabled():
-            try: bridge.complete(order=order,session=session,amount=SERVICES[service],outcome="cancelled")
+            try: bridge.complete(order=order,session=session,amount=pricing["price"],outcome="cancelled")
             except bridge.BridgeError: pass
         return _page("No fue posible iniciar la prueba", "Transbank no respondió correctamente. Intenta más tarde.", status=503)
     token = result.get("token")
