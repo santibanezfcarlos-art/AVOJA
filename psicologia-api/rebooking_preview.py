@@ -30,49 +30,89 @@ def headers(response):
 def page():
     if not enabled():
         return Response("El reagendamiento online todavía no está habilitado.",status=503)
-    return Response("""<!doctype html><html lang="es"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>Reagendar mi atención · PSC</title>
-<style>body{margin:0;font:16px system-ui;background:#f1f7f2;color:#254d39}
-main{max-width:560px;margin:8vh auto;padding:30px;background:white;border:1px solid #dce8df;border-radius:18px}
-h1{font-size:26px}p{line-height:1.65}label{display:block;margin-top:18px}
-input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #b9cfc0;border-radius:9px}
-button{margin-top:14px;background:#315e47;color:white;font-weight:bold}
-small{color:#526e5e}</style><main><h1>Reagendar mi atención</h1>
-<p>Este enlace permite consultar tu reserva y verificar alternativas. Se admite un solo cambio y debe solicitarse con al menos 24 horas de anticipación.</p>
-<p id="status" role="status">Verificando enlace privado…</p>
-<div id="booking" hidden><p id="summary"></p><label for="day">Nueva fecha</label><input id="day" type="date">
-<label for="hour">Nueva hora</label><input id="hour" type="time" step="900">
-<button type="button" id="check">Comprobar disponibilidad</button>
-<button type="button" id="confirm" disabled>Confirmar cambio de hora</button>
-<small>El cambio solo se confirma cuando el servidor verifica Google Calendar.</small></div></main>
-<script>
-const token=new URLSearchParams(location.search).get('t')||'';
-history.replaceState(null,'','/reagendar');
-const status=document.getElementById('status'), booking=document.getElementById('booking');
-async function requestApi(path,opts){
-const r=await fetch('/api/reagendar/'+encodeURIComponent(token)+path,{...opts,cache:'no-store',referrerPolicy:'no-referrer'});
-return {ok:r.ok,data:await r.json()};}
-(async()=>{try{const r=await requestApi('/estado');status.textContent=r.data.message||'No disponible';
-if(r.ok){booking.hidden=false;document.getElementById('summary').textContent=r.data.service+' · '+r.data.date+' · '+r.data.time;}}
-catch(e){status.textContent='No se pudo verificar el enlace. Intenta nuevamente.'}})();
-document.getElementById('check').onclick=async()=>{
-const date=document.getElementById('day').value,time=document.getElementById('hour').value;
-if(!date||!time)return;status.textContent='Consultando disponibilidad…';
-try{const r=await requestApi('/disponibilidad?date='+encodeURIComponent(date)+'&time='+encodeURIComponent(time));
-status.textContent=r.data.message||'No disponible';
-document.getElementById('confirm').disabled=!r.data.available;
-}catch(e){status.textContent='No se pudo consultar la disponibilidad.'}}; 
-document.getElementById('confirm').onclick=async()=>{
- if(!window.confirm('¿Confirmas tu única reprogramación? No podrás modificar nuevamente esta hora.'))return;
- const button=document.getElementById('confirm');button.disabled=true;status.textContent='Confirmando nuevo horario…';
- try{const r=await requestApi('/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},
- body:JSON.stringify({date:document.getElementById('day').value,time:document.getElementById('hour').value})});
- status.textContent=r.data.message||'No se pudo confirmar.';
- if(r.ok){booking.hidden=true;}
- }catch(e){status.textContent='No se pudo confirmar. Contacta al profesional antes de volver a intentarlo.'}
-};
-</script></html>""",mimetype="text/html")
+    return Response("""<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Reagendar mi atención · PSC</title><style>
+:root{font-family:Arial,sans-serif;color:#194537;background:#f1f7f2}*{box-sizing:border-box}body{margin:0}
+header{background:#fff;border-bottom:1px solid #dfe8e1;padding:19px max(4%,calc((100% - 1080px)/2));font-weight:700}
+header a{color:#194537;text-decoration:none}main{max-width:1000px;margin:40px auto;padding:0 16px}
+.panel{background:white;border:1px solid #dbe7dd;border-radius:18px;padding:32px}
+h1{font-size:29px;margin:0 0 12px}p{line-height:1.6;color:#536e61}
+.current{background:#f5f9f5;border-radius:12px;padding:16px;margin:20px 0}
+.navigation{display:flex;justify-content:space-between;align-items:center;margin:24px 0 14px}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.day,.slot{border:1px solid #d5e4d9;border-radius:12px;background:white;color:#194537;cursor:pointer;padding:15px 6px;font:inherit}
+.day span{display:block;font-size:12px;color:#648271}.day strong{display:block;font-size:21px;margin:5px}
+.day.selected,.slot.selected{border-color:#337052;background:#e5f0e8}
+.day:disabled,.slot:disabled{opacity:.36;cursor:not-allowed}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.slot{padding:22px 8px;font-size:20px;font-weight:bold}.slot small{display:block;font-size:12px;font-weight:400;margin-top:6px}
+button.action{background:#315f49;color:#fff;border:0;border-radius:10px;padding:14px 20px;font-size:15px;font-weight:bold;cursor:pointer}
+button.action:disabled{background:#9fb7a8;cursor:not-allowed}.navigation button{border:1px solid #d5e4d9;background:#fff;border-radius:9px;padding:9px 14px}
+#confirm{margin-top:22px;width:100%}.notice{margin-top:16px;min-height:26px}
+.success{background:#edf7ef;border:1px solid #b7d9c2;border-radius:12px;padding:25px;text-align:center}
+.home{display:inline-block;margin-top:14px;background:#315f49;color:white;text-decoration:none;padding:13px 22px;border-radius:9px}
+[hidden]{display:none!important}@media(max-width:620px){.panel{padding:21px}.week{gap:3px}.day{padding:11px 2px}.day strong{font-size:17px}.slots{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><header><a href="https://pscsantibanez.cl/">CS · Carlos Santibáñez Fica</a></header><main><section class="panel">
+<h1>Reagendar mi atención</h1><p>Selecciona una nueva fecha y hora. Puedes realizar un único cambio con al menos 24 horas de anticipación, según disponibilidad.</p>
+<div id="notice" class="notice" role="status">Verificando tu reserva…</div>
+<div id="booking" hidden><div id="current" class="current"></div>
+<div class="navigation"><strong id="period">Elige la fecha</strong><div><button type="button" id="prev" aria-label="Semana anterior">←</button> <button type="button" id="next" aria-label="Semana siguiente">→</button></div></div>
+<div id="week" class="week"></div><h2 id="dayTitle">Horarios disponibles</h2>
+<div id="slots" class="slots"></div>
+<button id="confirm" type="button" class="action" disabled>Confirmar cambio de hora</button></div>
+<div id="finished" class="success" hidden><h2>¡Tu atención quedó reagendada!</h2>
+<p id="confirmedInfo"></p><p>Recibirás una nueva confirmación por correo electrónico.</p>
+<a class="home" href="https://pscsantibanez.cl/">Volver a la página principal →</a></div>
+</section></main><script>
+const token=new URLSearchParams(location.search).get("t")||"";
+history.replaceState(null,"","/reagendar");
+const el=id=>document.getElementById(id),zone="America/Santiago";
+let monday=null,selectedDay=null,selectedHour=null,currentDate=null,currentTime=null,busy=false;
+const pad=n=>String(n).padStart(2,"0");
+function iso(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())}
+function dateOf(s){return new Date(s+"T12:00:00")}
+function add(d,n){const v=new Date(d);v.setDate(v.getDate()+n);return v}
+function label(s){return dateOf(s).toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"})}
+function todayChile(){const parts=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());let o={};parts.forEach(p=>o[p.type]=p.value);return o.year+"-"+o.month+"-"+o.day}
+function initialMonday(d){return add(d,-((d.getDay()+6)%7))}
+async function api(path,opts={}){const r=await fetch("/api/reagendar/"+encodeURIComponent(token)+path,{...opts,cache:"no-store",referrerPolicy:"no-referrer"});return {ok:r.ok,data:await r.json()}}
+function notice(t){el("notice").textContent=t}
+function render(){const start=iso(monday),limit=iso(add(dateOf(todayChile()),60));
+el("period").textContent=dateOf(start).toLocaleDateString("es-CL",{month:"long",year:"numeric"});
+el("prev").disabled=iso(add(monday,-7))<iso(initialMonday(dateOf(todayChile())));
+el("week").replaceChildren();
+for(let i=0;i<7;i++){const d=add(monday,i),day=iso(d),b=document.createElement("button");
+b.type="button";b.className="day"+(selectedDay===day?" selected":"");b.disabled=day<todayChile()||day>limit;
+const wd=document.createElement("span");wd.textContent=["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()];
+const num=document.createElement("strong");num.textContent=d.getDate();
+b.append(wd,num);b.onclick=()=>{selectedDay=day;selectedHour=null;render();};el("week").append(b)}
+el("dayTitle").textContent=selectedDay?label(selectedDay):"Elige un día";
+el("slots").replaceChildren();
+if(selectedDay){for(let h=9;h<=19;h++){const hour=pad(h)+":00",b=document.createElement("button");
+b.type="button";b.className="slot"+(selectedHour===hour?" selected":"");
+b.textContent=hour;let small=document.createElement("small");small.textContent="Consultar horario";b.append(small);
+b.onclick=async()=>{if(busy)return;busy=true;selectedHour=null;el("confirm").disabled=true;notice("Comprobando disponibilidad…");
+try{const r=await api("/disponibilidad?date="+encodeURIComponent(selectedDay)+"&time="+hour);
+if(r.ok&&r.data.available){selectedHour=hour;notice("Horario disponible. Confirma para reagendar.");}
+else notice(r.data.message||"Este horario no está disponible.");}catch(e){notice("No se pudo comprobar la disponibilidad.");}
+finally{busy=false;el("confirm").disabled=!selectedHour;render()}};el("slots").append(b)}}
+}
+el("next").onclick=()=>{monday=add(monday,7);selectedDay=null;selectedHour=null;el("confirm").disabled=true;render()};
+el("prev").onclick=()=>{monday=add(monday,-7);selectedDay=null;selectedHour=null;el("confirm").disabled=true;render()};
+el("confirm").onclick=async()=>{if(!selectedDay||!selectedHour||busy)return;
+if(!confirm("¿Confirmas el cambio para "+label(selectedDay)+" a las "+selectedHour+"? Solo puedes reagendar una vez."))return;
+busy=true;el("confirm").disabled=true;notice("Confirmando el cambio de hora…");
+try{const r=await api("/confirmar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:selectedDay,time:selectedHour})});
+if(r.ok){el("booking").hidden=true;el("notice").hidden=true;el("finished").hidden=false;
+el("confirmedInfo").textContent="Tu reserva quedó para el "+label(r.data.date)+" a las "+r.data.time+" h (hora de Chile).";}
+else notice(r.data.message||"No se pudo confirmar el cambio.");}
+catch(e){notice("No se pudo confirmar. Contacta al profesional antes de volver a intentarlo.")}
+finally{busy=false}};
+(async()=>{try{const r=await api("/estado");if(!r.ok){notice(r.data.message||"Enlace no disponible");return}
+currentDate=r.data.date;currentTime=r.data.time;
+el("current").textContent="Tu reserva actual: "+label(currentDate)+" a las "+currentTime+" h · "+r.data.service;
+monday=initialMonday(dateOf(todayChile()));selectedDay=currentDate;el("booking").hidden=false;notice("Selecciona un nuevo horario.");render();
+}catch(e){notice("No se pudo verificar el enlace privado.")}})();
+</script></body></html>""",mimetype="text/html")
 
 def _lookup(token):
     if not TOKEN_PATTERN.fullmatch(token):
