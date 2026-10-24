@@ -157,7 +157,7 @@ def template(role, order, service, start, end, *, correction=False):
              if is_pro else
              "La atención será online. Te recomendamos buscar un lugar privado "
              "y tranquilo, con conexión estable, y conectarte unos minutos antes. "
-             "Las instrucciones de conexión se enviarán por separado.")
+             "Si necesitas instrucciones de conexión, contáctanos al correo indicado al final.")
     summary = hour_label + "–" + end_label
     correction_notice = (
         "<tr><td style='padding:15px 25px;background:#fff2e5;"
