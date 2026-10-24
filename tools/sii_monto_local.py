@@ -86,11 +86,23 @@ def main():
                 page.wait_for_timeout(120)
             # La verificación final requiere un selector probado del campo visual.
             # Nunca informar como verificado si no se puede leer.
+            page.wait_for_timeout(800)
+            # e-Boleta puede dibujar "$ 30.000", "$30000" o usar espacios.
+            # Leer solo importes del texto visible, sin imprimir otros datos.
             body = page.locator("body").inner_text(timeout=5000)
-            money = "$" + format(args.monto, ",").replace(",", ".")
+            candidates = re.findall(r"\\$\\s*([0-9][0-9.,\\s]*)", body)
+            parsed = []
+            for candidate in candidates:
+                digits = re.sub(r"[^0-9]", "", candidate)
+                if digits:
+                    parsed.append(int(digits))
+            confirmed = args.monto in parsed
             print("Navegador abrió e-Boleta. Teclas pulsadas:", len(str(args.monto)))
-            print("Monto esperado:", money)
-            print("Monto detectado en pantalla:", "SÍ" if money in body else "NO / formato diferente")
+            print("Monto esperado: $" + format(args.monto, ",").replace(",", "."))
+            print("Monto detectado en pantalla:", "SÍ" if confirmed else "NO CONFIRMADO")
+            if not confirmed:
+                print("Importes con símbolo $ detectados:", parsed[:5])
+                print("No avanzaremos a EMITIR sin verificar visualmente el importe.")
             print("HTTP inicial:", response.status if response else "sin respuesta")
             print("EMITIR no fue pulsado; no se generó ninguna boleta.")
         finally:
