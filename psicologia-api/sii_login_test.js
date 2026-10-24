@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       });
       const result=await response.json();
       if(!response.ok)throw new Error(result.error||'No se pudo conectar.');
-      notice.textContent=(result.message||'Prueba ejecutada.')+' Estado: '+result.status;
+      notice.textContent=(result.message||'Prueba ejecutada.')+' Estado: '+result.status+(result.diagnostic?' · Diagnóstico: '+JSON.stringify(result.diagnostic):'');
     }catch(error){notice.textContent=error.message||'Error de conexión.'}
     finally{button.disabled=false}
   });
