@@ -54,3 +54,51 @@ button,.button{min-height:43px}
  .service-preview-price{width:100%}
 }
 @media(max-width:450px){.card{padding:15px}.private{font-size:11px}.service-grid{gap:12px}}
+
+/* PSC 2026 · estilo visual coherente con la portada */
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#173e35;background:#f5f8f4}
+body{background:radial-gradient(ellipse at 95% 0%,#e7f1e9 0%,transparent 44%),#f6f8f5}
+aside{display:flex;flex-direction:column;min-height:0;height:100dvh;overflow:hidden;
+ background:linear-gradient(165deg,#133b32 0%,#1c5040 64%,#2c6750 100%);
+ box-shadow:8px 0 32px rgba(16,58,42,.09);border-right:1px solid rgba(255,255,255,.08)}
+aside .brand{flex:none;line-height:1.2;letter-spacing:-.01em}
+aside .brand small{color:#c7dfce}
+aside nav{display:grid;flex:1 1 auto;min-height:0;align-content:start;
+ overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#729d87 transparent;
+ margin-top:32px;padding:4px 6px 14px 0}
+aside nav::-webkit-scrollbar{width:7px}
+aside nav::-webkit-scrollbar-thumb{background:#729d87;border-radius:10px}
+aside nav button{min-height:44px;padding:12px 14px;border:1px solid transparent;
+ border-radius:12px;color:#e4f0e7;font-weight:550;transition:background .15s,border-color .15s,transform .15s}
+aside nav button:hover{background:rgba(255,255,255,.11);transform:translateX(2px)}
+aside nav button.active{background:rgba(214,239,221,.17);border-color:rgba(222,247,229,.17);
+ color:#fff;box-shadow:inset 3px 0 #9fd0a9}
+aside .back{flex:none;margin-top:12px;padding:16px 5px 5px;border-top:1px solid rgba(255,255,255,.18)}
+main{padding-top:42px}
+h1{color:#173e35;letter-spacing:-.025em}
+h2{color:#184a3a;letter-spacing:-.015em}
+.eyebrow{font-weight:700;color:#618975}
+.private{background:#e5f3e9;color:#236448;font-weight:650}
+.card{background:rgba(255,255,255,.97);border-color:#dce9df;border-radius:19px;
+ box-shadow:0 12px 30px rgba(26,73,52,.045)}
+.metric{background:linear-gradient(145deg,#e1f1e5,#f1f8ef);border:1px solid #d6e6d8;
+ border-radius:17px}
+.banner{background:#fff8e9;border-color:#efdfbb;border-radius:14px}
+input:not([type=checkbox]),select,textarea{border-radius:11px;border-color:#cadfd1;
+ transition:border-color .15s,box-shadow .15s}
+input:not([type=checkbox]):focus,select:focus,textarea:focus{border-color:#5e9e79;box-shadow:0 0 0 3px rgba(96,159,119,.12);outline:none}
+button,.button{border-radius:11px;transition:filter .15s,background .15s}
+.primary{background:#194b3b;border-color:#194b3b;box-shadow:0 5px 14px rgba(18,76,51,.1)}
+.primary:hover{background:#28694c}
+button:hover,.button:hover{filter:brightness(.97)}
+table th{background:#f3f8f4;color:#4d7061}
+.mail-preview{border-radius:14px;background:#f5faf6}
+@media(max-width:850px){
+ aside{display:block;height:auto;min-height:0;overflow:visible;box-shadow:none}
+ aside nav{display:none!important}
+ aside .back{border:0;margin-top:6px;padding:8px 0 0}
+ main{padding-top:20px}
+ .mobile-panel-label{border-radius:12px;padding:12px;background:#eef6ef;
+ box-shadow:0 5px 15px rgba(25,65,44,.07)}
+}
+@media(prefers-reduced-motion:reduce){aside nav button,input,select,textarea,button,.button{transition:none!important}}
