@@ -107,10 +107,14 @@ def preflight():
     from booking_holds import CATALOG
     if service not in CATALOG:
         return _reply("INVALID",400)
-    selected=_commercial_service(service)
-    if selected is None:
-        print("PSICOLOGIA_PREFLIGHT: catalog_unavailable",flush=True)
-        return _reply("CATALOG_UNAVAILABLE",503)
+    # La API pública ya validó y firmó estos valores con HMAC. No hacemos
+    # una segunda petición HTTP a Render: en ocasiones fallaba con 503.
+    signed_minutes=data.get("minutes")
+    signed_price=data.get("amount")
+    if (type(signed_price) is not int or not 100<=signed_price<=10000000
+            or type(signed_minutes) is not int or signed_minutes not in (45,60,90)):
+        return _reply("INVALID_CATALOG",400)
+    selected={"price":signed_price,"minutes":signed_minutes,"active":True}
     if (not isinstance(order,str) or not ORDER_PATTERN.fullmatch(order)
             or not isinstance(session,str) or not SESSION_PATTERN.fullmatch(session)
             or not selected["active"]
