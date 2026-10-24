@@ -275,8 +275,15 @@ def _notify(order):
                     private_token = issue(link_conn, order)
                 rebooking_url = ("https://psicologia-retenciones-piloto.onrender.com/reagendar?t="
                                  + private_token)
+            meet_url = None
+            if os.environ.get("PSICOLOGIA_GOOGLE_MEET_ENABLED") == "true":
+                try:
+                    meet_url = CalendarWriter().get_meet_link(data["hold_id"])
+                except CalendarIntegrationError:
+                    pass
             mail_send(role,order,data["hold_id"],recipient,data["service"],
-                      data["starts_at"],data["ends_at"],rebooking_url=rebooking_url,patient_name=data.get("patient_name"))
+                      data["starts_at"],data["ends_at"],rebooking_url=rebooking_url,
+                      patient_name=data.get("patient_name"),meet_url=meet_url)
             with _database_connection() as conn:
                 conn.execute("""UPDATE psychology_demo_notifications
                     SET status='sent',sent_at=now() WHERE order_id=%s AND recipient_role=%s""",
