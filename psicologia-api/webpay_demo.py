@@ -217,7 +217,7 @@ def start_demo():
         try:
             state=bridge.preflight(order=order,session=session,service=service,
                    day=day,hour=hour,amount=pricing["price"],email=person["email"],
-                   email_consent=True)
+                   email_consent=True,minutes=pricing['minutes'])
         except bridge.BridgeError as exc:
             if exc.state=="TEST_EMAIL_ONLY":
                 return _page("Correo de prueba requerido",
