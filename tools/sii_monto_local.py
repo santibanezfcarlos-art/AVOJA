@@ -7,6 +7,7 @@ Ejemplo:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 from urllib.parse import urlparse
@@ -42,7 +43,18 @@ def main():
     parser.add_argument("--visible", action="store_true", help="Diagnóstico con navegador visible")
     parser.add_argument("--continuar", action="store_true", help="Pulsar primer EMITIR tras verificar el monto")
     parser.add_argument("--mostrar-campos", action="store_true", help="Activar Receptor y Detalle para verificar campos, sin rellenar")
+    parser.add_argument("--datos", type=Path, help="Archivo JSON local con datos de prueba para rellenar sin emitir")
     args = parser.parse_args()
+    if args.datos and (not args.mostrar_campos or not args.continuar):
+        parser.error("--datos requiere --continuar --mostrar-campos")
+    datos = None
+    if args.datos:
+        datos = json.loads(args.datos.read_text(encoding="utf-8-sig"))
+        required = ("rut", "nombre", "direccion", "email", "telefono", "detalle")
+        if not isinstance(datos, dict) or any(not isinstance(datos.get(k), str) or not datos[k].strip() for k in required):
+            parser.error("JSON debe contener rut, nombre, direccion, email, telefono y detalle.")
+        if len(datos["detalle"]) > 80:
+            parser.error("Detalle excede 80 caracteres.")
     profile = args.perfil.expanduser().resolve()
     if not profile.is_dir():
         parser.error("No encuentro el perfil de la sesión autorizada. Ejecute primero el script 'autorizar'.")
@@ -159,7 +171,29 @@ def main():
                         loc = page.get_by_placeholder(placeholder, exact=True)
                         print("Campo", placeholder, "visible:",
                               any(loc.nth(k).is_visible() for k in range(min(loc.count(), 5))))
-                    print("No se ingresaron datos ni se confirmó emisión.")
+                    if datos:
+                        fields = {
+                            "RUT con DV receptor": "rut",
+                            "Nombre receptor": "nombre",
+                            "Dirección receptor": "direccion",
+                            "E-mail receptor": "email",
+                            "Teléfono receptor": "telefono",
+                            "Detalle": "detalle",
+                        }
+                        for label_text, key in fields.items():
+                            loc = page.get_by_label(label_text, exact=True)
+                            found = [loc.nth(i) for i in range(min(loc.count(), 8)) if loc.nth(i).is_visible()]
+                            if len(found) != 1:
+                                print("Campo ambiguo:", label_text, "- se detiene sin confirmar emisión.")
+                                return
+                            found[0].fill(datos[key], timeout=7000)
+                            if found[0].input_value() != datos[key]:
+                                print("No se verificó la carga del campo:", label_text)
+                                return
+                            print("Campo completado y verificado:", label_text)
+                        print("Datos cargados en formulario; NO se pulsó el segundo EMITIR.")
+                    else:
+                        print("No se ingresaron datos ni se confirmó emisión.")
                 print("Diagnóstico de campos visibles (sin valores):")
                 for idx in range(min(page.locator("input, select, textarea").count(), 40)):
                     element = page.locator("input, select, textarea").nth(idx)
