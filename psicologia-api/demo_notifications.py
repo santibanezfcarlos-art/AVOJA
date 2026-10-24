@@ -208,6 +208,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         field("Hora (Chile)", summary),
         field("Duración", str(duration) + " minutos"),
         field("Modalidad", "Online"),
+        *([field("Google Meet", "<a href='" + esc(meet_url) + "' style='color:#176b58;text-decoration:underline;word-break:break-all'>" + esc(meet_url) + "</a>")] if meet_url else []),
     ])
     from urllib.parse import urlsplit
     if rebooking_url is not None:
@@ -228,12 +229,6 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         parts = urlsplit(meet_url)
         if parts.scheme != "https" or parts.hostname != "meet.google.com":
             raise NotificationError("Enlace Meet inválido")
-    meet_notice = (
-        "<tr><td style='padding:4px 30px 16px'>"
-        "<p style='font-weight:bold'>Enlace de videollamada Google Meet:</p>"
-        "<a href='" + esc(meet_url) + "'>" + esc(meet_url) + "</a>"
-        "</td></tr>" if meet_url else ""
-    )
     intro = esc(description)
     html = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
@@ -280,7 +275,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         "</p><p style='margin:14px 0 0'>Adjuntamos una invitación de calendario "
         "para que puedas incorporar el horario a tu agenda.</p>"
         "</td></tr>"
-        + meet_notice + rebooking_button +
+        + rebooking_button +
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
         "padding:20px 30px;font-size:12px;line-height:1.7;"
         "color:#577166'><strong style='color:#194a3a'>"
