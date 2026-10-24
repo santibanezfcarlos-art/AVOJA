@@ -232,9 +232,17 @@ class CalendarWriter:
             "extendedProperties": {"private": {
                 "psychology_hold_id": hold_id, "psychology_service": service}},
         }
+        # Meet is opt-in: never invent a URL or risk existing booking flow.
+        meet_requested = os.environ.get("PSICOLOGIA_GOOGLE_MEET_ENABLED") == "true"
+        params = {"sendUpdates": "none"}
+        if meet_requested:
+            body["conferenceData"] = {"createRequest": {
+                "requestId": "psc-" + uuid.uuid4().hex,
+                "conferenceSolutionKey": {"type": "hangoutsMeet"}}}
+            params["conferenceDataVersion"] = 1
         try:
             response = self.transport(
-                "POST", self._calendar_path, {"sendUpdates": "none"}, body)
+                "POST", self._calendar_path, params, body)
         except CalendarHttpError as error:
             if error.status != 409:
                 raise
@@ -245,6 +253,24 @@ class CalendarWriter:
                 or not _owns(response, hold_id, start=start, end=end, service=service)):
             raise CalendarIntegrationError("No se pudo verificar la cita creada en Google")
         return event_id
+
+    def get_meet_link(self, hold_id):
+        """Get a verified Google-generated meeting URL for this own event."""
+        self._check()
+        event_id = event_id_for_hold(hold_id)
+        event = self.transport("GET", self._calendar_path + "/" + event_id, {}, None)
+        if not _owns(event, hold_id):
+            raise CalendarIntegrationError("Evento de otra reserva")
+        url = event.get("hangoutLink")
+        if not url:
+            for item in (event.get("conferenceData") or {}).get("entryPoints", []):
+                if item.get("entryPointType") == "video":
+                    url = item.get("uri")
+                    break
+        from urllib.parse import urlsplit
+        if not isinstance(url, str) or urlsplit(url).scheme != "https" or urlsplit(url).hostname != "meet.google.com":
+            return None
+        return url
 
     def reschedule_own_appointment(self, *, hold_id, service, old_start, old_end, new_start, new_end):
         """Change only a verified event owned by this reservation.
