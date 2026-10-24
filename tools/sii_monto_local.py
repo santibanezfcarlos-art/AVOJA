@@ -231,37 +231,38 @@ def main():
                         # Identificar el control final, sin presionarlo.
                         # El botón final debe ser interactivo, visible, único
                         # y estar en el formulario posterior al teclado.
-                        buttons = page.locator("button, input[type='submit'], [role='button']")
-                        final_candidates = []
-                        for bi in range(min(buttons.count(), 100)):
-                            btn = buttons.nth(bi)
-                            if not btn.is_visible():
-                                continue
-                            label = (btn.get_attribute("value") or btn.inner_text(timeout=500)).strip()
-                            if re.fullmatch("emitir", label, flags=re.I):
-                                final_candidates.append(btn)
-                        print("Botones finales EMITIR visibles:", len(final_candidates))
-                        # Inspeccionar solo metadatos de controles, nunca datos privados.
-                        # Algunas versiones del portal presentan dos botones homónimos.
-                        for index, candidate in enumerate(final_candidates[:8], start=1):
-                            meta = candidate.evaluate("""el => ({
-                                tag: el.tagName.toLowerCase(),
-                                type: el.getAttribute('type') || '',
-                                enabled: !el.disabled,
-                                form: !!el.closest('form'),
-                                visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-                            })""")
-                            print("Candidato EMITIR", index, meta)
-                        if len(final_candidates) != 1:
-                            print("Clic final pendiente: se requiere distinguir los candidatos con seguridad.")
-                        if len(final_candidates) == 1:
-                            button = final_candidates[0]
-                            print("Botón EMITIR final identificado:", "SÍ")
-                            print("Botón habilitado:", "SÍ" if button.is_enabled() else "NO")
-                            print("Tipo HTML:", button.evaluate("(el) => el.tagName.toLowerCase()"))
-                            print("Preparado para integrar un clic futuro; NO se pulsa en esta prueba.")
+                        # Esperar a que React valide RUT y nombre.
+                        page.wait_for_timeout(1200)
+                        # Buscar texto EMITIR de forma exacta, normalizando
+                        # mayúsculas y espacios, y subir a su control pulsable.
+                        # Evita confundir el botón con el span interior.
+                        result = page.evaluate("""() => {
+                          const nodes = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]'));
+                          const matches = nodes.filter(el => {
+                            const text = (el.value || el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                            const rect = el.getBoundingClientRect();
+                            return text === 'emitir' && rect.width > 0 && rect.height > 0;
+                          });
+                          return matches.map(el => {
+                            const r = el.getBoundingClientRect();
+                            return {
+                              tag: el.tagName.toLowerCase(),
+                              type: el.getAttribute('type') || '',
+                              disabled: el.matches(':disabled, [aria-disabled="true"]'),
+                              y: Math.round(r.top),
+                              width: Math.round(r.width)
+                            };
+                          });
+                        }""")
+                        print("Botones EMITIR visibles:", len(result))
+                        for idx, item in enumerate(result, 1):
+                            print("Candidato", idx, item)
+                        if len(result) == 1:
+                            print("Botón final identificado:", "SÍ")
+                            print("Botón final habilitado:", "SÍ" if not result[0]["disabled"] else "NO")
+                            print("NO se pulsó el botón final.")
                         else:
-                            print("Botón final no identificado de forma inequívoca. No se pulsa.")
+                            print("Botón final no identificado inequívocamente. No se pulsa.")
                     else:
                         print("No se ingresaron datos ni se confirmó emisión.")
                 print("Diagnóstico de campos visibles (sin valores):")
