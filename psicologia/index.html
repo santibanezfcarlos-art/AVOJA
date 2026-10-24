@@ -623,22 +623,24 @@ async function loadCalendar(){
  try{
   const base=CAL_API+'?from='+from+'&to='+plus(from,20);
   const duration=currentService().minutes;
-  const [res,shortRes]=await Promise.all([
-   fetch(base+'&duration='+duration,{cache:'no-store'}),
-   fetch(base+'&duration=45',{cache:'no-store'})
-  ]);
-  if(res.status===503||shortRes.status===503){
-   if(req===calendarSeq)calendarRetry=setTimeout(loadCalendar,15000);
-   throw Error('Disponibilidad temporalmente no disponible');
-  }
+  const res=await fetch(base+'&duration='+duration,{cache:'no-store'});
+  const shortRes=duration===45?res:await fetch(base+'&duration=45',{cache:'no-store'});
+  if(res.status===503||shortRes.status===503)throw Error('Disponibilidad temporalmente no disponible');
   if(!res.ok||!shortRes.ok)throw Error('Sin conexión');
-  const [data,shortData]=await Promise.all([res.json(),shortRes.json()]);
+  const data=await res.json();
+  const shortData=duration===45?data:await shortRes.json();
   if(data.duration_minutes!==duration||shortData.duration_minutes!==45)throw Error('Duración inesperada');
   if(req!==calendarSeq)return;
   if(data.configured===true&&data.status==='ok'&&shortData.configured===true&&shortData.status==='ok'){calendarState='ready';calendarBlocked=data.blocked||{};calendarBlockedShort=shortData.blocked||{}}
   else if(data.configured===false){calendarState='demo';calendarBlocked={}}
   else throw Error('Respuesta inválida');
- }catch(e){if(req!==calendarSeq)return;calendarState='error';calendarBlocked={}}
+ }catch(e){
+  if(req!==calendarSeq)return;
+  calendarState='error';calendarBlocked={};calendarBlockedShort={};
+  // Fallos de arranque de Render, red o respuestas incompletas: reintentar
+  // automáticamente. No presentar horarios como libres durante el error.
+  calendarRetry=setTimeout(()=>{if(req===calendarSeq)loadCalendar()},6000);
+}
  if(hold&&calendarState==='ready'&&(hold.expires<=Date.now()||hold.service!==selectedService||calendarBusy(hold.date,hold.time)||localBusy(hold.date,hold.time)||booked(hold.date).length>=MAX||!schedule(hold.date).includes(hold.time)||!fitsSlot(hold.time)||past(hold.date,hold.time))){
   hold=null;message('El horario seleccionado expiró o ya no está disponible. Elige otra hora.');
  }
@@ -835,7 +837,23 @@ if(returning&&(location.search.includes('wp_demo=')||location.search.includes('w
  chosen=returning.date;start=monday(chosen);
 }
 updateBillingDetail();render();renderAdmin();
-loadBookingSettings().then(loadCalendar).then(processDemoReturn).catch(()=>{paymentStatus('No se pudo cargar la configuración. Actualiza la página.');processDemoReturn()});
+// No bloquear la consulta del calendario si la configuración comercial tarda.
+// Reintentar la configuración tras un arranque en frío de Render.
+let settingsRetry=null;
+async function initializeBooking(){
+ try{
+  await loadBookingSettings();
+  if(settingsRetry){clearTimeout(settingsRetry);settingsRetry=null;}
+ }catch(e){
+  configurationReady=false;
+  paymentStatus('Actualizando configuración de la agenda. Reintentando automáticamente…');
+  settingsRetry=setTimeout(initializeBooking,6000);
+  return;
+ }
+ await processDemoReturn();
+}
+loadCalendar();
+initializeBooking();
 checkWebpayConfig();
 })();
 </script>
