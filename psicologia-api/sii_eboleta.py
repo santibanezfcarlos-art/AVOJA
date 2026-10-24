@@ -115,8 +115,21 @@ def authenticate_sii() -> dict:
                     'input[type="password"]', 'input[name="clave"]',
                 ])
                 if rut_input is None or pass_input is None:
+                    from urllib.parse import urlparse
+                    host = urlparse(page.url).hostname or "desconocido"
+                    # Collect only counts/types, never values, page text, credentials or cookies.
+                    inputs = page.locator("input")
+                    input_types = {}
+                    for index in range(min(inputs.count(), 25)):
+                        field_type = (inputs.nth(index).get_attribute("type") or "text").lower()
+                        if field_type not in ("text", "password", "hidden", "email", "number", "submit"):
+                            field_type = "otro"
+                        input_types[field_type] = input_types.get(field_type, 0) + 1
                     return {"status": "login_form_unrecognized", "emitted": False,
-                            "message": "No se encontraron ambos campos de ingreso. Puede haber redirección, carga diferida o un formulario distinto."}
+                            "message": "Página recibida desde SII; diagnóstico seguro de formulario.",
+                            "diagnostic": {"host": host, "rut_found": rut_input is not None,
+                                           "password_found": pass_input is not None,
+                                           "input_types": input_types, "iframe_count": page.locator("iframe").count()}}
                 stage = "completar formulario de acceso"
                 rut_input.fill(rut)
                 pass_input.fill(password)
