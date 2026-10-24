@@ -165,7 +165,7 @@ def start_demo():
         if payments_paused():
             return _page("Pagos pausados", "Los nuevos intentos de pago están pausados por administración.", status=503)
         admin_config, _ = settings()
-    except (RuntimeError, sqlite3.Error, OSError):
+    except (RuntimeError, sqlite3.Error, OSError, KeyError):
         return _page("Configuración no disponible", "Intenta más tarde.", status=503)
     service = request.form.get("service", "")
     pricing = admin_config['services'].get(service)
