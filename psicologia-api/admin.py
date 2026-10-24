@@ -123,10 +123,8 @@ def manage_settings():
         if not isinstance(body,dict) or type(body.get('version')) is not int:
             raise ValueError('Versión inválida. Recarga el panel.')
         data=validate(body.get('settings'))
-        import webpay_demo_bridge as bridge
-        if True:  # The reservation service owns prices, durations and capacity.
-            if data['maxPerDay'] != 3 or any(data['services'][k][f] != DEFAULT['services'][k][f] for k in DEFAULT['services'] for f in ('price','minutes')):
-                raise ValueError('Precio, duración y cupos requieren sincronización con el sistema de reservas.')
+        if data['maxPerDay'] != 3:
+            raise ValueError('El máximo permitido sigue siendo tres atenciones diarias.')
     except (ValueError,TypeError,KeyError) as exc:
         return jsonify(error=str(exc)),400
     settings()  # Ensure schema before beginning the write transaction.
