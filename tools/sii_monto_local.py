@@ -56,7 +56,8 @@ def main():
             emitir = page.get_by_text(re.compile("emitir", re.I)).first
             try:
                 page.get_by_text("7", exact=True).first.wait_for(state="visible", timeout=25000)
-                emitir.wait_for(state="visible", timeout=25000)
+                if not any(emitir_candidate.is_visible() for emitir_candidate in [page.get_by_text(re.compile("emitir", re.I)).nth(i) for i in range(min(page.get_by_text(re.compile("emitir", re.I)).count(), 10))]):
+                    raise RuntimeError("No se encontró un control visible de emisión.")
             except Exception:
                 print("No se confirmó la pantalla de monto del SII.")
                 print("Dominio final:", urlparse(page.url).hostname or "desconocido")
