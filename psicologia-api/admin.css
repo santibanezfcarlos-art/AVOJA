@@ -130,3 +130,9 @@ h1{font-family:Georgia,serif;font-size:38px}
 .toolbar button,.primary,.button{border-radius:12px}
 @media(max-width:850px){aside{border-radius:0;padding:14px 18px}aside .brand{border:0;padding:0}
  main>header{padding-top:14px}}
+
+/* Tipografía consistente con la portada pública PSC */
+h1,h2,h3,.metric strong{font-family:Inter,system-ui,-apple-system,'Segoe UI',Arial,sans-serif}
+h1{font-weight:800;letter-spacing:-.035em}
+h2,h3{font-weight:750}
+.metric strong{font-weight:800}
