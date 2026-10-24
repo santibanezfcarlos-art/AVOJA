@@ -140,21 +140,24 @@ def template(role, order, service, start, end, *, correction=False):
     duration = round((end - start).total_seconds() / 60)
     name, subtitle, contact, website = _brand()
     is_pro = role == "professional"
-    subject = (("PRUEBA · Nueva reserva · " if is_pro
-                else "PRUEBA · Confirmación de tu hora · ")
+    subject = (("Nueva sesión agendada · " if is_pro
+                else "Tu hora está reservada · ")
                + service_name + " · " + date_label + " · " + hour_label + " h")
     if correction:
         subject = "CORRECCIÓN DE HORARIO · " + subject
-    heading = "Nueva reserva registrada" if is_pro else "Tu reserva está confirmada"
-    description = ("Se ha registrado una nueva reserva de prueba en tu agenda."
+    heading = "Tienes una nueva sesión agendada" if is_pro else "¡Tu hora está reservada!"
+    description = ("Se ha agendado una nueva atención en tu calendario. "
+                   "Aquí tienes los detalles para organizar tu jornada."
                    if is_pro else
-                   "Tu solicitud fue confirmada. Aquí encontrarás los datos "
-                   "de la atención que reservaste.")
-    notes = ("Puedes revisar el evento en tu Google Calendar."
+                   "¡Felicitaciones por dar este paso! Tomarte un tiempo "
+                   "para ti y buscar orientación es una decisión importante. "
+                   "Tu horario quedó reservado y estos son los detalles.")
+    notes = ("La sesión ya figura en Google Calendar. "
+             "Puedes revisar tu agenda para planificar la atención."
              if is_pro else
-             "La atención será online. Procura contar con una conexión estable "
-             "y un espacio privado. El enlace de acceso todavía no se genera "
-             "automáticamente en esta versión de prueba.")
+             "La atención será online. Te recomendamos buscar un lugar privado "
+             "y tranquilo, con conexión estable, y conectarte unos minutos antes. "
+             "Las instrucciones de conexión se enviarán por separado.")
     summary = hour_label + "–" + end_label
     correction_notice = (
         "<tr><td style='padding:15px 25px;background:#fff2e5;"
@@ -175,7 +178,6 @@ def template(role, order, service, start, end, *, correction=False):
         field("Hora (Chile)", summary),
         field("Duración", str(duration) + " minutos"),
         field("Modalidad", "Online"),
-        field("Referencia", order),
     ])
     intro = esc(description)
     html = (
@@ -199,7 +201,7 @@ def template(role, order, service, start, end, *, correction=False):
         "color:#d3e6db'>" + esc(subtitle) + "</div></td></tr>"
         "<tr><td style='padding:18px 30px 2px;color:#4d8268;"
         "font-size:12px;font-weight:bold;letter-spacing:1.6px'>"
-        "CONFIRMACIÓN DE RESERVA · PRUEBA</td></tr>"
+        + ("NUEVA ATENCIÓN AGENDADA" if is_pro else "CONFIRMACIÓN DE RESERVA") + "</td></tr>"
         + correction_notice +
         "<tr><td style='padding:12px 30px 4px'>"
         "<h1 style='font-size:27px;line-height:1.2;margin:0;color:#194a3a'>"
@@ -217,11 +219,11 @@ def template(role, order, service, start, end, *, correction=False):
         "<tr><td style='padding:2px 30px 22px;font-size:14px;"
         "line-height:1.7;color:#4b665a'>"
         + esc(notes) + "<p style='margin:15px 0 0'>"
-        "<strong>PRUEBA TÉCNICA — SIN COBRO REAL.</strong> "
-        "Esta reserva corresponde exclusivamente al ambiente de integración "
-        "de Transbank; no representa una sesión pagada ni se ha emitido boleta."
-        "</p><p style='margin:14px 0 0'>Se adjunta un archivo de calendario "
-        "para facilitar el registro personal de la hora de prueba.</p>"
+        "<span style='font-size:12px;color:#71867a'>"
+        "Reserva realizada en ambiente de demostración: el pago es simulado "
+        "y no se ha emitido boleta.</span>"
+        "</p><p style='margin:14px 0 0'>Adjuntamos una invitación de calendario "
+        "para que puedas incorporar el horario a tu agenda.</p>"
         "</td></tr>"
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
         "padding:20px 30px;font-size:12px;line-height:1.7;"
@@ -230,8 +232,7 @@ def template(role, order, service, start, end, *, correction=False):
         + esc(contact) + " · <a href='" + esc(website)
         + "' style='color:#276b50;text-decoration:underline'>"
         + esc(website.replace("https://", "")) + "</a><br>"
-        "Notificación automática relativa a una reserva de prueba. "
-        "No contiene antecedentes clínicos."
+        "Notificación automática de reserva. No incluye antecedentes clínicos."
         "</td></tr></table></td></tr></table></body></html>"
     )
     return subject, html
@@ -247,7 +248,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
         raise NotificationError("Destinatario no permitido")
     subject, body = template(role, order, service, start, end, correction=correction)
     attachment = {
-        "filename": "reserva-prueba.ics",
+        "filename": "reserva.ics",
         "content": base64.b64encode(ics_text(hold_id,start,end).encode("utf-8")).decode("ascii"),
         "content_type": "text/calendar",
     }
@@ -257,16 +258,15 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
                    "empleabilidad":"Asesoría en empleabilidad",
                    "competencias":"Potencia tus competencias"}[service]
     name, subtitle, contact, website = _brand()
-    plain = (("Nueva reserva de prueba" if role=="professional" else
-              "Confirmación de reserva de prueba") + "\n"
+    plain = (("Tienes una nueva sesión agendada" if role=="professional" else
+              "¡Felicitaciones por dar este paso! Tu hora está reservada.") + "\n"
              + "Profesional: " + name + "\n"
              + "Servicio: " + service_title + "\n"
              + "Fecha: " + local_start.strftime("%d/%m/%Y") + "\n"
              + "Hora (Chile): " + local_start.strftime("%H:%M") + "–"
              + local_end.strftime("%H:%M") + "\n"
              + "Modalidad: Online\n"
-             + "Orden: " + order + "\n"
-             + "PRUEBA TÉCNICA — SIN COBRO REAL. No se emitió boleta.\n"
+             + "Pago simulado en ambiente de demostración; no se emitió boleta.\n"
              + "Contacto: " + contact + "\n" + website)
     payload = {"from": FROM, "to": [email], "subject": subject,
                "html": body, "text": plain, "attachments": [attachment]}
