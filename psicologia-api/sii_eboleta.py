@@ -57,8 +57,12 @@ def authenticate_sii() -> dict:
         raise SiiAutomationError("Automatización SII deshabilitada en Render.")
     rut = os.getenv("SII_RUT", "").strip().replace(".", "")
     password = os.getenv("SII_PASSWORD", "")
-    if not RUT_PATTERN.fullmatch(rut) or not password:
-        raise SiiAutomationError("Faltan SII_RUT o SII_PASSWORD válidos.")
+    if not rut:
+        raise SiiAutomationError("SII_RUT no está disponible para este servicio.")
+    if not RUT_PATTERN.fullmatch(rut):
+        raise SiiAutomationError("SII_RUT está presente, pero el formato no es válido: usa 12345678-9.")
+    if not password:
+        raise SiiAutomationError("SII_PASSWORD no está disponible para este servicio.")
 
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
