@@ -64,7 +64,7 @@ def no_cache(response):
 def appointment(day, hour):
     if not isinstance(day, str) or not isinstance(hour, str):
         raise ValueError()
-    if not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", day) or not re.fullmatch(r"\\d{2}:\\d{2}", hour):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) or not re.fullmatch(r"\d{2}:\d{2}", hour):
         raise ValueError()
     result = datetime.fromisoformat(day + "T" + hour).replace(tzinfo=TZ)
     if result.strftime("%Y-%m-%d") != day or result.strftime("%H:%M") != hour:
