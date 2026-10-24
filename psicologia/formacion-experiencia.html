@@ -415,6 +415,11 @@ main.site-main{max-width:1220px;padding:0 30px 50px}
 header.site-header a.brand{color:inherit;text-decoration:none}
 header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offset:3px;border-radius:12px}
 
+/* Cuatro tarjetas equilibradas en escritorio; dos en tablet y una en móvil */
+@media(min-width:1200px){.training-experience-cards{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:700px) and (max-width:1199px){.training-experience-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:699px){.training-experience-cards{grid-template-columns:minmax(0,1fr)}}
+.training-experience-cards>.training-panel{min-width:0}
 /* Listado compacto de temáticas de relatoría */
 .training-topic-list{margin:10px 0 0;padding-left:19px;list-style:disc}.training-topic-list li{margin:5px 0;line-height:1.5}
 </style>
@@ -493,16 +498,20 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
     <ul class="training-experience-list">
      <li><strong>Selección de personal y evaluación psicolaboral</strong><span>Experiencia en procesos de selección y evaluación de cargos operativos, técnicos, profesionales, jefaturas y puestos directivos, para organizaciones de diversos rubros. Realización de entrevistas por competencias, Assessment Center, aplicación de pruebas psicológicas y elaboración de informes para apoyar decisiones de selección.</span></li>
      <li><strong>Experiencia en distintos sectores</strong><span>Trabajo profesional vinculado con instituciones públicas, empresas privadas y organizaciones de sectores como minería, banca, comercio y servicios. Entre las organizaciones y contextos atendidos a lo largo de mi trayectoria se encuentran Municipalidad de Las Condes, Superintendencia de Pensiones, BancoEstado, Banco Falabella, Mina Invierno, Cencosud y Rotter &amp; Krauss, en distintas modalidades de evaluación, asesoría o atención psicológica.</span></li>
-     <li><strong>Relatorías y desarrollo de competencias</strong><span>Experiencia en actividades de formación y capacitación para fortalecer habilidades laborales e interpersonales, abordando temáticas como:</span>
-      <ul class="training-topic-list">
-       <li>Trabajo en equipo y colaboración.</li>
-       <li>Planificación y organización del trabajo.</li>
-       <li>Comunicación efectiva.</li>
-       <li>Liderazgo y coordinación de equipos.</li>
-       <li>Resolución de conflictos y relaciones laborales.</li>
-       <li>Desarrollo de competencias y empleabilidad.</li>
-      </ul>
-     </li>
+
+    </ul>
+   </article>
+   <article class="training-panel">
+    <div class="training-label">Área de capacitación y relatorías</div>
+    <h3>Relatorías y desarrollo de competencias</h3>
+    <p class="training-context">Actividades de formación orientadas a fortalecer habilidades laborales e interpersonales, con temáticas como:</p>
+    <ul class="training-topic-list">
+     <li>Trabajo en equipo y colaboración.</li>
+     <li>Planificación y organización del trabajo.</li>
+     <li>Comunicación efectiva.</li>
+     <li>Liderazgo y coordinación de equipos.</li>
+     <li>Resolución de conflictos y relaciones laborales.</li>
+     <li>Desarrollo de competencias y empleabilidad.</li>
     </ul>
    </article>
   </div>
