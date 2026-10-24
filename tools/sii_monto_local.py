@@ -181,7 +181,16 @@ def main():
                             "Detalle": "detalle",
                         }
                         for label_text, key in fields.items():
-                            loc = page.get_by_label(label_text, exact=True).locator("xpath=self::input | self::textarea") if key == "detalle" else page.get_by_label(label_text, exact=True)
+                            if key == "detalle":
+                                # El texto "Detalle" corresponde tanto a un checkbox
+                                # como a un campo de texto. Cruce de selectores:
+                                # nunca seleccionar por el texto solamente.
+                                loc = page.get_by_label(label_text, exact=True).and_(
+                                    page.locator('input[type="text"], textarea')
+                                )
+                                print("Candidatos de texto Detalle:", loc.count())
+                            else:
+                                loc = page.get_by_label(label_text, exact=True)
                             found = [loc.nth(i) for i in range(min(loc.count(), 8)) if loc.nth(i).is_visible()]
                             if len(found) != 1:
                                 print("Campo ambiguo:", label_text, "- se detiene sin confirmar emisión.")
