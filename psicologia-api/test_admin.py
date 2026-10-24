@@ -26,6 +26,16 @@ class AdminTests(unittest.TestCase):
   for field,value in [('maxPerDay',4),('weekly',{}),('services',{}),('exceptions',{'bad':{'closed':True,'slots':[]}})]:
    data=copy.deepcopy(admin.DEFAULT);data[field]=value
    self.assertEqual(self.post('/admin/settings',{'settings':data,'version':0}).status_code,400)
+ def test_prices_and_duration_are_editable_and_persisted(self):
+  data=copy.deepcopy(admin.DEFAULT)
+  data['services']['psicoterapia']['price']=35000
+  data['services']['psicoterapia']['minutes']=60
+  result=self.post('/admin/settings',{'settings':data,'version':0})
+  self.assertEqual(result.status_code,200,result.get_data(as_text=True))
+  public=self.client.get('/api/booking-config').json['settings']
+  self.assertEqual(public['services']['psicoterapia']['price'],35000)
+  self.assertEqual(public['services']['psicoterapia']['minutes'],60)
+
  def test_csrf(self):
   self.assertEqual(self.client.post('/admin/settings',auth=self.auth,json={}).status_code,403)
  def test_transbank_secret_and_pause(self):
