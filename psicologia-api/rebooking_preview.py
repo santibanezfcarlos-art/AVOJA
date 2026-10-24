@@ -145,6 +145,27 @@ def status(token):
                    time=row["starts_at"].astimezone(TZ).strftime("%H:%M"))
 
 
+
+def configured_slots(day_text):
+    """Use the same weekly hours, closures and exceptions as the admin panel."""
+    import json
+    from urllib.request import Request, urlopen
+    from datetime import date
+    day=date.fromisoformat(day_text)
+    req=Request("https://psicologia-carlos-calendar-api.onrender.com/api/booking-config",
+                headers={"Accept":"application/json"})
+    with urlopen(req,timeout=8) as response:
+        config=json.loads(response.read(40000))["settings"]
+    weekday=(day.weekday()+1)%7
+    exception=config.get("exceptions",{}).get(day_text)
+    if exception is not None:
+        times=[] if exception.get("closed") else exception["slots"]
+    elif weekday in config.get("closedWeekdays",[]):
+        times=[]
+    else:
+        times=config["weekly"][str(weekday)]
+    return set(times),int(config.get("maxPerDay",3))
+
 @rebooking_bp.get("/api/reagendar/<token>/horarios")
 def available_hours(token):
     if not enabled():
@@ -166,14 +187,14 @@ def available_hours(token):
                   (status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')
                    AND expires_at>now()))""",(day,payment["hold_id"])).fetchall()
         windows=[(r["starts_at"],r["ends_at"]) for r in rows]
+        allowed,maximum=configured_slots(day_text)
         hours=[]
-        for h in range(9,20):
-            hour=f"{h:02d}:00"
+        for hour in sorted(allowed):
             try:
                 _,start,end=slot_window(payment["service"],day_text,hour)
             except HoldProblem:
                 continue
-            if can_hold(windows,start,end) and _calendar_free(start,end):
+            if can_hold(windows,start,end,max_daily=maximum) and _calendar_free(start,end):
                 hours.append(hour)
         return jsonify(hours=hours,date=day_text)
     except (ValueError,TypeError):
@@ -193,11 +214,14 @@ def availability(token):
             payment=conn.execute("SELECT service FROM psychology_demo_payments WHERE order_id=%s",
                                  (row["order_id"],)).fetchone()
         day,start,end=slot_window(payment["service"],request.args.get("date"),request.args.get("time"))
+        allowed,maximum=configured_slots(day.isoformat())
+        if request.args.get("time") not in allowed:
+            return jsonify(available=False,message="Horario no habilitado en la agenda."),200
         if not _calendar_free(start,end):
             return jsonify(available=False,message="Horario ocupado.")
         with _database_connection() as conn:
             windows=_active_windows(conn,day)
-        free=can_hold(windows,start,end)
+        free=can_hold(windows,start,end,max_daily=maximum)
         return jsonify(available=free,message=("Horario disponible para consulta." if free else "Horario no disponible."))
     except Exception:
         return jsonify(message="No se pudo confirmar disponibilidad."),503
@@ -229,6 +253,9 @@ def confirm(token):
             if state!="eligible" or payment["state"]!="CONFIRMED":
                 return jsonify(message="La reprogramación no está disponible."),409
             day,start,end=slot_window(payment["service"],body.get("date"),body.get("time"))
+            allowed,maximum=configured_slots(day.isoformat())
+            if body.get("time") not in allowed:
+                return jsonify(message="Este horario no está habilitado."),409
             old_start,old_end=payment["starts_at"],payment["ends_at"]
             if start==old_start:
                 return jsonify(message="Elige un horario diferente."),400
@@ -241,7 +268,7 @@ def confirm(token):
                        (status='CONFIRMED' OR (status IN
                        ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED') AND expires_at>now()))""",
                        (day,payment["hold_id"])).fetchall()
-            if not can_hold([(w["starts_at"],w["ends_at"]) for w in windows],start,end):
+            if not can_hold([(w["starts_at"],w["ends_at"]) for w in windows],start,end,max_daily=maximum):
                 return jsonify(message="La hora ya no está disponible."),409
             # Calendar writes are allowed only in isolated pilot mode.
             writer=CalendarWriter()
