@@ -79,7 +79,7 @@ function welcomeCarousel() {
   const groups=order.map(id=>officeGallery.find(group=>group.id===id)).filter(Boolean);
   const slides=groups.flatMap(group=>group.photos.map(photo=>({...photo,title:group.title})));
   if(!slides.length)return '';
-  return `<section class="welcome-carousel" role="region" aria-roledescription="carrusel" aria-label="Fotos de Valhalla Office"><button type="button" class="welcome-photo-frame" id="welcome-photo-next" aria-label="Ver la siguiente foto de Valhalla Office"><img id="welcome-photo" src="${escapeHTML(slides[0].image_url)}" alt="${escapeHTML(slides[0].alt)}" decoding="async" fetchpriority="high"></button><div class="welcome-photo-caption"><div><span class="eyebrow">CONOCE TU PRÓXIMO ESPACIO</span><strong id="welcome-photo-title">${escapeHTML(slides[0].title)}</strong></div><span id="welcome-photo-count">1 / ${slides.length}</span></div><div class="welcome-carousel-controls"><button type="button" id="welcome-previous" aria-label="Mostrar foto anterior">←</button><div class="welcome-dots" role="group" aria-label="Elegir foto">${slides.map((slide,index)=>`<button type="button" data-slide="${index}" aria-label="Foto ${index+1}: ${escapeHTML(slide.title)}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" id="welcome-next" aria-label="Mostrar foto siguiente">→</button><button type="button" id="welcome-pause" aria-label="Pausar carrusel" aria-pressed="false">Pausar</button></div></section>`;
+  return `<section class="welcome-carousel" role="region" aria-roledescription="carrusel" aria-label="Fotos de Valhalla Office"><div class="welcome-photo-stage"><button type="button" class="welcome-photo-frame" id="welcome-photo-next" aria-label="Ver la siguiente foto de Valhalla Office"><img id="welcome-photo" src="${escapeHTML(slides[0].image_url)}" alt="${escapeHTML(slides[0].alt)}" decoding="async" fetchpriority="high"></button><button type="button" class="welcome-photo-arrow welcome-photo-previous" id="welcome-previous" aria-label="Mostrar foto anterior">‹</button><button type="button" class="welcome-photo-arrow welcome-photo-following" id="welcome-next" aria-label="Mostrar foto siguiente">›</button></div><div class="welcome-photo-caption"><div><span class="eyebrow">CONOCE TU PRÓXIMO ESPACIO</span><strong id="welcome-photo-title">${escapeHTML(slides[0].title)}</strong></div><span id="welcome-photo-count">1 / ${slides.length}</span></div><div class="welcome-carousel-controls"><div class="welcome-dots" role="group" aria-label="Elegir foto">${slides.map((slide,index)=>`<button type="button" data-slide="${index}" aria-label="Foto ${index+1}: ${escapeHTML(slide.title)}" aria-pressed="${index===0}"></button>`).join('')}</div></div></section>`;
 }
 function bindWelcomeCarousel() {
   disposeWelcomeCarousel();
@@ -87,10 +87,8 @@ function bindWelcomeCarousel() {
   const order=['box-1','box-2','box-infantil','recepcion','entrada'];
   const slides=order.flatMap(id=>{const group=officeGallery.find(group=>group.id===id);return group?group.photos.map(photo=>({...photo,title:group.title})):[];});
   const image=carousel.querySelector('#welcome-photo');
-  const pause=carousel.querySelector('#welcome-pause');
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-  let index=0,timer=null,paused=reduced.matches,hovered=false,focused=false,gesture=null,suppressClick=false;
-  const stop=()=>{clearInterval(timer);timer=null;};
+  let index=0,gesture=null,suppressClick=false;
   const paint=()=>{
     const slide=slides[index];image.src=slide.image_url;image.alt=slide.alt;
     image.classList.remove('slide-arrival');if(!reduced.matches)requestAnimationFrame(()=>image.isConnected&&image.classList.add('slide-arrival'));
@@ -98,9 +96,7 @@ function bindWelcomeCarousel() {
     carousel.querySelector('#welcome-photo-count').textContent=`${index+1} / ${slides.length}`;
     carousel.querySelectorAll('[data-slide]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.slide)===index)));
   };
-  const schedule=()=>{stop();if(!paused&&!hovered&&!focused&&!gesture&&!document.hidden&&slides.length>1)timer=setInterval(()=>{if(!carousel.isConnected){stop();return;}index=(index+1)%slides.length;paint();},5000);};
-  const show=next=>{index=(next+slides.length)%slides.length;paint();schedule();};
-  const updatePause=()=>{pause.textContent=paused?'Reanudar':'Pausar';pause.setAttribute('aria-label',paused?'Reanudar carrusel':'Pausar carrusel');pause.setAttribute('aria-pressed',String(paused));};
+  const show=next=>{index=(next+slides.length)%slides.length;paint();};
   carousel.querySelector('#welcome-previous').onclick=()=>show(index-1);
   carousel.querySelector('#welcome-next').onclick=()=>show(index+1);
   const frame=carousel.querySelector('#welcome-photo-next');
@@ -110,34 +106,27 @@ function bindWelcomeCarousel() {
     if(!event.isPrimary||event.button!==0)return;
     suppressClick=false;
     gesture={id:event.pointerId,x:event.clientX,y:event.clientY,vertical:false};
-    frame.setPointerCapture(event.pointerId);schedule();
+    frame.setPointerCapture(event.pointerId);
   };
   frame.onpointermove=event=>{
     if(!gesture||event.pointerId!==gesture.id)return;
     const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);
     if(Math.max(dx,dy)>10)suppressClick=true;
-    if(dy>10&&dy>dx)gesture.vertical=true;
+    if(dy>14&&dy>dx*1.3)gesture.vertical=true;
   };
   frame.onpointerup=event=>{
     if(!gesture||event.pointerId!==gesture.id)return;
     const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y;
-    const swipe=!gesture.vertical&&Math.abs(dx)>=40&&Math.abs(dx)>Math.abs(dy)*1.25;
+    const swipe=!gesture.vertical&&Math.abs(dx)>=24&&Math.abs(dx)>Math.abs(dy)*1.25;
     suppressClick=suppressClick||Math.max(Math.abs(dx),Math.abs(dy))>10;
     gesture=null;
     if(frame.hasPointerCapture(event.pointerId))frame.releasePointerCapture(event.pointerId);
-    if(swipe)show(index+(dx<0?1:-1));else schedule();
+    if(swipe)show(index+(dx<0?1:-1));
   };
-  const cancelGesture=event=>{if(gesture&&event.pointerId===gesture.id){gesture=null;suppressClick=true;schedule();}};
+  const cancelGesture=event=>{if(gesture&&event.pointerId===gesture.id){gesture=null;suppressClick=true;}};
   frame.onpointercancel=cancelGesture;frame.onlostpointercapture=cancelGesture;
   carousel.querySelectorAll('[data-slide]').forEach(button=>button.onclick=()=>show(Number(button.dataset.slide)));
-  pause.onclick=()=>{paused=!paused;updatePause();schedule();};
-  carousel.onmouseenter=()=>{hovered=true;schedule();};carousel.onmouseleave=()=>{hovered=false;schedule();};
-  carousel.onfocusin=()=>{focused=true;schedule();};carousel.onfocusout=event=>{focused=carousel.contains(event.relatedTarget);schedule();};
   carousel.onkeydown=event=>{if(event.key==='ArrowRight'){event.preventDefault();show(index+1);}if(event.key==='ArrowLeft'){event.preventDefault();show(index-1);}};
-  const visibility=()=>schedule();const preference=()=>{if(reduced.matches)paused=true;updatePause();schedule();};
-  document.addEventListener('visibilitychange',visibility);reduced.addEventListener('change',preference);
-  disposeWelcomeCarousel=()=>{stop();document.removeEventListener('visibilitychange',visibility);reduced.removeEventListener('change',preference);disposeWelcomeCarousel=()=>{};};
-  updatePause();schedule();
 }
 function auth(register = false, administrator = false) {
   adminData=null;
