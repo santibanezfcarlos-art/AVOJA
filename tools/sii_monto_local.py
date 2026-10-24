@@ -147,6 +147,20 @@ def main():
                     print("Campo", idx + 1, "tipo:", field_type, "id:", field_id,
                           "etiqueta:", repr(label), "placeholder:", repr(placeholder),
                           "aria:", repr(aria))
+                print("Estructura de grupos del formulario (etiquetas, sin valores):")
+                groups = page.locator("fieldset, [role='group'], .MuiFormControl-root")
+                for gi in range(min(groups.count(), 30)):
+                    group = groups.nth(gi)
+                    if not group.is_visible():
+                        continue
+                    labels = group.locator("label, legend, .MuiFormLabel-root")
+                    names = []
+                    for li in range(min(labels.count(), 8)):
+                        label_text = labels.nth(li).inner_text(timeout=500).strip()
+                        if label_text and len(label_text) < 100 and label_text not in names:
+                            names.append(label_text)
+                    if names:
+                        print("Grupo", gi + 1, ":", " | ".join(names))
                 print("Nota: IDs numéricos de MUI pueden cambiar; usaremos etiquetas estables.")
                 print("No se confirma ninguna etapa posterior.")
             else:
