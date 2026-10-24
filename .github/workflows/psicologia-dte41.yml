@@ -1,0 +1,18 @@
+name: PSC DTE41 integration tests
+on:
+  pull_request:
+    branches: [psicologia-carlos]
+    paths: ['psicologia-api/**', '.github/workflows/psicologia-dte41.yml']
+  push:
+    branches: [psicologia-dte41-preparacion]
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r psicologia-api/requirements.txt
+      - run: python -m unittest -v test_dte test_billing test_admin test_webpay_demo_bridge tests.test_calendar_refresh
+        working-directory: psicologia-api

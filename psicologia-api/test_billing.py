@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import billing
@@ -27,7 +27,10 @@ class BillingTests(unittest.TestCase):
         self.form = dict(service='psicoterapia', billing_required='1', billing_rut='12.345.678-5',
                          billing_name='Persona de prueba', billing_address='Dirección ficticia 123',
                          billing_email='prueba@example.invalid', billing_phone='+56912345678')
+        self.form.update(date=(datetime.now(ZoneInfo('America/Santiago'))+timedelta(days=3)).date().isoformat(),time='10:00',test_email_ownership='1')
         self.person = billing.receiver(self.form)
+        for target,value in [('webpay_demo.bridge.enabled',True),('webpay_demo.bridge.preflight','READY'),('webpay_demo.bridge.complete','CONFIRMED'),('admin.allowed_slot',True)]:
+            mock=patch(target,return_value=value);mock.start();self.addCleanup(mock.stop)
     def tearDown(self):
         self.env.stop()
         self.tmp.cleanup()
