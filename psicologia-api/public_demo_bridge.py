@@ -141,7 +141,16 @@ def preflight():
                          (email.strip().lower(),)).fetchone()
         if limit["total"] >= 20 or limit["recipient"] >= 4:
             return _reply("TEST_LIMIT_REACHED",429)
-        if not _calendar_free(start,end):
+        try:
+            free=_calendar_free(start,end)
+        except HoldProblem as exc:
+            if exc.status != 503:
+                raise
+            # Una desconexión temporal de Google no debe crear reservas falsas.
+            # Reintentar únicamente la lectura; nunca saltarse la verificación.
+            print("PSICOLOGIA_PREFLIGHT: calendar_read_retry",flush=True)
+            free=_calendar_free(start,end)
+        if not free:
             return _reply("SLOT_UNAVAILABLE",409)
         hold_id,_secret=_new_hold(service,day,start,end)
         with _database_connection() as conn:
