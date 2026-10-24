@@ -95,6 +95,13 @@ def authenticate_sii() -> dict:
                 page.goto(SII_URL, wait_until="domcontentloaded", timeout=30000)
                 if not _safe_host(page.url):
                     raise SiiAutomationError("El portal redirigió fuera de los dominios oficiales del SII.")
+                stage = "esperar redirección de autenticación SII"
+                try:
+                    page.wait_for_url("https://clave.w.sii.cl/**", timeout=15000)
+                except PlaywrightTimeout:
+                    pass
+                if not _safe_host(page.url):
+                    raise SiiAutomationError("Redirección fuera de los dominios oficiales del SII.")
                 stage = "esperar formulario de acceso"
                 try:
                     page.locator('input[type="password"]').first.wait_for(state="visible", timeout=15000)
