@@ -130,7 +130,7 @@ def _communication_copy():
     return {}
 
 
-def template(role, order, service, start, end, *, correction=False, rebooking_url=None, rescheduled=False):
+def template(role, order, service, start, end, *, correction=False, rebooking_url=None, rescheduled=False, patient_name=None):
     """Email institucional, seguro y adaptable al servicio y al profesional.
 
     Fechas siempre en Chile; sin información clínica ni URLs de sesión inventadas.
@@ -160,6 +160,8 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
     subject = (("Nueva sesión agendada · " if is_pro
                 else "Tu hora está reservada · ")
                + service_name + " · " + date_label + " · " + hour_label + " h")
+    if is_pro and patient_name:
+        subject += " · " + patient_name
     if correction:
         subject = "CORRECCIÓN DE HORARIO · " + subject
     if rescheduled:
@@ -200,7 +202,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
                 "font-size:13px;vertical-align:top;width:37%'>"
                 + esc(label) + "</td><td style='padding:9px 0;color:#163f34;"
                 "font-size:15px;font-weight:600'>"+esc(value)+"</td></tr>")
-    table = "".join([
+    table = "".join(([field("Paciente", patient_name)] if is_pro and patient_name else []) + [
         field("Servicio", service_name),
         field("Fecha", long_date),
         field("Hora (Chile)", summary),
@@ -289,7 +291,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
     if (not email or role not in ("professional", "patient")
             or (role == "professional" and email != professional)):
         raise NotificationError("Destinatario no permitido")
-    subject, body = template(role, order, service, start, end, correction=correction, rebooking_url=rebooking_url, rescheduled=rescheduled)
+    subject, body = template(role, order, service, start, end, correction=correction, rebooking_url=rebooking_url, rescheduled=rescheduled, patient_name=patient_name)
     attachment = {
         "filename": "reserva.ics",
         "content": base64.b64encode(ics_text(hold_id,start,end).encode("utf-8")).decode("ascii"),
@@ -308,6 +310,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
              + "Fecha: " + local_start.strftime("%d/%m/%Y") + "\n"
              + "Hora (Chile): " + local_start.strftime("%H:%M") + "–"
              + local_end.strftime("%H:%M") + "\n"
+             + ("Paciente: " + patient_name + "\n" if role=="professional" and patient_name else "")
              + "Modalidad: Online\n"
              + "Pago simulado en ambiente de demostración; no se emitió boleta.\n"
              + ("Reagendar mi atención: " + rebooking_url + "\n" if rebooking_url else "")
