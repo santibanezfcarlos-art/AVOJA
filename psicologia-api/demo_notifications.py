@@ -130,7 +130,7 @@ def _communication_copy():
     return {}
 
 
-def template(role, order, service, start, end, *, correction=False, rebooking_url=None):
+def template(role, order, service, start, end, *, correction=False, rebooking_url=None, rescheduled=False):
     """Email institucional, seguro y adaptable al servicio y al profesional.
 
     Fechas siempre en Chile; sin información clínica ni URLs de sesión inventadas.
@@ -162,7 +162,11 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
                + service_name + " · " + date_label + " · " + hour_label + " h")
     if correction:
         subject = "CORRECCIÓN DE HORARIO · " + subject
+    if rescheduled:
+        subject = "TU ATENCIÓN HA SIDO REAGENDADA · " + service_name + " · " + date_label
     heading = "Tienes una nueva sesión agendada" if is_pro else "¡Tu hora está reservada!"
+    if rescheduled:
+        heading = "Atención reagendada" if is_pro else "¡Tu nueva hora está confirmada!"
     description = ("Se ha agendado una nueva atención en tu calendario. "
                    "Aquí tienes los detalles para organizar tu jornada."
                    if is_pro else
@@ -285,7 +289,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
     if (not email or role not in ("professional", "patient")
             or (role == "professional" and email != professional)):
         raise NotificationError("Destinatario no permitido")
-    subject, body = template(role, order, service, start, end, correction=correction, rebooking_url=rebooking_url)
+    subject, body = template(role, order, service, start, end, correction=correction, rebooking_url=rebooking_url, rescheduled=rescheduled)
     attachment = {
         "filename": "reserva.ics",
         "content": base64.b64encode(ics_text(hold_id,start,end).encode("utf-8")).decode("ascii"),
@@ -321,7 +325,8 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
                      "Accept": "application/json",
                      "User-Agent": "pscsantibanez-reservas/1.0",
                      "Idempotency-Key": "psc-demo-" + order + "-" + role
-                         + ("-tz-correction-v1" if correction else "")})
+                         + ("-tz-correction-v1" if correction else "")
+                         + ("-rescheduled-v1" if rescheduled else "")})
         try:
             with urlopen(request, timeout=12) as response:
                 result = json.loads(response.read(10000).decode("utf-8"))
