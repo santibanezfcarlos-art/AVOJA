@@ -10,6 +10,7 @@ import json
 import os
 import re
 import uuid
+from urllib.request import urlopen
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -65,6 +66,29 @@ def _reply(state,code=200):
     return jsonify(state=state,simulation=True,real_payment=False),code
 
 
+def _commercial_service(service):
+    """Catálogo leído desde la API de administración, nunca desde el navegador."""
+    from booking_holds import CATALOG
+    if os.environ.get("PSICOLOGIA_PILOT_USE_SHARED_CATALOG") != "true":
+        return {"price": CATALOG[service]["amount_clp"],
+                "minutes": CATALOG[service]["minutes"], "active": True}
+    try:
+        with urlopen("https://psicologia-carlos-calendar-api.onrender.com/api/booking-config",
+                     timeout=8) as response:
+            document=json.loads(response.read(16000).decode("utf-8"))
+        entry=document["settings"]["services"][service]
+        price=entry["price"]
+        minutes=entry["minutes"]
+        active=entry["active"]
+        if (type(price) is not int or not 100<=price<=10000000 or
+                type(minutes) is not int or minutes not in (45,60,90) or
+                type(active) is not bool):
+            raise ValueError("invalid catalog")
+        return {"price":price,"minutes":minutes,"active":active}
+    except Exception:
+        return None
+
+
 @public_bridge_bp.post("/internal/psicologia/demo/preflight")
 def preflight():
     data=_authorize()
@@ -81,18 +105,23 @@ def preflight():
     if data.get("email_consent") is not True:
         return _reply("EMAIL_CONSENT_REQUIRED",422)
     from booking_holds import CATALOG
+    if service not in CATALOG:
+        return _reply("INVALID",400)
+    selected=_commercial_service(service)
+    if selected is None:
+        return _reply("CATALOG_UNAVAILABLE",503)
     if (not isinstance(order,str) or not ORDER_PATTERN.fullmatch(order)
             or not isinstance(session,str) or not SESSION_PATTERN.fullmatch(session)
-            or service not in CATALOG
+            or not selected["active"]
             or not isinstance(data.get("amount"),int)
-            or data["amount"]!=CATALOG[service]["amount_clp"]):
+            or data["amount"]!=selected["price"]):
         return _reply("INVALID",400)
     # El propietario puede habilitar correos de ensayo externos. Nunca se
     # envían mensajes sin una compra sandbox aprobada ni fuera del límite.
     if allowed_email(email) is None:
         return _reply("TEST_EMAIL_ONLY",422)
     try:
-        day, start, end=slot_window(service,data.get("date"),data.get("time"))
+        day, start, end=slot_window(service,data.get("date"),data.get("time"),duration_minutes=selected["minutes"])
     except HoldProblem as exc:
         return _reply("INVALID_SLOT",exc.status)
     try:
