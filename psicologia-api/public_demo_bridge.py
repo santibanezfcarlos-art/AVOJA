@@ -236,3 +236,31 @@ def complete():
         return _reply(updated["state"])
     except Exception:
         return _reply("RECONCILIATION_REQUIRED",503)
+
+@public_bridge_bp.post("/internal/psicologia/demo/busy")
+def busy():
+    """Signed, privacy-safe snapshot of confirmed/held appointments.
+
+    The public availability API must fail closed if this DB cannot be read.
+    Never return names, identifiers, payment details or emails.
+    """
+    data=_authorize()
+    if not data:
+        return _reply("NOT_AUTHORIZED",403)
+    try:
+        from datetime import date
+        first=date.fromisoformat(data.get("from",""))
+        last=date.fromisoformat(data.get("to",""))
+        if last<first or (last-first).days>21:
+            return _reply("INVALID_RANGE",400)
+        with _database_connection() as conn:
+            rows=conn.execute("""SELECT h.starts_at,h.ends_at FROM psychology_booking_holds h
+                WHERE h.slot_date BETWEEN %s AND %s
+                  AND (h.status='CONFIRMED' OR
+                       (h.status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')
+                        AND h.expires_at>now()))""",(first,last)).fetchall()
+        return jsonify(state="OK",intervals=[
+            [row["starts_at"].isoformat(),row["ends_at"].isoformat()] for row in rows])
+    except Exception:
+        return _reply("UNAVAILABLE",503)
+
