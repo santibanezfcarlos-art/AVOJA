@@ -181,7 +181,7 @@ def main():
                             "Detalle": "detalle",
                         }
                         for label_text, key in fields.items():
-                            loc = page.get_by_label(label_text, exact=True)
+                            loc = page.get_by_label(label_text, exact=True).locator("xpath=self::input | self::textarea") if key == "detalle" else page.get_by_label(label_text, exact=True)
                             found = [loc.nth(i) for i in range(min(loc.count(), 8)) if loc.nth(i).is_visible()]
                             if len(found) != 1:
                                 print("Campo ambiguo:", label_text, "- se detiene sin confirmar emisión.")
