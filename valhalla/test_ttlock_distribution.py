@@ -44,14 +44,22 @@ class Tests(unittest.TestCase):
                 ledger.save_created("2026-10-21",100,encrypt_code("123456"))
                 ledger.mark("2026-10-21","emailed",code_id=100)
                 mailer=FakeMailer()
-                self.assertEqual(distribute(db_path,"2026-10-21",mailer=mailer),"accepted")
-                self.assertEqual(len(mailer.sent),2)
-                self.assertEqual([r[0] for r in mailer.sent],
-                                 ["contacto@valhallaoffice.cl","one@example.com"])
-                for sent in mailer.sent:
-                    self.assertIn("#123456#",sent[2])
-                self.assertEqual(distribute(db_path,"2026-10-21",mailer=mailer),"already_attempted")
-                self.assertEqual(len(mailer.sent),2)
+                # Freeze the clock within the code's validity window.
+                # The fixture date is historical, so using wall-clock time
+                # would incorrectly make this delivery test fail as expired.
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+                with patch("ttlock_distribution.datetime") as clock:
+                    clock.now.return_value=datetime(2026,10,21,23,tzinfo=ZoneInfo("America/Santiago"))
+                    clock.side_effect=lambda *a,**k: datetime(*a,**k)
+                    self.assertEqual(distribute(db_path,"2026-10-21",mailer=mailer),"accepted")
+                    self.assertEqual(len(mailer.sent),2)
+                    self.assertEqual([r[0] for r in mailer.sent],
+                                     ["contacto@valhallaoffice.cl","one@example.com"])
+                    for sent in mailer.sent:
+                        self.assertIn("#123456#",sent[2])
+                    self.assertEqual(distribute(db_path,"2026-10-21",mailer=mailer),"already_attempted")
+                    self.assertEqual(len(mailer.sent),2)
 
     def test_manual_saved_code_has_separate_idempotency_key(self):
         from ttlock_distribution import distribute_saved
