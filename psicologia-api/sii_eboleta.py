@@ -92,7 +92,7 @@ def authenticate_sii() -> dict:
                 page = ctx.new_page()
                 page.set_default_timeout(12000)
                 stage = "abrir portal SII"
-                page.goto(SII_URL, wait_until="domcontentloaded", timeout=30000)
+                initial_response = page.goto(SII_URL, wait_until="domcontentloaded", timeout=30000)
                 if not _safe_host(page.url):
                     raise SiiAutomationError("El portal redirigió fuera de los dominios oficiales del SII.")
                 stage = "esperar redirección de autenticación SII"
@@ -103,6 +103,10 @@ def authenticate_sii() -> dict:
                 if not _safe_host(page.url):
                     raise SiiAutomationError("Redirección fuera de los dominios oficiales del SII.")
                 stage = "esperar formulario de acceso"
+                try:
+                    page.wait_for_load_state("networkidle", timeout=7000)
+                except PlaywrightTimeout:
+                    pass
                 try:
                     page.locator('input[type="password"]').first.wait_for(state="visible", timeout=15000)
                 except PlaywrightTimeout:
@@ -132,11 +136,18 @@ def authenticate_sii() -> dict:
                         if field_type not in ("text", "password", "hidden", "email", "number", "submit"):
                             field_type = "otro"
                         input_types[field_type] = input_types.get(field_type, 0) + 1
+                    response = page.request.get(page.url, timeout=12000) if _safe_host(page.url) else None
+                    http_status = response.status if response is not None else None
+                    page_title = (page.title() or "").lower()
+                    title_category = ("acceso" if any(word in page_title for word in ("acceso", "login", "autentic")) else
+                                      "error" if any(word in page_title for word in ("error", "deneg", "prohib")) else "otro")
                     return {"status": "login_form_unrecognized", "emitted": False,
                             "message": "Página recibida desde SII; diagnóstico seguro de formulario.",
                             "diagnostic": {"host": host, "rut_found": rut_input is not None,
                                            "password_found": pass_input is not None,
-                                           "input_types": input_types, "iframe_count": page.locator("iframe").count()}}
+                                           "input_types": input_types, "iframe_count": page.locator("iframe").count(),
+                                           "http_status": http_status, "title_category": title_category,
+                                           "dom_ready": page.evaluate("document.readyState")}}
                 stage = "completar formulario de acceso"
                 rut_input.fill(rut)
                 pass_input.fill(password)
