@@ -206,7 +206,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
     from urllib.parse import urlsplit
     if rebooking_url is not None:
         parsed = urlsplit(rebooking_url)
-        if role != "patient" or parsed.scheme != "https" or parsed.netloc != "pscsantibanez.cl" or parsed.path != "/reagendar" or not parsed.query:
+        if role != "patient" or parsed.scheme != "https" or parsed.netloc not in ("pscsantibanez.cl", "psicologia-retenciones-piloto.onrender.com") or parsed.path != "/reagendar" or not parsed.query:
             raise NotificationError("Enlace de reagendamiento no permitido")
     rebooking_button = (
         "<tr><td style='padding:8px 30px 22px;text-align:center'>"
