@@ -74,7 +74,7 @@ class CheckoutDemoTests(unittest.TestCase):
 
     def test_preview_does_not_contain_card_or_personal_details(self):
         subject,body=template("patient","PSI1234567890","psicoterapia",NOW,NOW+timedelta(minutes=45))
-        self.assertIn("PRUEBA",subject)
+        self.assertIn("Tu hora está reservada",subject)
         self.assertIn("SIN COBRO REAL",body)
         self.assertNotIn("RUT",body)
 
@@ -111,7 +111,8 @@ class CheckoutDemoTests(unittest.TestCase):
                      transport=fake_transport)
             self.assertEqual(len(captured),2)
             self.assertEqual([payload["to"] for payload in captured],[[MAIL],[MAIL]])
-            self.assertTrue(all("PRUEBA" in p["subject"] for p in captured))
+            self.assertTrue(any("Tu hora está reservada" in p["subject"] for p in captured))
+            self.assertTrue(any("Nueva sesión agendada" in p["subject"] for p in captured))
             self.assertTrue(all(p["attachments"][0]["filename"].endswith(".ics") for p in captured))
             with self.assertRaises(NotificationError):
                 send("patient","PSI0123456789",uuid.uuid4(),"random@example.com",
@@ -127,7 +128,7 @@ class CheckoutDemoTests(unittest.TestCase):
                  NOW,NOW+timedelta(minutes=45),
                  transport=lambda message: captured.append(message) or {"id":"test_email"})
         self.assertEqual(captured[0]["to"],[alias])
-        self.assertIn("Confirmación",captured[0]["subject"])
+        self.assertIn("Tu hora está reservada",captured[0]["subject"])
 
     def test_external_email_only_with_opt_in_and_professional_fixed(self):
         receiver="cliente.pruebas@outlook.com"
