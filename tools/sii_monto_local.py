@@ -127,6 +127,15 @@ def main():
                 print("Primer clic realizado. Dominio final:", urlparse(page.url).hostname)
                 print("Botones visibles:", page.get_by_role("button").count())
                 print("Campos de formulario:", page.locator("input").count())
+                print("Diagnóstico de campos visibles (sin valores):")
+                for idx in range(min(page.locator("input, select, textarea").count(), 40)):
+                    element = page.locator("input, select, textarea").nth(idx)
+                    if not element.is_visible():
+                        continue
+                    field_type = element.get_attribute("type") or element.evaluate("(el) => el.tagName.toLowerCase()")
+                    field_id = (element.get_attribute("id") or "")[:70]
+                    field_name = (element.get_attribute("name") or "")[:70]
+                    print("Campo", idx + 1, "tipo:", field_type, "id:", field_id, "name:", field_name)
                 print("No se confirma ninguna etapa posterior.")
             else:
                 print("EMITIR no fue pulsado.")
