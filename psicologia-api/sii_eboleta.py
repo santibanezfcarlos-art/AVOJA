@@ -79,16 +79,21 @@ def authenticate_sii() -> dict:
     except ImportError as exc:
         raise SiiAutomationError("Playwright no está instalado en el servidor.") from exc
 
+    stage = "iniciar Playwright"
     try:
         with sync_playwright() as p:
+            stage = "abrir Chromium"
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
             try:
+                stage = "crear sesión de navegador"
                 ctx = browser.new_context(locale="es-CL", timezone_id="America/Santiago")
                 page = ctx.new_page()
                 page.set_default_timeout(12000)
+                stage = "abrir portal SII"
                 page.goto(SII_URL, wait_until="domcontentloaded", timeout=30000)
                 if not _safe_host(page.url):
                     raise SiiAutomationError("El portal redirigió fuera de los dominios oficiales del SII.")
+                stage = "localizar formulario de acceso"
                 rut_input = _first_visible(page, [
                     'input[name="rut"]', 'input[id="rut"]', 'input[name="RUT"]',
                     'input[autocomplete="username"]',
@@ -99,6 +104,7 @@ def authenticate_sii() -> dict:
                 if not rut_input or not pass_input:
                     return {"status": "login_form_unrecognized", "emitted": False,
                             "message": "El formulario de ingreso no coincide con los selectores conocidos."}
+                stage = "completar formulario de acceso"
                 rut_input.fill(rut)
                 pass_input.fill(password)
                 submit = _first_visible(page, [
@@ -109,6 +115,7 @@ def authenticate_sii() -> dict:
                 if submit is None:
                     return {"status": "login_button_unrecognized", "emitted": False,
                             "message": "No se identificó el botón de acceso al SII."}
+                stage = "enviar formulario de acceso"
                 submit.click()
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=12000)
@@ -124,5 +131,6 @@ def authenticate_sii() -> dict:
     except SiiAutomationError:
         raise
     except Exception as exc:
-        # No incluir mensajes crudos de Playwright: pueden exponer URL y contenido.
-        raise SiiAutomationError("Falló la navegación automatizada; revisar logs técnicos sin credenciales.") from None
+        # No incluir el texto crudo de Playwright: puede contener secretos o URL de sesión.
+        safe_kind = type(exc).__name__ if type(exc).__name__ in ("Error", "TimeoutError", "TargetClosedError") else "Error"
+        raise SiiAutomationError(f"Falló la etapa «{stage}» ({safe_kind}). No se emitió ninguna boleta.") from None
