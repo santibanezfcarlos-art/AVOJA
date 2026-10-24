@@ -58,3 +58,33 @@ def preflight(*,order,session,service,day,hour,amount,email,email_consent=False,
 def complete(*,order,session,amount,outcome):
     return _request("/internal/psicologia/demo/complete",{
         "order":order,"session":session,"amount":amount,"outcome":outcome})
+
+def busy_intervals(first,last):
+    """Private authenticated read of booked and temporarily held slots."""
+    if not enabled():
+        raise BridgeError("BRIDGE_DISABLED")
+    data={"from":first.isoformat(),"to":last.isoformat()}
+    raw=json.dumps(data,separators=(",",":"),ensure_ascii=True,sort_keys=True).encode()
+    stamp=str(int(time.time()))
+    signature=hmac.new(os.environ[KEY_NAME].encode(),
+                       stamp.encode()+b"."+raw,hashlib.sha256).hexdigest()
+    req=Request(URL+"/internal/psicologia/demo/busy",data=raw,method="POST",
+       headers={"Content-Type":"application/json","X-Psc-Timestamp":stamp,
+                "X-Psc-Signature":signature})
+    try:
+        with urlopen(req,timeout=10) as response:
+            payload=json.loads(response.read(30000).decode())
+    except (HTTPError,URLError,TimeoutError,OSError,ValueError):
+        raise BridgeError("BUSY_UNAVAILABLE") from None
+    if payload.get("state")!="OK" or not isinstance(payload.get("intervals"),list):
+        raise BridgeError("BUSY_UNAVAILABLE")
+    from datetime import datetime
+    intervals=[]
+    for pair in payload["intervals"]:
+        if not isinstance(pair,list) or len(pair)!=2:
+            raise BridgeError("BUSY_UNAVAILABLE")
+        start,end=(datetime.fromisoformat(x) for x in pair)
+        if start.tzinfo is None or end.tzinfo is None or end<=start:
+            raise BridgeError("BUSY_UNAVAILABLE")
+        intervals.append((start,end))
+    return intervals
