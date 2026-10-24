@@ -524,8 +524,8 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 
 <div id="appPage" hidden><div class="app-crumb"><a href="#inicio">Inicio</a><span aria-hidden="true">/</span><span id="appBread">Reserva tu hora</span></div>
 <div class="app-head"><div><div class="eyebrow">Agenda de servicios online</div><h1>Elige tu día y horario</h1><p class="sub">Selecciona el servicio y una hora disponible. Esta agenda permite ensayar la reserva y el pago con Transbank, sin cobros reales ni atención a pacientes.</p></div><span class="app-trial">● Vista de prueba — sin pagos reales</span></div>
-<section class="booking-service-picker" aria-label="Seleccionar tipo de atención"><div><label for="bookingServiceSelect">¿Qué servicio quieres agendar?</label><p>Elige la prestación para consultar sus horarios y valores.</p></div><div class="service-picker-control"><select id="bookingServiceSelect" name="servicio"><option value="psicoterapia">Psicoterapia breve · 45 min · $30.000</option><option value="empleabilidad">Asesoría en empleabilidad · 90 min · $45.000</option><option value="competencias">Desarrollo de competencias · 45 min · $30.000</option></select></div></section><div class="tabs" role="tablist" aria-label="Vista del calendario"><button class="tab active" type="button" id="tabPublic" role="tab" aria-selected="true" aria-controls="patientView">Agenda del paciente</button><button class="tab" type="button" id="tabAdmin" role="tab" aria-selected="false" aria-controls="adminView">Administración</button></div>
-<div class="layout" id="patientView" role="tabpanel" aria-labelledby="tabPublic"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note" id="calendarSyncStatus" role="status">Consultando Google Calendar…</p><p class="note" id="durationNotice">Horario permitido: 09:00–20:00, hora de Chile.</p><p class="note">La disponibilidad se consulta en Google Calendar. Una compra de prueba aprobada puede generar un evento identificado como PRUEBA TÉCNICA; no representa una atención real.</p></section>
+<section class="booking-service-picker" aria-label="Seleccionar tipo de atención"><div><label for="bookingServiceSelect">¿Qué servicio quieres agendar?</label><p>Elige la prestación para consultar sus horarios y valores.</p></div><div class="service-picker-control"><select id="bookingServiceSelect" name="servicio"><option value="psicoterapia">Psicoterapia breve · 45 min · $30.000</option><option value="empleabilidad">Asesoría en empleabilidad · 90 min · $45.000</option><option value="competencias">Desarrollo de competencias · 45 min · $30.000</option></select></div></section>
+<div class="layout" id="patientView"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note" id="calendarSyncStatus" role="status">Consultando Google Calendar…</p><p class="note" id="durationNotice">Horario permitido: 09:00–20:00, hora de Chile.</p><p class="note">La disponibilidad se consulta en Google Calendar. Una compra de prueba aprobada puede generar un evento identificado como PRUEBA TÉCNICA; no representa una atención real.</p></section>
 <aside class="card"><div class="kicker">Paso 1 de 2 · Seleccionar horario</div><h2 id="summaryTitle" style="margin-top:8px">Tu sesión online</h2><div class="feature"><span class="check">✓</span><span id="summaryDescription">Atención online según el servicio que elijas.</span></div><div class="feature"><span class="check">✓</span><span>Máximo de 3 atenciones confirmadas por día.</span></div><hr class="rule"><div class="detail"><span>Servicio</span><strong id="summaryService">Psicoterapia breve</strong></div><div class="detail"><span>Duración</span><strong id="summaryDuration">45 minutos</strong></div><div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div><div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div><div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div><div class="price"><span>Valor del servicio</span><strong id="priceAmount">$30.000</strong></div><div class="hold" id="hold" hidden></div>
 <div class="card" style="margin:18px 0 12px;padding:16px;border-radius:12px;background:#f7faf7">
  <h3>Pago simulado · Webpay (demostración)</h3><div id="webpayDemoResult" role="status" aria-live="polite" hidden style="padding:14px;border:1px solid #b9d7c4;border-radius:12px;background:#edf6ee;margin:12px 0"></div>
@@ -715,8 +715,6 @@ function render(){
 }
 function tick(){if(!hold){$('hold').hidden=true;return}const remaining=hold.expires-Date.now();if(remaining<=0){hold=null;render();message('La selección de prueba expiró. Elige otra hora.');return}const m=Math.floor(remaining/60000),s=Math.floor(remaining%60000/1000);$('hold').hidden=false;$('hold').textContent='Selección temporal: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' restantes. Solo en este navegador.'}
 function renderAdmin(){}
-function showTab(which){if(which==='admin'){location.href=PAYMENT_API+'/admin';return;}$('patientView').hidden=false;}
-$('tabPublic').onclick=()=>showTab('public');$('tabAdmin').onclick=()=>showTab('admin');
 $('prev').onclick=()=>{if(start>monday(todayISO())){start=plus(start,-7);chosen=start<todayISO()?todayISO():start;hold=null;clearMessage();loadCalendar()}};
 $('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage();loadCalendar()};
 $('cancel').onclick=()=>{hold=null;clearMessage();render()};
@@ -848,9 +846,10 @@ checkWebpayConfig();
 const home=document.getElementById('homePage'),app=document.getElementById('appPage');
 function route(){
  let frag=decodeURIComponent((location.hash||'#inicio').slice(1)).toLowerCase();
- let inApp=frag==='agenda'||frag==='admin';
+ if(frag==='admin'){window.location.replace('https://psicologia-carlos-calendar-api.onrender.com/admin');return;}
+ let inApp=frag==='agenda';
  home.hidden=inApp;app.hidden=!inApp;
- if(inApp){document.getElementById(frag==='admin'?'tabAdmin':'tabPublic').click();document.getElementById('appBread').textContent=frag==='admin'?'Administración':'Reserva tu hora';document.title=(frag==='admin'?'Administración':'Reserva tu sesión')+' · Carlos Santibáñez';}
+ if(inApp){document.getElementById('appBread').textContent='Reserva tu hora';document.title='Reserva tu sesión · Carlos Santibáñez';}
  else{document.title='Carlos Santibáñez | Psicología Online';}
  document.querySelectorAll('[data-nav]').forEach(link=>link.classList.toggle('active',link.getAttribute('data-nav')===frag));
  if(inApp)window.scrollTo({top:0,behavior:'instant'});
@@ -858,9 +857,6 @@ function route(){
  else window.scrollTo({top:0,behavior:'instant'});
 }
 window.addEventListener('hashchange',route);
-const publicTab=document.getElementById('tabPublic'),adminTab=document.getElementById('tabAdmin');
-publicTab.addEventListener('click',()=>{if(location.hash!=='#agenda')location.hash='agenda'});
-adminTab.addEventListener('click',()=>{if(location.hash!=='#admin')location.hash='admin'});
 route();
 })();
 </script>
