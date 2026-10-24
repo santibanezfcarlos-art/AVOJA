@@ -163,16 +163,30 @@ def confirm(token):
             event_id=writer.reschedule_own_appointment(hold_id=payment["hold_id"],
                 service=payment["service"],old_start=old_start,old_end=old_end,
                 new_start=start,new_end=end)
-            # If a database write fails here, the server reports an error, not success.
-            # A reconciliation task is required for rare Calendar/DB split failures.
-            conn.execute("""UPDATE psychology_booking_holds SET starts_at=%s,
-                         ends_at=%s,slot_date=%s,updated_at=now() WHERE id=%s""",
-                         (start,end,day,payment["hold_id"]))
-            conn.execute("""INSERT INTO psychology_reschedule_audit
-                         (order_id,old_starts_at,new_starts_at) VALUES (%s,%s,%s)""",
-                         (payment["order_id"],old_start,start))
-            conn.execute("UPDATE psychology_reschedule_links SET redeemed_at=now() WHERE order_id=%s",
-                         (payment["order_id"],))
+            # Database commit may fail even after Calendar accepted the PATCH.
+            # Compensate back to the original event if anything fails; never
+            # report success unless the database commits.
+            try:
+                conn.execute("""UPDATE psychology_booking_holds SET starts_at=%s,
+                             ends_at=%s,slot_date=%s,updated_at=now() WHERE id=%s""",
+                             (start,end,day,payment["hold_id"]))
+                conn.execute("""INSERT INTO psychology_reschedule_audit
+                             (order_id,old_starts_at,new_starts_at) VALUES (%s,%s,%s)""",
+                             (payment["order_id"],old_start,start))
+                conn.execute("UPDATE psychology_reschedule_links SET redeemed_at=now() WHERE order_id=%s",
+                             (payment["order_id"],))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                try:
+                    writer.reschedule_own_appointment(hold_id=payment["hold_id"],
+                        service=payment["service"],old_start=start,old_end=end,
+                        new_start=old_start,new_end=old_end)
+                except Exception:
+                    # Calendar and DB may now differ. Require manual reconciliation.
+                    # No success or automatic second attempt is advertised.
+                    raise RuntimeError("REBOOKING_RECONCILIATION_REQUIRED") from None
+                raise RuntimeError("REBOOKING_ROLLED_BACK") from None
         # Los correos se envían después de confirmar la transacción, nunca antes.
         try:
             from demo_notifications import send as mail_send, configured as mail_ready
