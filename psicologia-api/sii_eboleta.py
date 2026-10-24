@@ -74,6 +74,8 @@ def authenticate_sii() -> dict:
     if not password:
         raise SiiAutomationError("SII_PASSWORD no está disponible para este servicio.")
 
+    # Browser binaries installed inside the application virtualenv survive Render builds.
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
     except ImportError as exc:
@@ -133,4 +135,12 @@ def authenticate_sii() -> dict:
     except Exception as exc:
         # No incluir el texto crudo de Playwright: puede contener secretos o URL de sesión.
         safe_kind = type(exc).__name__ if type(exc).__name__ in ("Error", "TimeoutError", "TargetClosedError") else "Error"
+        if stage == "abrir Chromium":
+            description = str(exc).lower()
+            if "executable doesn\u0027t exist" in description or "please run the following command" in description:
+                safe_kind = "NavegadorNoInstalado"
+            elif "error while loading shared libraries" in description or "host system is missing dependencies" in description:
+                safe_kind = "DependenciasSistema"
+            elif "target page, context or browser has been closed" in description:
+                safe_kind = "CierreDelNavegador"
         raise SiiAutomationError(f"Falló la etapa «{stage}» ({safe_kind}). No se emitió ninguna boleta.") from None
