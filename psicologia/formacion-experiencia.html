@@ -420,6 +420,14 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 @media(min-width:700px) and (max-width:1199px){.training-experience-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:699px){.training-experience-cards{grid-template-columns:minmax(0,1fr)}}
 .training-experience-cards>.training-panel{min-width:0}
+/* Texto de las cuatro tarjetas justificado sin deformar títulos ni listas */
+.training-experience-cards .training-experience-list>li>span,
+.training-experience-cards .training-panel>.training-context{
+ text-align:justify;
+ text-justify:inter-word;
+ hyphens:auto;
+}
+.training-experience-cards .training-topic-list{text-align:left}
 /* Listado compacto de temáticas de relatoría */
 .training-topic-list{margin:10px 0 0;padding-left:19px;list-style:disc}.training-topic-list li{margin:5px 0;line-height:1.5}
 </style>
