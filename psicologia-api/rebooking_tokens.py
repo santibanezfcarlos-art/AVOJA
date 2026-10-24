@@ -6,7 +6,8 @@ calendar event: the eventual confirmation endpoint must do that atomically
 with the booking update.
 """
 import hashlib
-import secrets
+import hmac
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -34,15 +35,17 @@ def digest(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 def issue(conn, order_id):
-    """Called once after server-side payment+Calendar confirmation.
-
-    Repeated notification attempts MUST reuse the existing link. Since only
-    a digest is persisted, issue a token once and pass the raw token directly
-    to the email queue; never reissue a link just to retry an email.
-    """
-    token = secrets.token_urlsafe(32)
-    conn.execute("""INSERT INTO psychology_reschedule_links(order_id,token_sha256)
-                    VALUES (%s,%s)""", (order_id, digest(token)))
+    """Derive a stable private link so retries do not rotate it."""
+    key = os.environ.get("PSICOLOGIA_REBOOKING_TOKEN_SECRET", "")
+    if len(key) < 40:
+        raise RuntimeError("Rebooking not configured")
+    token = hmac.new(key.encode(), ("rebooking-v1:" + order_id).encode(),
+                     hashlib.sha256).hexdigest()
+    hashed = digest(token)
+    conn.execute("INSERT INTO psychology_reschedule_links(order_id,token_sha256) VALUES (%s,%s) ON CONFLICT(order_id) DO NOTHING", (order_id,hashed))
+    stored = conn.execute("SELECT token_sha256 FROM psychology_reschedule_links WHERE order_id=%s", (order_id,)).fetchone()
+    if not stored or not hmac.compare_digest(stored["token_sha256"],hashed):
+        raise RuntimeError("Stored link mismatch")
     return token
 
 def check(conn, token, *, now=None):
