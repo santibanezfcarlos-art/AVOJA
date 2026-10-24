@@ -173,6 +173,22 @@ def confirm(token):
                          (payment["order_id"],old_start,start))
             conn.execute("UPDATE psychology_reschedule_links SET redeemed_at=now() WHERE order_id=%s",
                          (payment["order_id"],))
+        # Los correos se envían después de confirmar la transacción, nunca antes.
+        try:
+            from demo_notifications import send as mail_send, configured as mail_ready
+            if mail_ready():
+                with _database_connection() as notify_conn:
+                    recipients=notify_conn.execute(
+                        "SELECT test_recipient FROM psychology_demo_payments WHERE order_id=%s",
+                        (payment["order_id"],)).fetchone()
+                for role in ("patient","professional"):
+                    recipient=(recipients["test_recipient"] if role=="patient"
+                               else os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL",""))
+                    mail_send(role,payment["order_id"],payment["hold_id"],recipient,
+                              payment["service"],start,end,rescheduled=True)
+        except Exception:
+            # Fallo de correo no revierte una reserva ya confirmada.
+            pass
         return jsonify(ok=True,message="Tu nueva hora quedó confirmada.",date=day.isoformat(),
                        time=start.strftime("%H:%M"))
     except CalendarIntegrationError:
