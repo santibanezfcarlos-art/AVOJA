@@ -228,6 +228,27 @@ def main():
                                 return
                             print("Campo completado y verificado:", label_text)
                         print("Datos cargados en formulario; NO se pulsó el segundo EMITIR.")
+                        # Identificar el control final, sin presionarlo.
+                        # El botón final debe ser interactivo, visible, único
+                        # y estar en el formulario posterior al teclado.
+                        buttons = page.locator("button, input[type='submit'], [role='button']")
+                        final_candidates = []
+                        for bi in range(min(buttons.count(), 100)):
+                            btn = buttons.nth(bi)
+                            if not btn.is_visible():
+                                continue
+                            label = (btn.get_attribute("value") or btn.inner_text(timeout=500)).strip()
+                            if re.fullmatch("emitir", label, flags=re.I):
+                                final_candidates.append(btn)
+                        print("Botones finales EMITIR visibles:", len(final_candidates))
+                        if len(final_candidates) == 1:
+                            button = final_candidates[0]
+                            print("Botón EMITIR final identificado:", "SÍ")
+                            print("Botón habilitado:", "SÍ" if button.is_enabled() else "NO")
+                            print("Tipo HTML:", button.evaluate("(el) => el.tagName.toLowerCase()"))
+                            print("Preparado para integrar un clic futuro; NO se pulsa en esta prueba.")
+                        else:
+                            print("Botón final no identificado de forma inequívoca. No se pulsa.")
                     else:
                         print("No se ingresaron datos ni se confirmó emisión.")
                 print("Diagnóstico de campos visibles (sin valores):")
