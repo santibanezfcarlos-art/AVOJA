@@ -285,6 +285,35 @@ def return_demo():
     # El retorno informa de una compra SIMULADA. La web solo puede guardar bloqueos locales, nunca reservas reales.
     if not _enabled():
         return _page("Prueba no habilitada", "El ambiente de integración no está configurado.", status=503)
+    # Timeout / fallo al recuperar Webpay: Transbank retorna identificadores
+    # de sesión y orden, pero NO un token. No intentar commit en este caso.
+    if (request.values.get("TBK_ID_SESION") is not None or
+            request.values.get("TBK_ORDEN_COMPRA") is not None):
+        session_id = request.values.get("TBK_ID_SESION", "")
+        order_id = request.values.get("TBK_ORDEN_COMPRA", "")
+        parsed = _parse_session(session_id)
+        pending = billing.pending_by_order(order_id)
+        if (not parsed or not pending or
+                parsed["service"] != pending["service"] or
+                parsed["date"] != pending["appointment_date"] or
+                parsed["time"] != pending["appointment_time"]):
+            return _page("Operación pendiente de verificación",
+                         "No fue posible verificar la orden y la sesión devueltas por Webpay. "
+                         "La retención temporal vencerá automáticamente; revisa el historial antes de repetir.",
+                         status=409)
+        try:
+            changed = billing.cancel_pending_order(order_id)
+        except (RuntimeError, sqlite3.Error, OSError):
+            return _page("Estado pendiente",
+                         "No se pudo registrar el cierre de la compra. Revisa el estado antes de repetir.",
+                         status=503)
+        if changed and bridge.enabled():
+            try:
+                bridge.complete(order=order_id, session=session_id,
+                                amount=pending["amount"], outcome="cancelled")
+            except bridge.BridgeError:
+                pass  # El bloqueo tiene caducidad; nunca confirmar sin autorización.
+        return _return_site(cancelled=True)
     if request.values.get("TBK_TOKEN") is not None:
         tbk_cancel=request.values.get("TBK_TOKEN","")
         pending=billing.pending_by_token(tbk_cancel)
