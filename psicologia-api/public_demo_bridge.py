@@ -109,6 +109,7 @@ def preflight():
         return _reply("INVALID",400)
     selected=_commercial_service(service)
     if selected is None:
+        print("PSICOLOGIA_PREFLIGHT: catalog_unavailable",flush=True)
         return _reply("CATALOG_UNAVAILABLE",503)
     if (not isinstance(order,str) or not ORDER_PATTERN.fullmatch(order)
             or not isinstance(session,str) or not SESSION_PATTERN.fullmatch(session)
@@ -153,9 +154,10 @@ def preflight():
                 WHERE id=%s""",(uuid.UUID(hold_id),))
         return _reply("READY")
     except HoldProblem as exc:
+        print("PSICOLOGIA_PREFLIGHT: hold_error="+str(exc.status),flush=True)
         return _reply("SLOT_UNAVAILABLE" if exc.status==409 else "UNAVAILABLE",exc.status)
-    except Exception:
-        # Fail closed, hold remains at most 10 minutes if DB insert failed.
+    except Exception as exc:
+        print("PSICOLOGIA_PREFLIGHT: error_type="+type(exc).__name__,flush=True)
         return _reply("UNAVAILABLE",503)
 
 
