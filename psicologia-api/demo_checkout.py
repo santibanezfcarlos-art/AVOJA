@@ -217,9 +217,12 @@ def _confirm_calendar(order):
                     hold_id=payment["hold_id"],service=payment["service"],
                     start=payment["starts_at"],end=payment["ends_at"]):
                 raise CalendarIntegrationError("La hora ya figura ocupada en Google")
-        event=writer.create_paid_appointment(
-            hold_id=payment["hold_id"],service=payment["service"],start=payment["starts_at"],
-            end=payment["ends_at"],payment_verified=True,demo_only=True,patient_name=payment.get("patient_name"))
+        event_args = dict(hold_id=payment["hold_id"],service=payment["service"],
+                          start=payment["starts_at"],end=payment["ends_at"],
+                          payment_verified=True,demo_only=True)
+        if payment.get("patient_name"):
+            event_args["patient_name"] = payment["patient_name"]
+        event=writer.create_paid_appointment(**event_args)
     except CalendarIntegrationError:
         with _database_connection() as conn:
             conn.execute("""UPDATE psychology_demo_payments
