@@ -47,6 +47,14 @@ def _first_visible(page, selectors):
     return None
 
 
+def normalize_rut(value: str) -> str:
+    """Acepta RUT con puntos, guion o solo dígitos y DV, sin revelar su valor."""
+    cleaned = re.sub(r"[.\\s\\-‐‑‒–—−]", "", value).upper()
+    if not re.fullmatch(r"[0-9]{7,8}[0-9K]", cleaned):
+        raise SiiAutomationError("SII_RUT tiene una longitud o caracteres inesperados.")
+    return cleaned[:-1] + "-" + cleaned[-1]
+
+
 def authenticate_sii() -> dict:
     """Intentar login server-side y retornar solo indicadores no sensibles.
 
@@ -55,12 +63,11 @@ def authenticate_sii() -> dict:
     """
     if os.getenv("SII_AUTOMATION_ENABLED", "false").lower() != "true":
         raise SiiAutomationError("Automatización SII deshabilitada en Render.")
-    rut = os.getenv("SII_RUT", "").strip().replace(".", "")
+    raw_rut = os.getenv("SII_RUT", "")
     password = os.getenv("SII_PASSWORD", "")
-    if not rut:
+    if not raw_rut.strip():
         raise SiiAutomationError("SII_RUT no está disponible para este servicio.")
-    if not RUT_PATTERN.fullmatch(rut):
-        raise SiiAutomationError("SII_RUT está presente, pero el formato no es válido: usa 12345678-9.")
+    rut = normalize_rut(raw_rut)
     if not password:
         raise SiiAutomationError("SII_PASSWORD no está disponible para este servicio.")
 
