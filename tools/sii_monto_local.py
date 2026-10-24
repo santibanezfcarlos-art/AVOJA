@@ -135,7 +135,19 @@ def main():
                     field_type = element.get_attribute("type") or element.evaluate("(el) => el.tagName.toLowerCase()")
                     field_id = (element.get_attribute("id") or "")[:70]
                     field_name = (element.get_attribute("name") or "")[:70]
-                    print("Campo", idx + 1, "tipo:", field_type, "id:", field_id, "name:", field_name)
+                    # Metadatos de interfaz únicamente, nunca valores escritos.
+                    placeholder = (element.get_attribute("placeholder") or "")[:65]
+                    aria = (element.get_attribute("aria-label") or "")[:65]
+                    label = element.evaluate("""(el) => {
+                      const own = el.labels && el.labels.length ? el.labels[0].innerText : "";
+                      const parent = el.closest("label, .MuiFormControl-root, .form-group");
+                      const adjacent = parent && parent.querySelector("label, legend");
+                      return (own || (adjacent ? adjacent.innerText : "") || "").slice(0,65);
+                    }""")
+                    print("Campo", idx + 1, "tipo:", field_type, "id:", field_id,
+                          "etiqueta:", repr(label), "placeholder:", repr(placeholder),
+                          "aria:", repr(aria))
+                print("Nota: IDs numéricos de MUI pueden cambiar; usaremos etiquetas estables.")
                 print("No se confirma ninguna etapa posterior.")
             else:
                 print("EMITIR no fue pulsado.")
