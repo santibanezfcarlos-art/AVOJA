@@ -267,6 +267,18 @@ def data():
         return jsonify(error='Filtro inválido'), 400
 
 
+@billing_bp.post('/admin/boletas/sii-login-test')
+@private
+def sii_login_test():
+    """Prueba de acceso SII controlada desde el panel privado. Nunca emite."""
+    from sii_eboleta import authenticate_sii, SiiAutomationError
+    try:
+        result = authenticate_sii()
+        return jsonify(result)
+    except SiiAutomationError as exc:
+        return jsonify(error=str(exc), emitted=False), 409
+
+
 @billing_bp.post('/admin/boletas/<order>/sii-preview')
 @private
 def sii_preview(order):
