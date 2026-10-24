@@ -143,7 +143,9 @@ def preflight():
                          FROM psychology_demo_payments
                          WHERE created_at>=now()-interval '24 hours'""",
                          (email.strip().lower(),)).fetchone()
-        if limit["total"] >= 20 or limit["recipient"] >= 4:
+        # Certificación Webpay: admite varias pruebas sucesivas con el mismo correo
+        # autorizado. Se mantienen límites de 24 horas contra usos abusivos.
+        if limit["total"] >= 48 or limit["recipient"] >= 24:
             return _reply("TEST_LIMIT_REACHED",429)
         try:
             free=_calendar_free(start,end)
