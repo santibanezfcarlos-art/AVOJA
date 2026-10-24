@@ -228,7 +228,7 @@ def panel():
 @billing_bp.get('/admin/boletas/<asset>')
 @private
 def assets(asset):
-    if asset not in ('billing_admin.js', 'billing_admin.css'):
+    if asset not in ('billing_admin.js', 'billing_admin.css', 'sii_login_test.js'):
         return '', 404
     return send_file(Path(__file__).parent / asset)
 
