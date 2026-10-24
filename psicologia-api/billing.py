@@ -125,6 +125,33 @@ def pending_by_token(token):
         return None
 
 
+def pending_by_order(order):
+    """Read only pending sandbox orders; never expose personal information."""
+    if not configured() or not isinstance(order, str) or not re.fullmatch(r'PSCD[0-9A-F]{18}', order):
+        return None
+    try:
+        with db() as con:
+            row = con.execute(
+                "SELECT order_id, amount, service, appointment_date, appointment_time "
+                "FROM billing_orders WHERE order_id=? AND environment='integration' "
+                "AND payment_status='initiated'", (order,)).fetchone()
+        return dict(row) if row else None
+    except (RuntimeError, sqlite3.Error, OSError):
+        return None
+
+
+def cancel_pending_order(order):
+    """Idempotent, conditional cancellation: never overwrite approved payments."""
+    if not configured():
+        raise RuntimeError('Billing storage is not configured')
+    with db() as con:
+        cur = con.execute(
+            "UPDATE billing_orders SET payment_status='cancelled' "
+            "WHERE order_id=? AND environment='integration' AND payment_status='initiated'",
+            (order,))
+        return cur.rowcount == 1
+
+
 def cancelled(token):
     if not configured():
         return
