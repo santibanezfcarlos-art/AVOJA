@@ -241,6 +241,19 @@ def main():
                             if re.fullmatch("emitir", label, flags=re.I):
                                 final_candidates.append(btn)
                         print("Botones finales EMITIR visibles:", len(final_candidates))
+                        # Inspeccionar solo metadatos de controles, nunca datos privados.
+                        # Algunas versiones del portal presentan dos botones homónimos.
+                        for index, candidate in enumerate(final_candidates[:8], start=1):
+                            meta = candidate.evaluate("""el => ({
+                                tag: el.tagName.toLowerCase(),
+                                type: el.getAttribute('type') || '',
+                                enabled: !el.disabled,
+                                form: !!el.closest('form'),
+                                visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+                            })""")
+                            print("Candidato EMITIR", index, meta)
+                        if len(final_candidates) != 1:
+                            print("Clic final pendiente: se requiere distinguir los candidatos con seguridad.")
                         if len(final_candidates) == 1:
                             button = final_candidates[0]
                             print("Botón EMITIR final identificado:", "SÍ")
