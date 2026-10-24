@@ -92,6 +92,8 @@ def authenticate_sii() -> dict:
                 page = ctx.new_page()
                 page.set_default_timeout(12000)
                 stage = "abrir portal SII"
+                navigation_responses = []
+                page.on("response", lambda response: navigation_responses.append((response.url, response.status)) if response.request.is_navigation_request() and response.request.frame == page.main_frame else None)
                 initial_response = page.goto(SII_URL, wait_until="domcontentloaded", timeout=30000)
                 if not _safe_host(page.url):
                     raise SiiAutomationError("El portal redirigió fuera de los dominios oficiales del SII.")
@@ -136,8 +138,8 @@ def authenticate_sii() -> dict:
                         if field_type not in ("text", "password", "hidden", "email", "number", "submit"):
                             field_type = "otro"
                         input_types[field_type] = input_types.get(field_type, 0) + 1
-                    response = page.request.get(page.url, timeout=12000) if _safe_host(page.url) else None
-                    http_status = response.status if response is not None else None
+                    host_response_status = next((status for url, status in reversed(navigation_responses)
+                                                 if urlparse(url).hostname == host), None)
                     page_title = (page.title() or "").lower()
                     title_category = ("acceso" if any(word in page_title for word in ("acceso", "login", "autentic")) else
                                       "error" if any(word in page_title for word in ("error", "deneg", "prohib")) else "otro")
@@ -146,7 +148,9 @@ def authenticate_sii() -> dict:
                             "diagnostic": {"host": host, "rut_found": rut_input is not None,
                                            "password_found": pass_input is not None,
                                            "input_types": input_types, "iframe_count": page.locator("iframe").count(),
-                                           "http_status": http_status, "title_category": title_category,
+                                           "navigation_http_status": host_response_status,
+                                           "initial_http_status": initial_response.status if initial_response else None,
+                                           "title_category": title_category,
                                            "dom_ready": page.evaluate("document.readyState")}}
                 stage = "completar formulario de acceso"
                 rut_input.fill(rut)
