@@ -40,10 +40,13 @@ def message(txt, status=200):
 def start():
     if not configured():
         return message("Autorización aún no configurada en Render.",503)
-    supplied=request.args.get("setup_key","")
+    auth=request.authorization
     key=os.environ["PSICOLOGIA_GOOGLE_OAUTH_SETUP_KEY"]
-    if not hmac.compare_digest(supplied,key):
-        return message("Acceso no autorizado.",403)
+    if not (auth and auth.type=="basic" and auth.username=="psc-admin"
+            and hmac.compare_digest(auth.password or "",key)):
+        response=message("Acceso administrativo requerido.",401)
+        response.headers["WWW-Authenticate"]='Basic realm="PSC Google OAuth"'
+        return response
     try:
         Fernet(os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode())
     except (ValueError,TypeError):
