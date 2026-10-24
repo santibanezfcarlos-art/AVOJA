@@ -83,3 +83,6 @@ CREATE TABLE IF NOT EXISTS psychology_reschedule_audit (
  CONSTRAINT one_completed_reschedule UNIQUE(order_id)
 );
 COMMIT;
+
+-- Nombre visible solamente en avisos profesionales y evento privado.
+ALTER TABLE psychology_demo_payments ADD COLUMN IF NOT EXISTS patient_name varchar(120);
