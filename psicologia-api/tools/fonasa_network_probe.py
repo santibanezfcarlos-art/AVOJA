@@ -257,3 +257,47 @@ def chromium_proxy_check():
         result["network_error"]=match.group(0) if match else "unknown_browser_error"
     result["seconds"]=round(time.monotonic()-started,2)
     return jsonify(result)
+
+@app.get("/socks5-check")
+def socks5_check():
+    """Prueba acotada SOCKS5 CONNECT hacia Fonasa; sin credenciales."""
+    import time
+    t0=time.monotonic()
+    result={"proxy_type":"SOCKS5","proxy":"49.13.22.249:10805",
+            "proxy_tcp":"not_connected","socks5":"not_tested","fonasa_tls":"not_tested",
+            "credentials_used":False}
+    try:
+        with socket.create_connection(("49.13.22.249",10805), timeout=5) as sock:
+            result["proxy_tcp"]="connected"
+            sock.settimeout(6)
+            sock.sendall(bytes([5,1,0]))
+            hello=sock.recv(2)
+            if hello != bytes([5,0]):
+                result["socks5"]="handshake_rejected"
+                return jsonify(result)
+            name=b"bonowebptd.fonasa.cl"
+            sock.sendall(bytes([5,1,0,3,len(name)])+name+bytes([1,187]))
+            reply=sock.recv(4)
+            if len(reply)!=4 or reply[1]!=0:
+                result["socks5"]="connect_rejected"
+                result["reply_code"]=reply[1] if len(reply)>1 else None
+                return jsonify(result)
+            atyp=reply[3]
+            address_length={1:4,4:16}.get(atyp)
+            if atyp==3:
+                count=sock.recv(1)
+                address_length=count[0] if count else 0
+            if address_length:
+                needed=address_length+2
+                while needed>0:
+                    part=sock.recv(needed)
+                    if not part: break
+                    needed-=len(part)
+            result["socks5"]="tunnel_connected"
+            with ssl.create_default_context().wrap_socket(sock,server_hostname="bonowebptd.fonasa.cl") as tls:
+                result["fonasa_tls"]="verified"
+                result["tls_version"]=tls.version()
+    except Exception as exc:
+        result["error_type"]=type(exc).__name__
+    result["elapsed_seconds"]=round(time.monotonic()-t0,2)
+    return jsonify(result)
