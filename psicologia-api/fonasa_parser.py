@@ -29,15 +29,15 @@ def extraer_bono_pdf(content: bytes, *, rut_prestador: str, codigo: str = "09020
         if not match:
             raise BonoInvalido("No se pudo leer " + label)
         return match.group(1).strip()
-    folio = buscar(r"BONO DE ATENCION DE SALUD\\s*N[°º]\\s*(\\d{5,30})", "folio")
-    emitido = buscar(r"FECHA EMISION\\s*:\\s*(\\d{2}/\\d{2}/\\d{4})", "fecha emisión")
-    beneficiario = buscar(r"RUT PERSONA BENEFICIARIO\\(A\\)\\s*:\\s*([\\d.]+-[\\dkK])", "beneficiario")
-    prestador = buscar(r"PROFESIONAL/INSTITUCION\\s*:\\s*([\\d.]+-[\\dkK])", "prestador")
+    folio = buscar(r"BONO DE ATENCION DE SALUD\s*N[°º]\s*(\d{5,30})", "folio")
+    emitido = buscar(r"FECHA EMISION\s*:\s*(\d{2}/\d{2}/\d{4})", "fecha emisión")
+    beneficiario = buscar(r"RUT PERSONA BENEFICIARIO\(A\)\s*:\s*([\d.]+-[\dkK])", "beneficiario")
+    prestador = buscar(r"PROFESIONAL/INSTITUCION\s*:\s*([\d.]+-[\dkK])", "prestador")
     if prestador.replace(".", "").upper() != rut_prestador.replace(".", "").upper():
         raise BonoInvalido("Bono de otro prestador")
-    if not re.search(r"(?m)^" + re.escape(codigo) + r"\\s*$", texto):
+    if not re.search(r"(?m)^" + re.escape(codigo) + r"\s*$", texto):
         raise BonoInvalido("Código de prestación distinto")
-    copago = buscar(r"MONTO A PAGAR\\s*:\\s*([\\d.]+)", "copago")
+    copago = buscar(r"MONTO A PAGAR\s*:\s*([\d.]+)", "copago")
     return {"folio": folio, "fecha_emision": emitido,
             "rut_beneficiario": beneficiario, "rut_prestador": prestador,
             "codigo_prestacion": codigo, "copago_clp": int(copago.replace(".", ""))}
