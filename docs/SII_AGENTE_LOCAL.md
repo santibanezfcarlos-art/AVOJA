@@ -3,7 +3,7 @@
 ## Alcance comprobable
 
 - Se conserva la sesión manual y el perfil de Chromium en Windows.
-- El botón **Preparar en mi computador (sin emitir)** crea un trabajo con los datos de la base de datos, exclusivamente para compras de producción aprobadas, pendientes y sin folio.
+- El botón **Preparar en mi computador (sin emitir)** crea un trabajo con los datos de la base de datos, para compras de producción aprobadas pendientes y para compras simuladas aprobadas de integración, siempre sin folio. Las simulaciones conservan su condición de prueba.
 - **Emitir boleta SII** aparece deshabilitado. El endpoint rechaza modos distintos de `preview`; el agente nunca envía argumentos de emisión final.
 - El módulo `sii_final_control.py` prepara la operación final: revalidación de seis campos, asociación estructural del botón con su formulario (sin coordenadas), documento exento y monto, marcador persistente previo al clic y estado incierto. Aún NO se habilita desde el script ni el panel. El controlador del servidor deberá enlazarse antes de habilitarlo.
 - No hay parser de folio confirmado ni descarga/envío de comprobantes habilitados. Hace falta observar la respuesta de una primera operación real expresamente autorizada. No se interpreta un clic ni un HTTP 200 como una boleta emitida.
@@ -36,7 +36,7 @@ Escribir la contraseña del **panel PSC**, no la Clave Tributaria. Si el usuario
 
 La contraseña se solicita sin mostrarla y se intercambia por un token limitado a la cola del agente, válido por 12 horas. Solo el hash queda almacenado en Render; el token permanece en memoria local. No se guarda la contraseña en disco ni se imprime. Volver a ejecutar el agente cuando venza.
 
-En `/admin/boletas`, elegir una compra **real aprobada** y pulsar **Preparar en mi computador (sin emitir)**. Mantener el agente ejecutándose. Pulsar **Actualizar** para ver el resultado. Los datos no se copian manualmente. Compras de integración/simuladas nunca se convierten en reales para probar esta función.
+En `/admin/boletas`, elegir una compra **real aprobada** y pulsar **Preparar en mi computador (sin emitir)**. Mantener el agente ejecutándose. Pulsar **Actualizar** para ver el resultado. Los datos no se copian manualmente. En Ambiente → Pruebas, usar **Previsualizar prueba en SII (sin emitir)** en una compra simulada aprobada. No se cambia a compra real.
 
 No ejecutar simultáneamente el script de diagnóstico y el agente con el mismo perfil.
 
@@ -70,3 +70,12 @@ Los archivos temporales con datos de la ficha se eliminan al finalizar el proces
 4. Guardar documento privado asociado a la compra, implementar conciliación de resultados inciertos y preparar correo. No enviar correos hasta instrucción expresa.
 
 No cambia la lógica de pagos, reservas, Calendar, Meet ni método de pago.
+
+
+## Vista previa visible con una compra ficticia
+
+El agente actualizado abre Chromium y completa la ficha. Deja visible el formulario final hasta que cierres la ventana o pasen 10 minutos. El botón EMITIR queda visible y bloqueado; también se bloquean envíos con Enter y la red de esa vista final. No se emite un documento real con una compra simulada.
+
+El trabajo permanece activo mientras revisas la ventana. Al cerrarla, el agente informa el resultado al panel. Después pulsa Actualizar.
+
+Para una prueba local directa con tu JSON existente, agrega `--previsualizar` al comando de diagnóstico (no uses `--visible`, que conserva su función anterior de diagnóstico inicial).

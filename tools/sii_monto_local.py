@@ -7,7 +7,7 @@ Ejemplo:
 from __future__ import annotations
 
 import argparse
-from sii_final_control import finish, save_result
+from sii_final_control import finish, save_result, lock_preview, show_preview
 import json
 import re
 from pathlib import Path
@@ -41,6 +41,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--perfil", type=Path, required=True)
     parser.add_argument("--monto", type=amount, required=True)
+    parser.add_argument("--previsualizar", action="store_true", help="Completar y mostrar formulario final sin permitir emisión")
     parser.add_argument("--visible", action="store_true", help="Diagnóstico con navegador visible")
     parser.add_argument("--continuar", action="store_true", help="Pulsar primer EMITIR tras verificar el monto")
     parser.add_argument("--mostrar-campos", action="store_true", help="Activar Receptor y Detalle para verificar campos, sin rellenar")
@@ -49,6 +50,8 @@ def main():
     parser.add_argument("--autorizar-orden", help="Autoriza expresamente UNA emisión real; debe coincidir con order_id del JSON")
     parser.add_argument("--diario", type=Path, help="Carpeta privada de bloqueos persistentes de emisión")
     args = parser.parse_args()
+    if args.previsualizar and (not args.datos or args.visible):
+        parser.error("--previsualizar requiere --datos y no se combina con --visible")
     if args.autorizar_orden and (not args.datos or not args.diario or not args.resultado):
         parser.error("Emisión final requiere --datos, --diario y --resultado")
     if args.autorizar_orden:
@@ -69,7 +72,7 @@ def main():
         parser.error("No encuentro el perfil de la sesión autorizada. Ejecute primero el script 'autorizar'.")
     with sync_playwright() as playwright:
         ctx = playwright.chromium.launch_persistent_context(
-            str(profile), headless=not args.visible, locale="es-CL", timezone_id="America/Santiago"
+            str(profile), headless=not (args.visible or args.previsualizar), locale="es-CL", timezone_id="America/Santiago"
         )
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -146,6 +149,8 @@ def main():
                     return
                 print("Importe validado; pulsando primer EMITIR del teclado...")
                 matches[0].click(timeout=10000)
+                if args.previsualizar:
+                    lock_preview(page)
                 page.wait_for_timeout(1800)
                 print("Primer clic realizado. Dominio final:", urlparse(page.url).hostname)
                 print("Botones visibles:", page.get_by_role("button").count())
@@ -240,8 +245,10 @@ def main():
                                 return
                             print("Campo completado y verificado:", label_text)
                         page.wait_for_timeout(1200)
-                        finish(page, field_ids, datos, args.monto, args.resultado,
-                               args.autorizar_orden, args.diario)
+                        prepared = finish(page, field_ids, datos, args.monto, args.resultado,
+                                          args.autorizar_orden, args.diario)
+                        if args.previsualizar and prepared:
+                            show_preview(page)
                         return
                     else:
                         print("No se ingresaron datos ni se confirmó emisión.")

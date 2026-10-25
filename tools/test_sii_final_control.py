@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from playwright.sync_api import sync_playwright
-from sii_final_control import inspect_final, finish
+from sii_final_control import inspect_final, finish, lock_preview, show_preview
 
 class FinalGuardTests(unittest.TestCase):
     @classmethod
@@ -27,6 +27,18 @@ class FinalGuardTests(unittest.TestCase):
     def fixture(self, extra='', tag='form', amount='30.000', title='Boleta exenta'):
         fields=''.join(f'<input id="{key}" value="fixture">' for key in self.ids)
         self.page.set_content('<button>Emitir</button><button>7</button>'+f'<{tag} id="final"><p>{title} $ {amount}</p>'+fields+extra+'<button type="button" onclick="window.clicks=(window.clicks||0)+1">Emitir</button>'+f'</{tag}>')
+    def test_visible_preview_blocks_click_submit_and_enter(self):
+        self.fixture()
+        lock_preview(self.page)
+        self.page.locator('#final button').click()
+        self.assertIsNone(self.page.evaluate('window.clicks'))
+        self.assertTrue(inspect_final(self.page,self.ids,self.data)['valid'])
+        show_preview(self.page, seconds=0)
+        self.assertTrue(self.page.locator('#final button').is_disabled())
+        self.assertTrue(self.page.locator('#psc-preview-banner').is_visible())
+        self.assertFalse(self.page.locator('#final').evaluate("e=>e.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))"))
+        self.assertFalse(self.page.locator('#nombre').evaluate("e=>e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))"))
+
     def test_native_form_and_preview_never_click(self):
         self.fixture()
         info=inspect_final(self.page,self.ids,self.data)
@@ -67,8 +79,8 @@ class FinalGuardTests(unittest.TestCase):
     def test_panel_enqueues_preview_and_disables_final(self):
         root=Path(__file__).resolve().parents[1]/'psicologia-api'
         row=dict(order_id='fixture-order',name='Persona ficticia',created_at='2026-01-01',
-            appointment_date='',appointment_time='',payment_status='approved',invoice_status='pending',
-            environment='production',amount=30000,payment_method='Tarjeta',rut='12345678-5',
+            appointment_date='',appointment_time='',payment_status='approved',invoice_status='test',
+            environment='integration',amount=30000,payment_method='Tarjeta',rut='12345678-5',
             address='Ficticia 123',email='test@example.invalid',phone='12345678',detail='Sesión')
         requests=[]
         def serve(route):
@@ -87,7 +99,7 @@ class FinalGuardTests(unittest.TestCase):
         self.page.goto('https://psc.example.invalid/admin/boletas')
         button=self.page.get_by_role('button',name='Emitir boleta SII',exact=True)
         button.wait_for();self.assertTrue(button.is_disabled())
-        self.page.get_by_role('button',name='Preparar en mi computador (sin emitir)',exact=True).click()
+        self.page.get_by_role('button',name='Previsualizar prueba en SII (sin emitir)',exact=True).click()
         self.page.wait_for_function("document.getElementById('notice').textContent.includes('Compra enviada')")
         self.assertEqual(requests,[{'mode':'preview'}])
 

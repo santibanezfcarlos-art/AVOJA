@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -75,7 +76,7 @@ def finish(page, ids, data, amount, result_path=None, authorize_order=None, jour
     if not authorize_order:
         save_result(result_path, 'prepared')
         print('Formulario verificado. No se pulsó el botón final.')
-        return
+        return True
     if data.get('order_id') != authorize_order or not journal:
         raise RuntimeError('authorization_mismatch')
     # Require DTE 41 context and a single unambiguous amount inside the same form.
@@ -110,3 +111,45 @@ def finish(page, ids, data, amount, result_path=None, authorize_order=None, jour
         # classify success. Only sanitized transport metadata is retained.
         save_result(result_path, 'reconciliation', emitted=None, response_statuses=statuses[:20])
         print('Resultado pendiente de conciliación en SII. NO volver a emitir esta compra.')
+
+
+def lock_preview(page):
+    """Block subsequent Emitir clicks and form submissions during visible preview."""
+    page.evaluate(r'''() => {
+      if(window.__pscPreviewLocked) return;
+      window.__pscPreviewLocked=true;
+      document.addEventListener('click', e => {
+        const b=e.target.closest('button,[role="button"],input[type="submit"],input[type="button"]');
+        if(b && (b.value || b.innerText || '').trim().toLowerCase()==='emitir') {
+          e.preventDefault();e.stopImmediatePropagation();
+        }
+      },true);
+      document.addEventListener('submit',e=>{e.preventDefault();e.stopImmediatePropagation();},true);
+      document.addEventListener('keydown',e=>{
+        if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();}
+      },true);
+    }''')
+
+
+def show_preview(page, seconds=600):
+    """Keep the actual final form visible, but inert, until closed or timeout."""
+    lock_preview(page)
+    page.locator('[data-psc-final="verified"]').evaluate("el=>{el.disabled=true;el.setAttribute('aria-disabled','true');}")
+    page.evaluate("""() => {
+      const banner=document.createElement('div');
+      banner.id='psc-preview-banner';
+      banner.textContent='VISTA PREVIA · No se emitió una boleta. EMITIR está bloqueado. Cierra esta ventana al terminar (máximo 10 minutos).';
+      banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:12px;background:#fff1b8;color:#332600;font:16px sans-serif;text-align:center;pointer-events:none';
+      document.body.append(banner);
+    }""")
+    # Prevent any further network interaction from this frozen preview, including
+    # submissions triggered by page scripts. Initial filling/validation is finished.
+    page.context.route('**/*', lambda route: route.abort())
+    from playwright.sync_api import Error
+    deadline=time.monotonic()+seconds
+    try:
+        while not page.is_closed() and time.monotonic()<deadline:
+            page.wait_for_timeout(250)
+    except Error:
+        if not page.is_closed():
+            raise

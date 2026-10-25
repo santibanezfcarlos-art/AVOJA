@@ -21,14 +21,31 @@ class SiiJobsTests(unittest.TestCase):
         billing.record_result(order,token,30000,True,'VD')
     def claim(self):
         return self.client.post('/api/sii-agent/claim',json={},headers=self.agent)
-    def test_final_disabled_and_fake_payment_blocked(self):
+    def test_final_disabled_and_preview_allows_simulated_payment(self):
         self.approved()
         self.assertEqual(self.enqueue(mode='issue').status_code,409)
         self.approved('test','integration')
-        self.assertEqual(self.enqueue('test').status_code,409)
+        self.assertEqual(self.enqueue('test',mode='issue').status_code,409)
+        self.assertEqual(self.enqueue('test').status_code,201)
         self.order('unpaid','production')
         self.assertEqual(self.enqueue('unpaid').status_code,409)
         self.assertEqual(self.enqueue().status_code,201)
+    def test_simulation_stays_simulation_after_preview(self):
+        self.approved('sandbox','integration')
+        job=self.enqueue('sandbox').json['job_id']
+        claimed=self.claim().json['job']
+        self.assertEqual(claimed['data']['environment'],'integration')
+        self.assertEqual(claimed['mode'],'preview')
+        response=self.client.post('/api/sii-agent/jobs/'+job+'/result',headers=self.agent,
+            json={'status':'prepared','emitted':False})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(self.mark('sandbox').status_code,409)
+        with billing.db() as con:
+            row=con.execute("SELECT * FROM billing_orders WHERE order_id='sandbox'").fetchone()
+            self.assertEqual(row['environment'],'integration')
+            self.assertEqual(row['invoice_status'],'test')
+            self.assertIsNone(row['folio'])
+
     def test_no_duplicate_claim_or_manual_folio_race(self):
         self.approved()
         job=self.enqueue().json['job_id']

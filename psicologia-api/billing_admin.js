@@ -9,12 +9,12 @@ function query(){const p=new URLSearchParams();for(const id of ['environment','s
 async function copy(value){try{await navigator.clipboard.writeText(String(value));$('notice').textContent='Copiado. Puedes pegarlo en el SII.'}catch{$('notice').textContent='No se pudo copiar automáticamente. Selecciona el texto y usa Ctrl+C.'}}
 function field(container,label,value,wide=false){const box=node('div',undefined,'field'+(wide?' wide':''));const text=node('div');text.append(node('span',label),node('strong',value));const b=node('button','Copiar');b.type='button';b.setAttribute('aria-label','Copiar '+label);b.onclick=()=>copy(value);box.append(text,b);container.append(box)}
 function card(r){const section=node('section',undefined,'order');section.append(node('h2',r.name),node('p',r.order_id+' · Compra: '+r.created_at+' · Atención: '+r.appointment_date+' '+r.appointment_time,'meta'),node('span',(labels[r.payment_status]||r.payment_status)+' · '+(labels[r.invoice_status]||r.invoice_status),'badge'));
-if(r.environment==='integration')section.append(node('p','Simulación de Webpay. No emitir una boleta real por esta operación.','warning'));
+if(r.environment==='integration')section.append(node('p','Simulación de Webpay. Puedes previsualizar el formulario SII; la emisión real está bloqueada.','warning'));
 const fields=node('div',undefined,'fields');const pairs=[['Monto',r.amount],['Tipo de documento','Boleta exenta'],['Método de pago',r.payment_method],['RUT receptor',r.rut],['Nombre receptor',r.name],['Dirección receptor',r.address],['E-mail receptor',r.email],['Teléfono receptor',r.phone],['Detalle',r.detail]];
 for(const [label,value] of pairs)field(fields,label,value,['Dirección receptor','Detalle'].includes(label));section.append(fields);
 const actions=node('div',undefined,'actions'),all=node('button','Copiar ficha completa');all.onclick=()=>copy(pairs.map(([k,v])=>k+': '+v).join('\n'));actions.append(all);
 const sii=node('a','Abrir e-Boleta SII');sii.href='https://eboleta.sii.cl/emitir/';sii.target='_blank';sii.rel='noopener noreferrer';actions.append(sii);
-if(r.environment==='production'&&r.payment_status==='approved'&&r.invoice_status==='pending'){
+if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.invoice_status==='pending')||(r.environment==='integration'&&r.invoice_status==='test'))){
  const jobs=siiJobs.filter(j=>j.order_id===r.order_id);
  const active=jobs.find(j=>['queued','running','reconciliation'].includes(j.status));
  const latest=jobs[0];
@@ -28,14 +28,14 @@ if(r.environment==='production'&&r.payment_status==='approved'&&r.invoice_status
    try{const res=await fetch('/admin/boletas/sii-jobs/'+active.id+'/close',{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({agent_stopped:true})});if(!res.ok)throw Error('No fue posible cerrar el trabajo');await refresh()}catch(e){$('notice').textContent=e.message}
   };actions.append(close);
  }
- const prep=node('button','Preparar en mi computador (sin emitir)');prep.type='button';prep.disabled=!!active;
+ const prep=node('button',r.environment==='integration'?'Previsualizar prueba en SII (sin emitir)':'Preparar en mi computador (sin emitir)');prep.type='button';prep.disabled=!!active;
  prep.onclick=async()=>{
   prep.disabled=true;$('notice').textContent='Validando orden en el servidor…';
   try{
    const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/sii-jobs',{
     method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({mode:'preview'})});
    const data=await res.json();if(!res.ok)throw Error(data.error||'No fue posible preparar la orden');
-   await refresh();$('notice').textContent='Compra enviada al agente local. Mantén el agente abierto y pulsa Actualizar para ver el resultado. No se emitirá una boleta.';
+   await refresh();$('notice').textContent='Compra enviada al agente local. Revisa el navegador que se abrirá en tu computador. Cierra esa ventana al terminar y pulsa Actualizar. No se emitirá una boleta.';
   }catch(error){$('notice').textContent=error.message;prep.disabled=false}
  };actions.append(prep);
 }

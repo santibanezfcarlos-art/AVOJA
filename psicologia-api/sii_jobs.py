@@ -38,8 +38,9 @@ def busy(con, order):
 
 
 def eligible(row):
-    return bool(row and row['environment'] == 'production' and
-                row['payment_status'] == 'approved' and row['invoice_status'] == 'pending' and
+    return bool(row and ((row['environment'] == 'production' and row['invoice_status'] == 'pending') or
+                 (row['environment'] == 'integration' and row['invoice_status'] == 'test')) and
+                row['payment_status'] == 'approved' and
                 not row['folio'] and type(row['amount']) is int and row['amount'] > 0)
 
 
@@ -91,7 +92,7 @@ def enqueue(order):
         con.execute('BEGIN IMMEDIATE')
         row = con.execute('SELECT * FROM billing_orders WHERE order_id=?', (order,)).fetchone()
         if not eligible(row):
-            return jsonify(error='Solo compras reales aprobadas, pendientes y sin folio.'), 409
+            return jsonify(error='Solo compras aprobadas sin folio: reales pendientes o simulaciones de integración.'), 409
         if busy(con, order):
             return jsonify(error='Esta compra ya tiene un trabajo activo; no se reenviará.'), 409
         # Validate existing data, never accept replacement patient data from client.
@@ -133,7 +134,7 @@ def claim(owner):
             con.execute("UPDATE sii_jobs SET status='blocked',updated_at=?,result_code='order_changed' WHERE id=?", (billing.now(),job['id']))
             return jsonify(job=None)
         con.execute("UPDATE sii_jobs SET status='running',owner=?,updated_at=? WHERE id=?", (owner,billing.now(),job['id']))
-        payload = {'order_id':row['order_id'], 'monto':row['amount'],
+        payload = {'order_id':row['order_id'], 'monto':row['amount'], 'environment':row['environment'],
                    'rut':row['rut'], 'nombre':row['name'], 'direccion':row['address'],
                    'email':row['email'], 'telefono':row['phone'], 'detalle':row['detail']}
     return jsonify(job={'id':job['id'], 'mode':'preview', 'data':payload})

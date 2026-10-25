@@ -30,6 +30,8 @@ class AgentTests(unittest.TestCase):
         seen=[]
         def execute(command, **kwargs):
             self.assertNotIn('--autorizar-orden',command)
+            self.assertIn('--previsualizar',command)
+            self.assertGreaterEqual(kwargs['timeout'],840)
             data=Path(command[command.index('--datos')+1]);seen.append(data)
             self.assertTrue(data.exists())
             result=Path(command[command.index('--resultado')+1])

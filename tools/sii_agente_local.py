@@ -66,10 +66,10 @@ def run_job(job, profile):
         data_path.chmod(0o600)
         command = [sys.executable, str(Path(__file__).with_name('sii_monto_local.py')),
             '--perfil',str(profile), '--monto',str(job['data']['monto']),
-            '--continuar','--mostrar-campos','--datos',str(data_path),'--resultado',str(result_path)]
+            '--previsualizar','--continuar','--mostrar-campos','--datos',str(data_path),'--resultado',str(result_path)]
         try:
             # Do not stream browser tracebacks (may contain entered field values).
-            proc = subprocess.run(command, timeout=240, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            proc = subprocess.run(command, timeout=900, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             result = json.loads(result_path.read_text()) if result_path.exists() else {}
             if proc.returncode != 0:
                 result = {'status':'failed'}
@@ -117,6 +117,7 @@ def main():
             job = call('/api/sii-agent/claim', {}, auth).get('job')
             if job:
                 print('Preparando compra:', job['data']['order_id'])
+                print('Se abrirá Chromium. Al finalizar verás el formulario con EMITIR bloqueado. Cierra esa ventana al terminar (máximo 10 minutos).')
                 pending = (job['id'], run_job(job, profile))
                 continue
         except HTTPError as exc:
