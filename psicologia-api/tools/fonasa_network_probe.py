@@ -137,3 +137,30 @@ def proxy_batch2():
     with ThreadPoolExecutor(max_workers=7) as pool:
         results=list(pool.map(check,candidates))
     return jsonify({"results":results,"note":"Sin credenciales ni solicitudes autenticadas"})
+
+@app.get("/proxy-tls")
+def proxy_tls():
+    """Confirmar CONNECT + TLS con verificación de hostname; sin credenciales."""
+    host, port, target = "45.181.123.185", 999, "bonowebptd.fonasa.cl"
+    result = {"proxy":f"{host}:{port}","connect":"not_attempted","tls":"not_attempted"}
+    try:
+        with socket.create_connection((host,port),timeout=7) as sock:
+            sock.settimeout(12)
+            sock.sendall(("CONNECT "+target+":443 HTTP/1.1\r\nHost: "+target+":443\r\n\r\n").encode())
+            header=b""
+            while b"\r\n\r\n" not in header and len(header)<8192:
+                chunk=sock.recv(1024)
+                if not chunk: break
+                header+=chunk
+            result["connect"]=header.split(b"\r\n",1)[0].decode("ascii","replace")[:100]
+            if not result["connect"].startswith("HTTP/1.1 200") and not result["connect"].startswith("HTTP/1.0 200"):
+                return jsonify(result)
+            if header.partition(b"\r\n\r\n")[2]:
+                result["tls"]="unexpected_proxy_data"
+                return jsonify(result)
+            with ssl.create_default_context().wrap_socket(sock,server_hostname=target) as tls:
+                result["tls"]="verified"
+                result["protocol"]=tls.version()
+    except Exception as exc:
+        result["error"]=type(exc).__name__
+    return jsonify(result)
