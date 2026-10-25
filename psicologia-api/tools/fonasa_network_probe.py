@@ -223,3 +223,35 @@ def chromium_login_check():
     except Exception as exc:
         result["error_type"]=type(exc).__name__
     return jsonify(result)
+
+@app.get("/chromium-proxy-check")
+def chromium_proxy_check():
+    """Prueba sin credenciales de Chromium a través de proxy experimental."""
+    from playwright.sync_api import sync_playwright
+    import os, re, time
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+    result={"chromium":"not_started","portal":"not_loaded","usuario":False,"clave":False,"ingresar":False,"credentials_used":False,"proxy":"45.181.123.185:999"}
+    started=time.monotonic()
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(
+                headless=True,
+                proxy={"server":"http://45.181.123.185:999"},
+                args=["--no-sandbox"],
+                timeout=10000
+            )
+            result["chromium"]="started"
+            try:
+                page=browser.new_page(ignore_https_errors=False)
+                response=page.goto("https://bonowebptd.fonasa.cl/login.php",wait_until="domcontentloaded",timeout=14000)
+                result["portal"]="loaded" if page.url.startswith("https://bonowebptd.fonasa.cl/") else "redirected"
+                result["http_status"]=response.status if response else None
+                result["usuario"]=page.locator('input[type="text"]').count()>0
+                result["clave"]=page.locator('input[type="password"]').count()>0
+                result["ingresar"]=page.get_by_text(re.compile("Ingresar",re.I)).count()>0
+            finally:
+                browser.close()
+    except Exception as exc:
+        result["error_type"]=type(exc).__name__
+    result["seconds"]=round(time.monotonic()-started,2)
+    return jsonify(result)
