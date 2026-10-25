@@ -38,3 +38,22 @@ def diagnostic():
             row["tcp"] = type(exc).__name__
         result["tcp"].append(row)
     return jsonify(result)
+
+@app.get("/compare")
+def compare_https():
+    """Prueba selectiva solo de conectividad TCP/TLS; sin HTTP ni credenciales."""
+    hosts = ("bonowebptd.fonasa.cl", "www.fonasa.cl", "www.sii.cl", "www.google.com")
+    results = {}
+    for host in hosts:
+        item = {"dns": "unavailable", "tcp": "not_attempted", "tls": "not_attempted"}
+        try:
+            ip = socket.getaddrinfo(host, 443, family=socket.AF_INET, type=socket.SOCK_STREAM)[0][4][0]
+            item["dns"] = "resolved"
+            with socket.create_connection((ip, 443), timeout=4) as sock:
+                item["tcp"] = "connected"
+                with ssl.create_default_context().wrap_socket(sock, server_hostname=host) as tls:
+                    item["tls"] = "verified"
+        except Exception as exc:
+            item["error_class"] = type(exc).__name__
+        results[host] = item
+    return jsonify({"results": results, "note": "Solo TCP/TLS, sin credenciales ni solicitudes HTTP"})
