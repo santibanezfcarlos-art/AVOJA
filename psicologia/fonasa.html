@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reserva con Fonasa | PSC Santibáñez</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#173e35;background:#f4f8f5}*{box-sizing:border-box}body{margin:0}header{background:#173e35;color:#fff;padding:18px 5vw}header a{color:#fff}main{width:min(740px,92vw);margin:38px auto 60px}.card{background:#fff;border:1px solid #d6e5d9;border-radius:18px;padding:24px;margin:16px 0;box-shadow:0 8px 28px #173e3510}h1{font-size:clamp(1.75rem,4vw,2.5rem);margin:10px 0}h2{font-size:1.15rem;margin:0 0 12px}p{line-height:1.55}.muted{color:#527066}.step{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:50%;background:#dfeee2;margin-right:9px;font-weight:700}.btn{display:inline-block;border:0;border-radius:10px;background:#14654f;color:white;padding:13px 18px;font-weight:700;text-decoration:none;font-size:1rem}.btn:focus-visible,input:focus-visible{outline:3px solid #8abd9d}label{font-weight:600;display:block;margin:14px 0 6px}input{width:100%;padding:13px;border:1px solid #a9c6b3;border-radius:10px;font:inherit}input[type=file]{background:#f8faf8}.notice{border-left:4px solid #a1bda7;background:#f3f8f3;padding:12px 16px}.disabled{opacity:.58;cursor:not-allowed}.footer{margin-top:32px;font-size:.9rem;color:#527066}
+</style>
+</head><body>
+<header><strong>PSC Santibáñez</strong> <span style="float:right"><a href="index.html#agenda">Volver a la agenda</a></span></header>
+<main>
+<p class="muted">Prototipo de integración · no recibe datos reales</p>
+<h1>Reserva tu atención con Fonasa</h1>
+<p>La idea es que puedas comprar tu bono, adjuntarlo y elegir tu horario en un solo recorrido.</p>
+<section class="card"><h2><span class="step">1</span> Compra tu bono en Fonasa</h2><p>Adquiere el bono correspondiente a la atención con el profesional en el portal oficial. Ten a mano el comprobante.</p><a class="btn" href="https://www.fonasa.cl/" target="_blank" rel="noopener noreferrer">Ir al sitio oficial de Fonasa ↗</a></section>
+<section class="card"><h2><span class="step">2</span> Adjunta el comprobante</h2><div class="notice">Este formulario es una vista de desarrollo. La recepción de bonos se habilitará cuando el servidor confirme el almacenamiento privado y la asociación a la reserva. No ingreses información personal todavía.</div><label for="folio">Folio del bono</label><input id="folio" placeholder="Folio del bono" disabled><label for="bono">Comprobante PDF o imagen</label><input id="bono" type="file" accept=".pdf,image/jpeg,image/png" disabled><p class="muted">El folio se controlará contra duplicados; el comprobante quedará asociado a una sola reserva.</p></section>
+<section class="card"><h2><span class="step">3</span> Selecciona el horario</h2><p>Una vez integrado el formulario con Google Calendar, la persona elegirá un horario y recibirá confirmación por correo, sin aprobación manual previa.</p><button class="btn disabled" type="button" disabled>Agendar con bono (en desarrollo)</button></section>
+<p class="footer">Este módulo es una vista previa técnica. Las reservas particulares y las pruebas de Transbank siguen en la agenda actual.</p>
+</main></body></html>
