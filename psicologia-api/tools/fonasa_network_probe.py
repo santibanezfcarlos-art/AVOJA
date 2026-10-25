@@ -664,3 +664,152 @@ def _decodo_diagnostic_startup_once():
 if __import__("os").environ.get("DECODO_DIAGNOSTIC_ON_START")=="yes":
     import threading
     threading.Thread(target=_decodo_diagnostic_startup_once,daemon=True).start()
+
+# One-shot Fonasa login inspection: provider credentials never appear in responses/logs.
+_fonasa_login_attempted = False
+
+@app.post("/fonasa-login-inspect")
+def fonasa_login_inspect():
+    import os, hmac, re, time, json
+    from urllib.parse import urlparse
+    from flask import request
+    from playwright.sync_api import sync_playwright
+    global _fonasa_login_attempted
+    token=os.environ.get("DECODO_TEST_TOKEN","")
+    if not token or not hmac.compare_digest(request.headers.get("X-Test-Token",""),token):
+        return jsonify({"status":"unauthorized"}),403
+    required=["DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER","DECODO_PROXY_PASSWORD",
+              "FONASA_MLE_USER","FONASA_MLE_PASSWORD"]
+    missing=[v for v in required if not os.environ.get(v)]
+    if missing:
+        return jsonify({"status":"missing_environment_variables","missing":missing}),200
+    if _fonasa_login_attempted:
+        return jsonify({"status":"already_attempted_in_this_process"}),429
+    _fonasa_login_attempted=True
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
+    start=time.monotonic()
+    result={"status":"started","proxy_chile":"not_checked","chromium":"not_started",
+            "login_page":"not_loaded","login_submit":"not_attempted",
+            "authenticated_menu":"not_observed",
+            "activation_form":"not_observed",
+            "no_bono_transaction":True,"credentials_printed":False}
+    host="bonowebptd.fonasa.cl"
+    try:
+        with sync_playwright() as p:
+            proxy_server="http://"+os.environ["DECODO_PROXY_HOST"].strip()+":"+os.environ["DECODO_PROXY_PORT"].strip()
+            browser=p.chromium.launch(
+                headless=True,args=["--no-sandbox"],timeout=8000,
+                proxy={"server":proxy_server,"username":os.environ["DECODO_PROXY_USER"],
+                       "password":os.environ["DECODO_PROXY_PASSWORD"]})
+            result["chromium"]="started"
+            try:
+                context=browser.new_context(ignore_https_errors=False)
+                context.set_default_timeout(5000)
+                context.route("**/*",lambda route: route.abort()
+                    if route.request.resource_type in ("image","media","font")
+                    else route.continue_())
+                check=context.new_page()
+                try:
+                    response=check.goto("https://ipinfo.io/json",wait_until="domcontentloaded",timeout=6500)
+                    if response and response.status==200:
+                        geo=json.loads(check.locator("body").inner_text(timeout=1500))
+                        result["proxy_chile"]="confirmed" if geo.get("country")=="CL" else "not_chile"
+                except Exception as exc:
+                    result["proxy_error"]=type(exc).__name__
+                finally:
+                    check.close()
+                if result["proxy_chile"]!="confirmed":
+                    result["status"]="stopped_proxy_unconfirmed"
+                    return jsonify(result)
+                page=context.new_page()
+                try:
+                    response=page.goto("https://bonowebptd.fonasa.cl/login.php?v=18-06-2019_1.80",
+                         wait_until="domcontentloaded",timeout=12000)
+                    result["login_http_status"]=response.status if response else None
+                    parsed=urlparse(page.url)
+                    if parsed.scheme!="https" or parsed.hostname!=host:
+                        result["status"]="stopped_unexpected_login_origin"
+                        return jsonify(result)
+                    result["login_page"]="loaded"
+                    username=page.locator('input[name="usuario"],input[name="user"],input[id="usuario"]')
+                    if username.count()!=1:
+                        username=page.locator('input[type="text"]')
+                    password=page.locator('input[type="password"]')
+                    login=page.get_by_role("button",name=re.compile(r"^Ingresar$",re.I))
+                    if login.count()!=1:
+                        login=page.locator('input[type="submit"][value="Ingresar"]')
+                    result["field_counts"]={"usuario":username.count(),"clave":password.count(),"ingresar":login.count()}
+                    if username.count()!=1 or password.count()!=1 or login.count()!=1:
+                        result["status"]="stopped_unrecognized_login_form"
+                        result["form_inputs"]=[{"type":item.get_attribute("type"),"name":item.get_attribute("name"),
+                            "id":item.get_attribute("id")} for item in page.locator("input").all()[:12]]
+                        return jsonify(result)
+                    username.fill(os.environ["FONASA_MLE_USER"])
+                    password.fill(os.environ["FONASA_MLE_PASSWORD"])
+                    if urlparse(page.url).hostname!=host:
+                        result["status"]="stopped_origin_changed_before_submit"
+                        return jsonify(result)
+                    login.click(timeout=6000)
+                    result["login_submit"]="clicked"
+                    try:page.wait_for_load_state("domcontentloaded",timeout=8000)
+                    except Exception:pass
+                    page.wait_for_timeout(1700)
+                    result["login_form_still_visible"]=page.locator('input[type="password"]').count()>0
+                    result["after_login_host"]=urlparse(page.url).hostname
+                    if urlparse(page.url).hostname!=host:
+                        result["status"]="stopped_post_login_redirect_other_host"
+                        return jsonify(result)
+                    menu=page.get_by_text(re.compile(r"Activaci[oó]n y desactivar Cuenta M[eé]dica",re.I))
+                    result["activation_menu_matches"]=menu.count()
+                    if menu.count()>0:
+                        result["authenticated_menu"]="observed"
+                        try:
+                            menu.first.click(timeout=5000)
+                            page.wait_for_timeout(600)
+                            submenu=page.get_by_text(re.compile(r"Activaci[oó]n Cuenta M[eé]dica",re.I))
+                            result["activation_submenu_matches"]=submenu.count()
+                            if submenu.count()>0:
+                                submenu.first.click(timeout=5000)
+                                page.wait_for_timeout(900)
+                                rut=page.get_by_text(re.compile(r"Rut Beneficiario",re.I))
+                                folio=page.get_by_text(re.compile(r"Folio Bono",re.I))
+                                result["activation_form"]="observed" if rut.count()>0 and folio.count()>0 else "not_observed"
+                            else:result["activation_form"]="submenu_not_found"
+                        except Exception as exc:
+                            result["menu_inspection_error"]=type(exc).__name__
+                        result["status"]="menu_observed_no_patient_actions"
+                    else:
+                        result["status"]="login_clicked_menu_not_confirmed"
+                finally:
+                    page.close()
+                    context.close()
+            finally:
+                browser.close()
+    except Exception as exc:
+        result["status"]="test_failed"
+        result["error_type"]=type(exc).__name__
+        code=re.search(r"net::ERR_[A-Z_]+",str(exc))
+        if code:result["network_error"]=code.group(0)
+    result["seconds"]=round(time.monotonic()-start,2)
+    return jsonify(result)
+
+
+def _fonasa_login_startup_probe():
+    """Operator-activated single test; emits only redacted result flags."""
+    import os, json, time
+    time.sleep(2)
+    key=os.environ.get("DECODO_TEST_TOKEN","")
+    if not key:
+        app.logger.warning("FONASA_LOGIN_RESULT %s",json.dumps({"status":"missing_test_token"}))
+        return
+    try:
+        with app.test_client() as client:
+            response=client.post("/fonasa-login-inspect",headers={"X-Test-Token":key})
+            payload=response.get_json(silent=True) or {"status":"non_json_response"}
+            app.logger.warning("FONASA_LOGIN_RESULT %s",json.dumps(payload))
+    except Exception as exc:
+        app.logger.warning("FONASA_LOGIN_RESULT %s",json.dumps({"error_type":type(exc).__name__}))
+
+if __import__("os").environ.get("FONASA_LOGIN_ON_START")=="yes":
+    import threading
+    threading.Thread(target=_fonasa_login_startup_probe,daemon=True).start()
