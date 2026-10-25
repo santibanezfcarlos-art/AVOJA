@@ -57,3 +57,21 @@ def compare_https():
             item["error_class"] = type(exc).__name__
         results[host] = item
     return jsonify({"results": results, "note": "Solo TCP/TLS, sin credenciales ni solicitudes HTTP"})
+
+@app.get("/proxy-test")
+def proxy_test():
+    """CONNECT sin credenciales a un proxy público fijo. No envía solicitudes HTTP a Fonasa."""
+    proxy_host, proxy_port = "170.239.84.103", 3128
+    result = {"proxy": f"{proxy_host}:{proxy_port}", "connect": "not_attempted",
+              "fonasa_tunnel": "not_attempted", "note": "Prueba aislada: no se usan credenciales ni datos de pacientes"}
+    try:
+        with socket.create_connection((proxy_host, proxy_port), timeout=6) as sock:
+            result["connect"] = "connected"
+            sock.settimeout(8)
+            sock.sendall(b"CONNECT bonowebptd.fonasa.cl:443 HTTP/1.1\\r\\nHost: bonowebptd.fonasa.cl:443\\r\\nProxy-Connection: close\\r\\n\\r\\n")
+            data = sock.recv(512)
+            status = data.split(b"\\r\\n", 1)[0].decode("ascii", "replace")
+            result["fonasa_tunnel"] = status[:90]
+    except OSError as exc:
+        result["connect_error"] = type(exc).__name__
+    return jsonify(result)
