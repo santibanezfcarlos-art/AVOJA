@@ -368,3 +368,54 @@ def socks5_compare():
         futures=[executor.submit(check,*spec) for spec in specs]
         tests=[future.result() for future in futures]
     return jsonify({"proxy":"49.13.22.249:10805","credentials_used":False,"checks":tests})
+
+@app.get("/chile-proxy-batch")
+def chile_proxy_batch():
+    """Probar proxies publicos sin credenciales, TLS verificado, destinos fijos."""
+    import concurrent.futures, time
+    candidates=[
+      ("190.110.110.154",999),
+      ("167.249.28.73",999),
+      ("190.82.221.178",999),
+      ("45.225.204.11",999),
+      ("45.169.148.1",999),
+      ("190.121.52.124",999),
+      ("45.225.206.248",999),
+      ("190.121.52.125",999)
+    ]
+    target="bonowebptd.fonasa.cl"
+    def probe(candidate):
+        host,port=candidate
+        out={"proxy":host+":"+str(port),"proxy_tcp":"failed",
+             "connect":"not_tested","tls":"not_tested",
+             "control_connect":"not_tested","credentials_used":False}
+        start=time.monotonic()
+        try:
+            with socket.create_connection((host,port),timeout=3.5) as sock:
+                out["proxy_tcp"]="connected"
+                sock.settimeout(5)
+                sock.sendall(("CONNECT "+target+":443 HTTP/1.1\r\nHost: "+target+":443\r\nProxy-Connection: close\r\n\r\n").encode("ascii"))
+                line=bytearray()
+                while b"\r\n\r\n" not in line and len(line)<8192:
+                    block=sock.recv(1024)
+                    if not block: break
+                    line.extend(block)
+                header=line.split(b"\r\n",1)[0]
+                status=header.decode("ascii","replace")[:110]
+                out["connect"]=status
+                if status.startswith("HTTP/1.1 200") or status.startswith("HTTP/1.0 200"):
+                    sock.settimeout(6)
+                    with ssl.create_default_context().wrap_socket(sock,server_hostname=target) as tls:
+                        out["tls"]="verified"
+                        out["tls_version"]=tls.version()
+                        tls.settimeout(4)
+                        tls.sendall(("GET /login.php HTTP/1.1\r\nHost: "+target+"\r\nConnection: close\r\n\r\n").encode("ascii"))
+                        data=tls.recv(1024)
+                        out["login_http"]=data.split(b"\r\n",1)[0].decode("ascii","replace")[:110]
+        except Exception as exc:
+            out["error_type"]=type(exc).__name__
+        out["seconds"]=round(time.monotonic()-start,2)
+        return out
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results=list(pool.map(probe,candidates))
+    return jsonify({"target":target,"credentials_used":False,"candidates":results})
