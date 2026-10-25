@@ -269,9 +269,10 @@ def socks5_check():
     try:
         with socket.create_connection(("49.13.22.249",10805), timeout=5) as sock:
             result["proxy_tcp"]="connected"
-            sock.settimeout(6)
+            sock.settimeout(15)
             sock.sendall(bytes([5,1,0]))
             hello=sock.recv(2)
+            result["handshake_reply_hex"]=hello.hex()
             if hello != bytes([5,0]):
                 result["socks5"]="handshake_rejected"
                 return jsonify(result)
