@@ -104,3 +104,36 @@ def proxy_batch():
     with ThreadPoolExecutor(max_workers=12) as pool:
         results=list(pool.map(check,candidates))
     return jsonify({"results":results,"note":"Sin usuarios, claves, sesiones ni bonos"})
+
+@app.get("/proxy-batch2")
+def proxy_batch2():
+    """Probar candidatos chilenos frescos HTTP CONNECT y SOCKS5 sin credenciales."""
+    from concurrent.futures import ThreadPoolExecutor
+    candidates = [
+        ("45.225.204.8",999,"http"),
+        ("179.57.172.172",999,"http"),
+        ("190.121.52.125",999,"http"),
+        ("167.249.28.73",999,"http"),
+        ("45.161.191.17",999,"http"),
+        ("45.181.123.185",999,"http"),
+        ("190.110.96.250",999,"http"),
+    ]
+    def check(entry):
+        host,port,protocol=entry
+        result={"proxy":f"{host}:{port}","protocol":protocol,"result":"unreachable"}
+        try:
+            with socket.create_connection((host,port),timeout=3) as sock:
+                result["result"]="tcp_connected"
+                sock.settimeout(5)
+                req=("CONNECT bonowebptd.fonasa.cl:443 HTTP/1.1\r\n"
+                     "Host: bonowebptd.fonasa.cl:443\r\n"
+                     "Proxy-Connection: close\r\n\r\n").encode("ascii")
+                sock.sendall(req)
+                data=sock.recv(150)
+                result["result"]=data.split(b"\r\n",1)[0].decode("ascii","replace")[:90] or "empty_reply"
+        except OSError as exc:
+            result["error"]=type(exc).__name__
+        return result
+    with ThreadPoolExecutor(max_workers=7) as pool:
+        results=list(pool.map(check,candidates))
+    return jsonify({"results":results,"note":"Sin credenciales ni solicitudes autenticadas"})
