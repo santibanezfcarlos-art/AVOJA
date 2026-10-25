@@ -202,7 +202,8 @@ def proxy_retry():
 def chromium_login_check():
     """Chromium headless: solo pantalla de login, sin claves ni acciones."""
     from playwright.sync_api import sync_playwright
-    import re
+    import re, os
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
     result={"chromium":"not_started","portal":"not_loaded","usuario":False,"clave":False,"ingresar":False,"credentials_used":False}
     try:
         with sync_playwright() as p:
