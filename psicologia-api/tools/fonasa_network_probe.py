@@ -330,7 +330,7 @@ def socks5_compare():
                 else:
                     encoded=host.encode("ascii")
                     addr=bytes([3])+bytes([len(encoded)])+encoded
-                sock.sendall(bytes([5,1,0])+addr+b"\\x01\\xbb")
+                sock.sendall(bytes([5,1,0])+addr+bytes([1,187]))
                 reply=sock.recv(4)
                 if len(reply)!=4 or reply[1]!=0:
                     out["tunnel"]="rejected" if len(reply)>1 else "invalid_reply"
