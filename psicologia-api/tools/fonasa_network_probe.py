@@ -253,5 +253,7 @@ def chromium_proxy_check():
                 browser.close()
     except Exception as exc:
         result["error_type"]=type(exc).__name__
+        match=re.search(r"net::ERR_[A-Z_]+", str(exc))
+        result["network_error"]=match.group(0) if match else "unknown_browser_error"
     result["seconds"]=round(time.monotonic()-started,2)
     return jsonify(result)
