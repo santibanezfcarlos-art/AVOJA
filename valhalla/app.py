@@ -1731,6 +1731,47 @@ class Handler(BaseHTTPRequestHandler):
                 result = store.import_legacy_csv(user['id'], body, preview=self.path.endswith('/preview'))
                 self.respond(result)
                 return
+            elif self.path == '/api/admin/email/migration-campaign':
+                self.admin(user)
+                if user['email'] != ADMIN_EMAIL or user['role'] != 'admin':
+                    raise Problem('Acceso exclusivo del propietario.', 403)
+                addresses=body.get('emails')
+                if not isinstance(addresses,list) or len(addresses)!=79 or any(not isinstance(v,str) for v in addresses):
+                    raise Problem('La campaña exige exactamente los 79 correos aprobados.',400)
+                addresses=[v.strip().lower() for v in addresses]
+                if len(set(addresses))!=79 or any(not re.fullmatch(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+',v) for v in addresses):
+                    raise Problem('El listado tiene duplicados o direcciones inválidas.',400)
+                if body.get('confirmation')!='CONFIRMO 79 DESTINATARIOS':
+                    raise Problem('Confirma la campaña antes de enviarla.',400)
+                delivery=getattr(self.server,'email_delivery',None)
+                if not delivery or not delivery.configured or delivery.provider!='resend':
+                    raise Problem('Resend no está disponible.',503)
+                with store.connection(True) as c:
+                    c.execute("CREATE TABLE IF NOT EXISTS migration_campaign_mail (email TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TEXT NOT NULL)")
+                    processed=c.execute("SELECT email FROM migration_campaign_mail").fetchall()
+                    processed={r['email'] for r in processed}
+                    pending=[email for email in addresses if email not in processed]
+                    if pending:
+                        email=pending[0]
+                        c.execute("INSERT INTO migration_campaign_mail(email,state,updated_at) VALUES(?,'sending',?)",(email,stamp(now())))
+                if not pending:
+                    self.respond({'ok':True,'complete':True,'message':'Los 79 correos ya fueron procesados o reservados.'})
+                    return
+                # Reuse the exact HTML used by the successful logo preview.
+                logo='https://www.valhallaoffice.cl/images/valhalla-logo.png'
+                html='''<html><body style="margin:0;background:#f4f6ef;font-family:Arial,sans-serif;color:#193e37;"><table width="100%"><tr><td align="center"><table width="580" style="max-width:100%;background:white;border:1px solid #dce4d7;border-radius:16px"><tr><td align="center" style="padding:26px"><img src="'''+logo+'''" width="180" alt="Valhalla Office"><p>ESPACIOS PARA PROFESIONALES</p><h1>¡Tenemos nueva plataforma!</h1><p>Tus horas ya están cargadas.<br>Te esperamos para seguir agendando.</p><p style="background:#16636b;padding:18px"><a style="color:white" href="https://www.valhallaoffice.cl">www.valhallaoffice.cl</a></p><h2>¿Cómo acceder a tus horas?</h2><p style="text-align:justify">Ingresa con tu cuenta de Google, usando el mismo correo que tenías registrado en Skedu.</p><p style="text-align:justify">Si no tienes una cuenta de Google asociada a ese correo, crea un nuevo usuario con el mismo correo que utilizabas en Skedu.</p><p style="text-align:justify">Al ingresar, encontrarás tus horas pendientes de agendar para que puedas seguir utilizándolas.</p><p>Desde ahora, realiza tus nuevas reservas en esta plataforma.</p><p>¿Necesitas ayuda? Escríbenos a<br><a href="mailto:contacto@valhallaoffice.cl">contacto@valhallaoffice.cl</a></p><p>Sigue tu vocación.<br>Nosotros tenemos el espacio.</p></td></tr></table></td></tr></table></body></html>'''
+                try:
+                    delivery.send_message(email,'Valhalla Office | Tus horas te esperan',
+                        '¡Tenemos nueva plataforma! Tus horas ya están cargadas. https://www.valhallaoffice.cl',
+                        idempotency_key='migration-'+hashlib.sha256(email.encode()).hexdigest()[:32],html=html)
+                except EmailDeliveryError:
+                    with store.connection(True) as c:
+                        c.execute("UPDATE migration_campaign_mail SET state='unknown',updated_at=? WHERE email=?",(stamp(now()),email))
+                    raise Problem('Entrega incierta; no se reintentará automáticamente para evitar duplicados.',502)
+                with store.connection(True) as c:
+                    c.execute("UPDATE migration_campaign_mail SET state='accepted',updated_at=? WHERE email=?",(stamp(now()),email))
+                self.respond({'ok':True,'complete':False,'message':'Resend aceptó el correo individual.'})
+                return
             elif self.path == '/api/admin/email/migration-preview':
                 self.admin(user)
                 if user['email'] != ADMIN_EMAIL or user['role'] != 'admin':
