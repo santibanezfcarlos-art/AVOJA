@@ -257,10 +257,20 @@ def main():
                         print("Botones EMITIR visibles:", len(result))
                         for idx, item in enumerate(result, 1):
                             print("Candidato", idx, item)
-                        if len(result) == 1:
-                            print("Botón final identificado:", "SÍ")
-                            print("Botón final habilitado:", "SÍ" if not result[0]["disabled"] else "NO")
+                        # En el segundo paso el teclado inicial permanece montado:
+                        # reconocer el botón inferior/ancho del formulario, no el
+                        # de la calculadora, y exigir separación espacial clara.
+                        ordered = sorted(result, key=lambda item: item["y"])
+                        if (len(ordered) == 2
+                            and ordered[1]["y"] > ordered[0]["y"]
+                            and ordered[1]["width"] > ordered[0]["width"] * 1.25):
+                            last = ordered[1]
+                            print("Botón final identificado:", "SÍ (inferior y más ancho)")
+                            print("Botón final habilitado:", "SÍ" if not last["disabled"] else "NO")
                             print("NO se pulsó el botón final.")
+                        elif len(result) == 1:
+                            print("Botón EMITIR único encontrado; no se confirma su etapa.")
+                            print("NO se pulsó el botón.")
                         else:
                             print("Botón final no identificado inequívocamente. No se pulsa.")
                     else:
