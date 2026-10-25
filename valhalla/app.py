@@ -1741,7 +1741,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(addresses,list) or len(addresses)!=79 or any(not isinstance(v,str) for v in addresses):
                     raise Problem('La campaña exige exactamente los 79 correos aprobados.',400)
                 addresses=[v.strip().lower() for v in addresses]
-                if len(set(addresses))!=79 or any(not re.fullmatch(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+',v) for v in addresses):
+                if len(set(addresses))!=79 or any(not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',v) for v in addresses):
                     raise Problem('El listado tiene duplicados o direcciones inválidas.',400)
                 if body.get('confirmation')!='CONFIRMO 79 DESTINATARIOS':
                     raise Problem('Confirma la campaña antes de enviarla.',400)
