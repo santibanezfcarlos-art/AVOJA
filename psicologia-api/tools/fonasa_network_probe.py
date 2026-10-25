@@ -539,3 +539,102 @@ def network_path():
                       "Timeout alone does not prove geoblocking."}
     app.logger.warning("FONASA_NETWORK_PATH %s", result)
     return jsonify(result)
+
+# Decodo trial: protected, bounded diagnostics; NEVER log proxy or Fonasa credentials.
+_decodo_check_count = 0
+
+@app.get("/decodo-diagnostico")
+def decodo_diagnostico():
+    import os, hmac, json, re, time
+    from flask import request
+    from playwright.sync_api import sync_playwright
+    expected_token = os.environ.get("DECODO_TEST_TOKEN", "")
+    provided_token = request.args.get("key", "")
+    if not expected_token or not hmac.compare_digest(provided_token, expected_token):
+        return jsonify({"error": "unauthorized"}), 403
+
+    required = ("DECODO_PROXY_HOST", "DECODO_PROXY_PORT",
+                "DECODO_PROXY_USER", "DECODO_PROXY_PASSWORD")
+    missing = [key for key in required if not os.environ.get(key)]
+    if missing:
+        return jsonify({"status":"needs_configuration", "missing":missing,
+                        "fonasa_credentials_used":False})
+
+    global _decodo_check_count
+    if _decodo_check_count >= 3:
+        return jsonify({"status":"limit_reached",
+                        "message":"Three tests max per running service instance"}), 429
+    _decodo_check_count += 1
+
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+    host = os.environ["DECODO_PROXY_HOST"].strip()
+    port = os.environ["DECODO_PROXY_PORT"].strip()
+    if not port.isdecimal() or not (1 <= int(port) <= 65535):
+        return jsonify({"status":"invalid_proxy_port"}), 400
+    server = host if "://" in host else "http://" + host
+    server = server.rstrip("/") + ":" + port
+    result = {"status":"started","chromium":"not_started",
+              "proxy_control":"not_tested","proxy_country":"unknown",
+              "fonasa":"not_tested","fonasa_credentials_used":False}
+    started=time.monotonic()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,args=["--no-sandbox"],timeout=8000,
+                proxy={"server":server,
+                       "username":os.environ["DECODO_PROXY_USER"],
+                       "password":os.environ["DECODO_PROXY_PASSWORD"]})
+            result["chromium"]="started"
+            try:
+                context = browser.new_context(ignore_https_errors=False)
+                context.route("**/*", lambda r: r.abort()
+                    if r.request.resource_type in ("image","font","media")
+                    else r.continue_())
+                ip_page = context.new_page()
+                try:
+                    ip_resp=ip_page.goto("https://ipinfo.io/json",
+                                         wait_until="domcontentloaded",timeout=6500)
+                    result["proxy_control"]="loaded"
+                    result["proxy_http_status"]=ip_resp.status if ip_resp else None
+                    try:
+                        obj=json.loads(ip_page.locator("body").inner_text(timeout=2000))
+                        result["proxy_country"]=obj.get("country","unknown")
+                    except (ValueError,Exception):
+                        pass
+                except Exception as err:
+                    result["proxy_control_error"]=type(err).__name__
+                    m=re.search(r"net::ERR_[A-Z_]+",str(err))
+                    if m: result["proxy_network_error"]=m.group(0)
+                finally:
+                    ip_page.close()
+                if result["proxy_country"]=="CL":
+                    page=context.new_page()
+                    try:
+                        response=page.goto("https://bonowebptd.fonasa.cl/",
+                                            wait_until="domcontentloaded",timeout=12000)
+                        result["fonasa"]="http_response"
+                        result["fonasa_http_status"]=response.status if response else None
+                        result["username_field"]=page.locator(
+                            'input[type="text"],input[name*="rut" i],input[name*="run" i]').count()>0
+                        result["password_field"]=page.locator('input[type="password"]').count()>0
+                        result["login_button"]=page.get_by_text(
+                            re.compile("Ingresar|Iniciar sesi[oó]n|Entrar",re.I)).count()>0
+                        result["fonasa"]="form_detected" if (
+                            result["username_field"] and result["password_field"]
+                        ) else "http_response_without_recognized_form"
+                    except Exception as err:
+                        result["fonasa"]="navigation_failed"
+                        result["fonasa_error"]=type(err).__name__
+                        m=re.search(r"net::ERR_[A-Z_]+",str(err))
+                        if m: result["fonasa_network_error"]=m.group(0)
+                    finally:
+                        page.close()
+                else:
+                    result["fonasa"]="skipped_proxy_not_confirmed_chile"
+                context.close()
+            finally:
+                browser.close()
+    except Exception as err:
+        result["error_type"]=type(err).__name__
+    result["seconds"]=round(time.monotonic()-started,2)
+    return jsonify(result)
