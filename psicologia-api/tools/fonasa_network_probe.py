@@ -319,18 +319,18 @@ def socks5_compare():
             with socket.create_connection((proxy_host,proxy_port),timeout=4) as sock:
                 out["proxy_tcp"]="connected"
                 sock.settimeout(8)
-                sock.sendall(b"\\x05\\x01\\x00")
+                sock.sendall(bytes([5,1,0]))
                 hello=sock.recv(2)
-                if hello!=b"\\x05\\x00":
+                if hello!=bytes([5,0]):
                     out["handshake"]="rejected"
                     return out
                 out["handshake"]="accepted"
                 if address_type=="ipv4":
-                    addr=b"\\x01"+socket.inet_aton(host)
+                    addr=bytes([1])+socket.inet_aton(host)
                 else:
                     encoded=host.encode("ascii")
-                    addr=b"\\x03"+bytes([len(encoded)])+encoded
-                sock.sendall(b"\\x05\\x01\\x00"+addr+b"\\x01\\xbb")
+                    addr=bytes([3])+bytes([len(encoded)])+encoded
+                sock.sendall(bytes([5,1,0])+addr+b"\\x01\\xbb")
                 reply=sock.recv(4)
                 if len(reply)!=4 or reply[1]!=0:
                     out["tunnel"]="rejected" if len(reply)>1 else "invalid_reply"
