@@ -197,3 +197,28 @@ def proxy_retry():
         result["error"]=type(exc).__name__
     result["seconds"]=round(time.monotonic()-start,2)
     return jsonify(result)
+
+@app.get("/chromium-login-check")
+def chromium_login_check():
+    """Chromium headless: solo pantalla de login, sin claves ni acciones."""
+    from playwright.sync_api import sync_playwright
+    import re
+    result={"chromium":"not_started","portal":"not_loaded","usuario":False,"clave":False,"ingresar":False,"credentials_used":False}
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=9000)
+            result["chromium"]="started"
+            try:
+                page=browser.new_page(ignore_https_errors=False)
+                response=page.goto("https://bonowebptd.fonasa.cl/login.php",wait_until="commit",timeout=10000)
+                result["portal"]="responded"
+                result["http_status"]=response.status if response else None
+                page.wait_for_load_state("domcontentloaded",timeout=5000)
+                result["usuario"]=page.locator('input[type="text"]').count()>0
+                result["clave"]=page.locator('input[type="password"]').count()>0
+                result["ingresar"]=page.get_by_text(re.compile("Ingresar",re.I)).count()>0
+            finally:
+                browser.close()
+    except Exception as exc:
+        result["error_type"]=type(exc).__name__
+    return jsonify(result)
