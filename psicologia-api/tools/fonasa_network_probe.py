@@ -305,3 +305,66 @@ def socks5_check():
         result["error_type"]=type(exc).__name__
     result["elapsed_seconds"]=round(time.monotonic()-t0,2)
     return jsonify(result)
+
+@app.get("/socks5-compare")
+def socks5_compare():
+    """Comparacion de tuneles sin introducir credenciales ni enviar HTTP."""
+    import concurrent.futures
+    import time
+    proxy_host,proxy_port="49.13.22.249",10805
+    def check(label,host,address_type):
+        start=time.monotonic()
+        out={"target":label,"proxy_tcp":"failed","handshake":"not_tested","tunnel":"not_tested","tls":"not_tested"}
+        try:
+            with socket.create_connection((proxy_host,proxy_port),timeout=4) as sock:
+                out["proxy_tcp"]="connected"
+                sock.settimeout(8)
+                sock.sendall(b"\\x05\\x01\\x00")
+                hello=sock.recv(2)
+                if hello!=b"\\x05\\x00":
+                    out["handshake"]="rejected"
+                    return out
+                out["handshake"]="accepted"
+                if address_type=="ipv4":
+                    addr=b"\\x01"+socket.inet_aton(host)
+                else:
+                    encoded=host.encode("ascii")
+                    addr=b"\\x03"+bytes([len(encoded)])+encoded
+                sock.sendall(b"\\x05\\x01\\x00"+addr+b"\\x01\\xbb")
+                reply=sock.recv(4)
+                if len(reply)!=4 or reply[1]!=0:
+                    out["tunnel"]="rejected" if len(reply)>1 else "invalid_reply"
+                    if len(reply)>1:out["reply_code"]=reply[1]
+                    return out
+                out["tunnel"]="connected"
+                atyp=reply[3]
+                if atyp==1:n=4
+                elif atyp==4:n=16
+                elif atyp==3:
+                    v=sock.recv(1)
+                    n=v[0] if v else 0
+                else:n=0
+                remaining=n+2
+                while remaining>0:
+                    buf=sock.recv(remaining)
+                    if not buf:break
+                    remaining-=len(buf)
+                server_name="bonowebptd.fonasa.cl" if label.startswith("fonasa_portal") else "www.google.com"
+                sock.settimeout(4)
+                with ssl.create_default_context().wrap_socket(sock,server_hostname=server_name) as tls:
+                    out["tls"]="verified"
+                    out["tls_version"]=tls.version()
+        except Exception as exc:
+            out["error_type"]=type(exc).__name__
+        finally:
+            out["seconds"]=round(time.monotonic()-start,2)
+        return out
+    specs=[
+      ("fonasa_portal_domain","bonowebptd.fonasa.cl","domain"),
+      ("fonasa_portal_ipv4","190.215.211.22","ipv4"),
+      ("google_control","www.google.com","domain")
+    ]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures=[executor.submit(check,*spec) for spec in specs]
+        tests=[future.result() for future in futures]
+    return jsonify({"proxy":"49.13.22.249:10805","credentials_used":False,"checks":tests})
