@@ -638,3 +638,29 @@ def decodo_diagnostico():
         result["error_type"]=type(err).__name__
     result["seconds"]=round(time.monotonic()-started,2)
     return jsonify(result)
+
+def _decodo_diagnostic_startup_once():
+    """One bounded diagnostic on explicit operator opt-in, logs status only."""
+    import json, os, time
+    time.sleep(2)
+    try:
+        key=os.environ.get("DECODO_TEST_TOKEN","")
+        if not key:
+            app.logger.warning("DECODO_STARTUP_RESULT %s",
+                               json.dumps({"status":"missing_test_token"}))
+            return
+        with app.test_client() as client:
+            response=client.get("/decodo-diagnostico",query_string={"key":key})
+            payload=response.get_json(silent=True)
+            if not isinstance(payload,dict):
+                payload={"status":"no_json","http_status":response.status_code}
+            payload["diagnostic_http_status"]=response.status_code
+            app.logger.warning("DECODO_STARTUP_RESULT %s",
+                               json.dumps(payload,ensure_ascii=True))
+    except Exception as exc:
+        app.logger.warning("DECODO_STARTUP_RESULT %s",
+                           json.dumps({"error_type":type(exc).__name__}))
+
+if __import__("os").environ.get("DECODO_DIAGNOSTIC_ON_START")=="yes":
+    import threading
+    threading.Thread(target=_decodo_diagnostic_startup_once,daemon=True).start()
