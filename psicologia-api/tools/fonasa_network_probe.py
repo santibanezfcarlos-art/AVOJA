@@ -418,4 +418,28 @@ def chile_proxy_batch():
         return out
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         results=list(pool.map(probe,candidates))
+
+    def control(candidate):
+        host,port=candidate
+        try:
+            with socket.create_connection((host,port),timeout=3) as sock:
+                sock.settimeout(4)
+                sock.sendall(b"CONNECT www.google.com:443 HTTP/1.1\r\nHost: www.google.com:443\r\n\r\n")
+                buf=bytearray()
+                while b"\r\n\r\n" not in buf and len(buf)<4096:
+                    piece=sock.recv(1024)
+                    if not piece:break
+                    buf.extend(piece)
+                status=buf.split(b"\r\n",1)[0].decode("ascii","replace")
+                if not status.startswith(("HTTP/1.1 200","HTTP/1.0 200")):
+                    return status[:80] if status else "no_response"
+                sock.settimeout(4)
+                with ssl.create_default_context().wrap_socket(sock,server_hostname="www.google.com"):
+                    return "tls_verified"
+        except Exception as exc:
+            return type(exc).__name__
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        control_results=list(pool.map(control,candidates))
+    for result,control_status in zip(results,control_results):
+        result["control_connect"]=control_status
     return jsonify({"target":target,"credentials_used":False,"candidates":results})
