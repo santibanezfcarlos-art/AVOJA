@@ -75,3 +75,32 @@ def proxy_test():
     except OSError as exc:
         result["connect_error"] = type(exc).__name__
     return jsonify(result)
+
+@app.get("/proxy-batch")
+def proxy_batch():
+    """Pruebas paralelas de túnel CONNECT, sin autenticación ni datos de pacientes."""
+    from concurrent.futures import ThreadPoolExecutor
+    candidates = [
+      ("131.196.177.254",999),("146.83.118.9",80),
+      ("152.230.215.123",80),("167.249.29.218",999),
+      ("177.128.115.198",999),("179.61.98.3",999),
+      ("181.74.82.91",999),("186.10.150.185",8080),
+      ("190.102.233.100",999),("190.102.247.122",999),
+      ("190.54.100.74",8080),("170.239.84.103",3128)
+    ]
+    def check(row):
+        host, port = row
+        out = {"proxy":f"{host}:{port}","tcp":"failed","tunnel":"not_attempted"}
+        try:
+            with socket.create_connection((host,port),timeout=3) as sock:
+                out["tcp"]="connected"
+                sock.settimeout(4)
+                sock.sendall(b"CONNECT bonowebptd.fonasa.cl:443 HTTP/1.1\r\nHost: bonowebptd.fonasa.cl:443\r\n\r\n")
+                header=sock.recv(128)
+                out["tunnel"]=header.split(b"\r\n",1)[0].decode("ascii","replace")[:90]
+        except OSError as exc:
+            out["error"]=type(exc).__name__
+        return out
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results=list(pool.map(check,candidates))
+    return jsonify({"results":results,"note":"Sin usuarios, claves, sesiones ni bonos"})
