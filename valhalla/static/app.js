@@ -449,7 +449,7 @@ function bindEmailAdmin() {
     const file=document.querySelector('#migration-campaign-csv')?.files?.[0];
     if(!file){toast('Selecciona el CSV de los 79 destinatarios.');return;}
     const text=await file.text();
-    const rows=text.trim().split(/\\r?\\n/).slice(1);
+    const rows=text.trim().split(/\r?\n/).slice(1);
     const emails=rows.map(line=>line.split(',')[1]?.replaceAll('"','').trim().toLowerCase()).filter(Boolean);
     if(emails.length!==79 || new Set(emails).size!==79){toast('El archivo debe contener exactamente 79 correos únicos.');return;}
     if(!confirm('Se enviará el correo corporativo, uno por uno, a exactamente 79 destinatarios. ¿Confirmas?'))return;
