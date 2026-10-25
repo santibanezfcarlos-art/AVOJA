@@ -1,4 +1,6 @@
 import json
+import ssl
+from urllib.error import HTTPError, URLError
 from pathlib import Path
 import tempfile
 import unittest
@@ -7,6 +9,19 @@ from types import SimpleNamespace
 import sii_agente_local as agent
 
 class AgentTests(unittest.TestCase):
+    def test_safe_connection_diagnostics(self):
+        secret='PRIVATE_PASSWORD_AND_BODY'
+        for code in (401,403,404,429,500,503):
+            exc=HTTPError('https://example.invalid/'+secret,code,secret,{},None)
+            message=agent.connection_error(exc)
+            self.assertNotIn(secret,message)
+            self.assertNotIn('example.invalid',message)
+        self.assertIn('Usuario o contraseña',agent.connection_error(HTTPError('',401,secret,{},None)))
+        self.assertIn('HTTPS',agent.connection_error(URLError(ssl.SSLError(secret))))
+        self.assertIn('tiempo',agent.connection_error(URLError(TimeoutError(secret))))
+        self.assertIn('red',agent.connection_error(URLError(secret)))
+        self.assertNotIn(secret,agent.connection_error(RuntimeError(secret)))
+
     def test_never_accepts_issuance_job(self):
         with patch.object(agent.subprocess,'run') as run:
             self.assertEqual(agent.run_job({'mode':'issue'},Path('.'))['status'],'blocked')

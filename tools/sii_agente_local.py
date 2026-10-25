@@ -7,14 +7,14 @@ import argparse
 import base64
 import getpass
 import json
-import os
+import ssl
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 from urllib.request import Request, build_opener, HTTPRedirectHandler
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 BASE = 'https://psicologia-carlos-calendar-api.onrender.com'
 
@@ -30,6 +30,29 @@ def call(path, body, auth):
         'X-Billing-Action':'manual-invoice'})
     with build_opener(NoRedirect).open(req, timeout=30) as response:
         return json.loads(response.read(1000000))
+
+
+def connection_error(exc):
+    """Only allowlisted diagnostics: never echo exception text, URLs or bodies."""
+    if isinstance(exc, HTTPError):
+        messages = {
+            401: 'Usuario o contraseña del panel rechazados. Revisa ambos; no uses la clave SII ni el HASH de Render.',
+            403: 'El servidor rechazó la autorización del agente (HTTP 403).',
+            404: 'El servidor no encuentra la conexión del agente (HTTP 404). Revisa el despliegue.',
+            429: 'Demasiados intentos. Espera antes de volver a conectar.',
+            503: 'El servicio o el almacenamiento del panel no está disponible (HTTP 503).',
+        }
+        return messages.get(exc.code, 'El servidor respondió HTTP ' + str(exc.code) + '. No se inició la preparación.')
+    reason = exc.reason if isinstance(exc, URLError) else exc
+    if isinstance(reason, ssl.SSLError):
+        return 'No se pudo verificar la conexión HTTPS. Revisa fecha/hora de Windows y certificados; no desactives la verificación TLS.'
+    if isinstance(reason, TimeoutError):
+        return 'La conexión al panel agotó el tiempo de espera. Intenta nuevamente.'
+    if isinstance(exc, (URLError, OSError)):
+        return 'No se pudo establecer conexión de red con el panel. Revisa Internet y vuelve a intentar.'
+    if isinstance(exc, (ValueError, KeyError, TypeError)):
+        return 'El panel devolvió una respuesta no reconocida. No se inició la preparación.'
+    return 'Fallo interno del agente. No se inició la preparación; solicita revisión del script.'
 
 
 def run_job(job, profile):
@@ -61,15 +84,22 @@ def run_job(job, profile):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--perfil', type=Path, required=True)
-    ap.add_argument('--usuario', default='carlos')
+    ap.add_argument('--usuario', help='Usuario del panel; si se omite se solicita en consola')
     args = ap.parse_args()
     profile = args.perfil.expanduser().resolve()
     if not profile.is_dir():
         ap.error('No existe el perfil. Ejecuta primero sii_sesion_persistente.py autorizar.')
+    username = args.usuario or input('Usuario del PANEL PSC [carlos]: ').strip() or 'carlos'
+    print('La contraseña se escribe sin mostrar letras ni asteriscos. Al terminar pulsa Enter.')
     password = getpass.getpass('Contraseña del PANEL PSC (no la del SII): ')
-    basic = base64.b64encode((args.usuario+':'+password).encode()).decode()
+    if not password:
+        print('No se ingresó contraseña. Vuelve a ejecutar el comando.')
+        return
+    basic = base64.b64encode((username+':'+password).encode()).decode()
     try:
         token = call('/admin/boletas/sii-agent-token', {}, 'Basic '+basic)['token']
+        if not isinstance(token, str) or not token:
+            raise ValueError('invalid_token')
     finally:
         password = basic = None
     auth = 'Bearer '+token
@@ -104,6 +134,6 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print('\nAgente detenido. Si quedó un trabajo activo, ciérralo desde el panel.')
-    except Exception:
-        print('No fue posible conectar el agente. Revisa perfil y acceso al panel.')
+    except Exception as exc:
+        print(connection_error(exc))
         sys.exit(1)
