@@ -1,12 +1,13 @@
 """Prueba local de importe en e-Boleta, utilizando una sesión SII autorizada manualmente.
 
-Puede pulsar el primer EMITIR con --continuar; no confirma etapas posteriores.
+Esta entrega solo prepara; la emisión final está deshabilitada hasta validar el recibo SII.
 Ejemplo:
   python sii_monto_local.py --perfil "$env:USERPROFILE\\PSC-SII\\perfil-privado" --monto 30000
 """
 from __future__ import annotations
 
 import argparse
+from sii_final_control import finish, save_result
 import json
 import re
 from pathlib import Path
@@ -44,7 +45,15 @@ def main():
     parser.add_argument("--continuar", action="store_true", help="Pulsar primer EMITIR tras verificar el monto")
     parser.add_argument("--mostrar-campos", action="store_true", help="Activar Receptor y Detalle para verificar campos, sin rellenar")
     parser.add_argument("--datos", type=Path, help="Archivo JSON local con datos de prueba para rellenar sin emitir")
+    parser.add_argument("--resultado", type=Path, help="Resultado estructurado local, sin datos personales")
+    parser.add_argument("--autorizar-orden", help="Autoriza expresamente UNA emisión real; debe coincidir con order_id del JSON")
+    parser.add_argument("--diario", type=Path, help="Carpeta privada de bloqueos persistentes de emisión")
     args = parser.parse_args()
+    if args.autorizar_orden and (not args.datos or not args.diario or not args.resultado):
+        parser.error("Emisión final requiere --datos, --diario y --resultado")
+    if args.autorizar_orden:
+        parser.error("Emisión final deshabilitada en esta entrega: falta validar respuesta SII y vincular el bloqueo del servidor.")
+    save_result(args.resultado, "blocked")
     if args.datos and (not args.mostrar_campos or not args.continuar):
         parser.error("--datos requiere --continuar --mostrar-campos")
     datos = None
@@ -73,6 +82,7 @@ def main():
                 if not any(emitir_candidate.is_visible() for emitir_candidate in [page.get_by_text(re.compile("emitir", re.I)).nth(i) for i in range(min(page.get_by_text(re.compile("emitir", re.I)).count(), 10))]):
                     raise RuntimeError("No se encontró un control visible de emisión.")
             except Exception:
+                save_result(args.resultado, "session_required")
                 print("No se confirmó la pantalla de monto del SII.")
                 print("Dominio final:", urlparse(page.url).hostname or "desconocido")
                 print("HTTP inicial:", response.status if response else "sin respuesta")
@@ -89,7 +99,7 @@ def main():
             display = page.locator("input[readonly]").first
             if display.count() and display.is_visible():
                 value = display.input_value()
-                if value and re.sub(r"\\D", "", value) not in ("", "0"):
+                if value and re.sub(r"\D", "", value) not in ("", "0"):
                     raise RuntimeError("Existe un monto previo; borra el valor manualmente antes de probar.")
             if args.visible:
                 print("Diagnóstico visible: se encontró la pantalla del monto. No se pulsarán teclas.")
@@ -180,6 +190,7 @@ def main():
                             "Teléfono receptor": "telefono",
                             "Detalle": "detalle",
                         }
+                        field_ids = {}
                         for label_text, key in fields.items():
                             if key == "detalle":
                                 # El texto "Detalle" corresponde tanto a un checkbox
@@ -205,7 +216,8 @@ def main():
                                 print("Campo sin control de texto identificable:", label_text)
                                 return
                             # La comprobación final usa el id ya conocido.
-                            stable = page.locator('[id="' + field_id + '"]')
+                            stable = page.locator("[id=" + json.dumps(field_id) + "]")
+                            field_ids[key] = field_id
                             try:
                                 stable.fill(datos[key], timeout=7000)
                                 actual = stable.evaluate("(el) => el.value")
@@ -227,52 +239,10 @@ def main():
                                 print("Longitud esperada:", len(datos[key]), "longitud observada:", len(observed))
                                 return
                             print("Campo completado y verificado:", label_text)
-                        print("Datos cargados en formulario; NO se pulsó el segundo EMITIR.")
-                        # Identificar el control final, sin presionarlo.
-                        # El botón final debe ser interactivo, visible, único
-                        # y estar en el formulario posterior al teclado.
-                        # Esperar a que React valide RUT y nombre.
                         page.wait_for_timeout(1200)
-                        # Buscar texto EMITIR de forma exacta, normalizando
-                        # mayúsculas y espacios, y subir a su control pulsable.
-                        # Evita confundir el botón con el span interior.
-                        result = page.evaluate("""() => {
-                          const nodes = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]'));
-                          const matches = nodes.filter(el => {
-                            const text = (el.value || el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-                            const rect = el.getBoundingClientRect();
-                            return text === 'emitir' && rect.width > 0 && rect.height > 0;
-                          });
-                          return matches.map(el => {
-                            const r = el.getBoundingClientRect();
-                            return {
-                              tag: el.tagName.toLowerCase(),
-                              type: el.getAttribute('type') || '',
-                              disabled: el.matches(':disabled, [aria-disabled="true"]'),
-                              y: Math.round(r.top),
-                              width: Math.round(r.width)
-                            };
-                          });
-                        }""")
-                        print("Botones EMITIR visibles:", len(result))
-                        for idx, item in enumerate(result, 1):
-                            print("Candidato", idx, item)
-                        # En el segundo paso el teclado inicial permanece montado:
-                        # reconocer el botón inferior/ancho del formulario, no el
-                        # de la calculadora, y exigir separación espacial clara.
-                        ordered = sorted(result, key=lambda item: item["y"])
-                        if (len(ordered) == 2
-                            and ordered[1]["y"] > ordered[0]["y"]
-                            and ordered[1]["width"] > ordered[0]["width"] * 1.25):
-                            last = ordered[1]
-                            print("Botón final identificado:", "SÍ (inferior y más ancho)")
-                            print("Botón final habilitado:", "SÍ" if not last["disabled"] else "NO")
-                            print("NO se pulsó el botón final.")
-                        elif len(result) == 1:
-                            print("Botón EMITIR único encontrado; no se confirma su etapa.")
-                            print("NO se pulsó el botón.")
-                        else:
-                            print("Botón final no identificado inequívocamente. No se pulsa.")
+                        finish(page, field_ids, datos, args.monto, args.resultado,
+                               args.autorizar_orden, args.diario)
+                        return
                     else:
                         print("No se ingresaron datos ni se confirmó emisión.")
                 print("Diagnóstico de campos visibles (sin valores):")

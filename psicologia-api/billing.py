@@ -326,6 +326,9 @@ def mark_issued(order):
                 return jsonify(error='Compra no encontrada'), 404
             if row['environment'] != 'production' or row['payment_status'] != 'approved':
                 return jsonify(error='Solo se registran boletas de pagos reales aprobados.'), 409
+            from sii_jobs import busy
+            if busy(con, order):
+                return jsonify(error='Hay un trabajo SII activo. Detén y revisa ese trabajo antes de registrar un folio.'), 409
             if day.isoformat() < row['created_at'][:10]:
                 return jsonify(error='La emisión no puede ser anterior a la compra.'), 400
             if row['invoice_status'] == 'issued':

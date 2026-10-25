@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+perfil-privado/
+datos_prueba.json
+sii-private/
+*.attempt
