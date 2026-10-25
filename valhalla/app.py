@@ -1731,6 +1731,30 @@ class Handler(BaseHTTPRequestHandler):
                 result = store.import_legacy_csv(user['id'], body, preview=self.path.endswith('/preview'))
                 self.respond(result)
                 return
+            elif self.path == '/api/admin/email/migration-preview':
+                self.admin(user)
+                if user['email'] != ADMIN_EMAIL or user['role'] != 'admin':
+                    raise Problem('Acceso exclusivo del administrador propietario.',403)
+                delivery=getattr(self.server,'email_delivery',None)
+                if not delivery or not delivery.configured or delivery.provider!='resend':
+                    raise Problem('Resend no está configurado para esta prueba.',503)
+                if body.get('confirmation') != 'ENVIAR PRUEBA VALHALLA':
+                    raise Problem('Confirmación de prueba inválida.',400)
+                from html import escape
+                target='clubdeamixgpt@gmail.com'
+                title='[PRUEBA CORPORATIVA] Valhalla Office | Tus horas te esperan'
+                plain=('¡Tenemos nueva plataforma!\\n\\nTus horas ya están cargadas.\\nTe esperamos para seguir agendando.\\n\\n'
+                       'https://www.valhallaoffice.cl\\n\\n¿Cómo acceder a tus horas?\\n\\n'
+                       'Ingresa con tu cuenta de Google, usando el mismo correo que tenías registrado en Skedu.\\n\\n'
+                       'Si no tienes una cuenta de Google asociada a ese correo, crea un nuevo usuario con el mismo correo que utilizabas en Skedu.\\n\\n'
+                       'Al ingresar, encontrarás tus horas pendientes de agendar para que puedas seguir utilizándolas.\\n\\n'
+                       'Desde ahora, realiza tus nuevas reservas en esta plataforma.\\n\\n'
+                       '¿Necesitas ayuda? Escríbenos a contacto@valhallaoffice.cl\\n\\n'
+                       'Sigue tu vocación.\\nNosotros tenemos el espacio.')
+                html='''<!doctype html><html lang="es"><head><meta charset="utf-8"></head><body style="margin:0;background:#f4f6ef;font-family:Arial,sans-serif;color:#193e37;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:580px;background:white;border:1px solid #dce4d7;border-radius:16px;"><tr><td align="center" style="padding:28px 24px 12px;"><strong style="font-size:26px;letter-spacing:2px;">VALHALLA OFFICE</strong><p style="font-size:12px;letter-spacing:2px;">ESPACIOS PARA PROFESIONALES</p></td></tr><tr><td style="padding:12px 32px 30px;"><h1 style="text-align:center;font-size:26px;">¡Tenemos nueva plataforma!</h1><p style="text-align:center;font-size:17px;line-height:1.65;">Tus horas ya están cargadas.<br>Te esperamos para seguir agendando.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" bgcolor="#16636b" style="border-radius:9px;"><a href="https://www.valhallaoffice.cl" style="display:block;padding:18px;color:white;text-decoration:none;font-weight:bold;font-size:17px;">www.valhallaoffice.cl</a></td></tr></table><h2 style="font-size:19px;text-align:center;margin-top:30px;">¿Cómo acceder a tus horas?</h2><p style="line-height:1.65;text-align:justify;">Ingresa con tu cuenta de Google, usando el mismo correo que tenías registrado en Skedu.</p><p style="line-height:1.65;text-align:justify;">Si no tienes una cuenta de Google asociada a ese correo, crea un nuevo usuario con el mismo correo que utilizabas en Skedu.</p><p style="line-height:1.65;text-align:justify;">Al ingresar, encontrarás tus horas pendientes de agendar para que puedas seguir utilizándolas.</p><p style="line-height:1.65;text-align:justify;">Desde ahora, realiza tus nuevas reservas en esta plataforma.</p><p style="text-align:center;margin-top:30px;">¿Necesitas ayuda? Escríbenos a<br><a href="mailto:contacto@valhallaoffice.cl">contacto@valhallaoffice.cl</a></p><p style="text-align:center;font-weight:bold;margin-top:30px;">Sigue tu vocación.<br>Nosotros tenemos el espacio.</p></td></tr></table></td></tr></table></body></html>'''
+                delivery.send_message(target,title,plain,idempotency_key='valhalla-migration-preview-clubdeamix-20261025',html=html)
+                self.respond({'ok':True,'message':'Resend aceptó la prueba para clubdeamixgpt@gmail.com. Revisa su recepción.'})
+                return
             elif self.path == '/api/admin/email/test':
                 self.admin(user)
                 delivery=getattr(self.server,'email_delivery',None)
