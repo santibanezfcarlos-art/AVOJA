@@ -498,3 +498,44 @@ def portal_domains():
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         checks=list(executor.map(check,domains))
     return jsonify({"checks":checks,"credentials_used":False})
+
+
+@app.get("/network-path")
+def network_path():
+    """Fixed-target TCP comparison; no proxies, credentials or HTTP login."""
+    import concurrent.futures
+    import time
+    from datetime import datetime, timezone
+    def check(spec):
+        host, port = spec
+        start = time.monotonic()
+        out = {"host": host, "port": port, "tcp": "not_connected",
+               "tls": "not_tested"}
+        try:
+            ip = socket.getaddrinfo(host, port, family=socket.AF_INET,
+                                    type=socket.SOCK_STREAM)[0][4][0]
+            out["ip"] = ip
+            with socket.create_connection((ip, port), timeout=4) as sock:
+                out["tcp"] = "connected"
+                if port == 443:
+                    sock.settimeout(4)
+                    with ssl.create_default_context().wrap_socket(
+                            sock, server_hostname=host) as tls:
+                        out["tls"] = "verified"
+                        out["tls_version"] = tls.version()
+        except (OSError, ssl.SSLError) as exc:
+            out["error_type"] = type(exc).__name__
+            out["errno"] = getattr(exc, "errno", None)
+        out["seconds"] = round(time.monotonic() - start, 2)
+        return out
+    specs = [(host, port) for host in
+             ("bonowebptd.fonasa.cl", "www.google.com") for port in (80, 443)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        checks = list(executor.map(check, specs))
+    result = {"utc": datetime.now(timezone.utc).isoformat(),
+              "credentials_used": False, "proxy_used": False,
+              "checks": checks,
+              "note": "Port 80 is diagnostic only, never a login fallback. "
+                      "Timeout alone does not prove geoblocking."}
+    app.logger.warning("FONASA_NETWORK_PATH %s", result)
+    return jsonify(result)
