@@ -276,9 +276,12 @@ def socks5_check():
             if hello != bytes([5,0]):
                 result["socks5"]="handshake_rejected"
                 return jsonify(result)
+            result["socks5"]="handshake_accepted"
             name=b"bonowebptd.fonasa.cl"
             sock.sendall(bytes([5,1,0,3,len(name)])+name+bytes([1,187]))
+            result["connect_request"]="sent"
             reply=sock.recv(4)
+            result["connect_reply_hex"]=reply.hex()
             if len(reply)!=4 or reply[1]!=0:
                 result["socks5"]="connect_rejected"
                 result["reply_code"]=reply[1] if len(reply)>1 else None
