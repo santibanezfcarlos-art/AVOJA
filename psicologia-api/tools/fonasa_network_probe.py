@@ -443,3 +443,58 @@ def chile_proxy_batch():
     for result,control_status in zip(results,control_results):
         result["control_connect"]=control_status
     return jsonify({"target":target,"credentials_used":False,"candidates":results})
+
+@app.get("/portal-alternativo")
+def portal_alternativo():
+    """Chromium directo al portalprestador.fonasa.cl sin autenticacion."""
+    from playwright.sync_api import sync_playwright
+    import time, os
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
+    t=time.monotonic()
+    result={"target":"https://portalprestador.fonasa.cl/","chromium":"not_started","portal":"not_loaded","run":False,"password":False,"ingresar":False,"credentials_used":False}
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=8500)
+            result["chromium"]="started"
+            try:
+                page=browser.new_page(ignore_https_errors=False)
+                response=page.goto(result["target"],wait_until="domcontentloaded",timeout=12000)
+                result["portal"]="loaded"
+                result["http_status"]=response.status if response else None
+                result["final_host"]=page.url.split("/")[2] if "://" in page.url else ""
+                result["run"]=page.locator('input[type="text"],input[name*="rut" i],input[name*="run" i]').count()>0
+                result["password"]=page.locator('input[type="password"]').count()>0
+                result["ingresar"]=page.get_by_text("Ingresar",exact=False).count()>0
+            finally:
+                browser.close()
+    except Exception as exc:
+        result["error_type"]=type(exc).__name__
+        import re
+        match=re.search(r"net::ERR_[A-Z_]+",str(exc))
+        if match:result["network_error"]=match.group()
+    result["seconds"]=round(time.monotonic()-t,2)
+    return jsonify(result)
+
+@app.get("/portal-domains")
+def portal_domains():
+    """Comparar DNS y TLS de dominios Fonasa desde Render; sin login."""
+    import concurrent.futures, time
+    domains=["portalprestador.fonasa.cl","bonowebptd.fonasa.cl","libre-eleccion.fonasa.gob.cl","www.google.com"]
+    def check(host):
+        out={"host":host,"dns":"not_resolved","tcp":"not_connected","tls":"not_tested"}
+        try:
+            ips=sorted({x[4][0] for x in socket.getaddrinfo(host,443,family=socket.AF_INET,type=socket.SOCK_STREAM)})
+            out["dns"]=ips
+            if not ips:return out
+            with socket.create_connection((ips[0],443),timeout=6) as sock:
+                out["tcp"]="connected"
+                sock.settimeout(6)
+                with ssl.create_default_context().wrap_socket(sock,server_hostname=host) as tls:
+                    out["tls"]="verified"
+                    out["tls_version"]=tls.version()
+        except Exception as exc:
+            out["error_type"]=type(exc).__name__
+        return out
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        checks=list(executor.map(check,domains))
+    return jsonify({"checks":checks,"credentials_used":False})
