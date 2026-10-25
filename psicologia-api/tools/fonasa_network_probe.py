@@ -167,34 +167,33 @@ def proxy_tls():
 
 @app.get("/proxy-retry")
 def proxy_retry():
-    """Tres intentos limitados, comprobación CONNECT+TLS, sin credenciales."""
+    """Un intento por solicitud, sin exceder timeout del worker."""
     import time
     proxy=("45.181.123.185",999)
     target="bonowebptd.fonasa.cl"
-    results=[]
-    for i in range(3):
-        started=time.monotonic()
-        record={"attempt":i+1,"connect":"not_attempted","tls":"not_attempted"}
-        try:
-            with socket.create_connection(proxy,timeout=30) as sock:
-                record["connect"]="tcp_connected"
-                sock.settimeout(30)
-                sock.sendall((f"CONNECT {target}:443 HTTP/1.1\r\nHost: {target}:443\r\n\r\n").encode("ascii"))
-                header=b""
-                while b"\r\n\r\n" not in header and len(header)<8192:
-                    chunk=sock.recv(1024)
-                    if not chunk:break
-                    header+=chunk
-                record["connect"]=header.split(b"\r\n",1)[0].decode("ascii","replace")[:100]
-                if record["connect"].startswith(("HTTP/1.0 200","HTTP/1.1 200")) and not header.partition(b"\r\n\r\n")[2]:
-                    with ssl.create_default_context().wrap_socket(sock,server_hostname=target) as tls:
-                        record["tls"]="verified"
-                        record["version"]=tls.version()
-        except Exception as exc:
-            record["error"]=type(exc).__name__
-        record["seconds"]=round(time.monotonic()-started,2)
-        results.append(record)
-        if record["tls"]=="verified":
-            break
-        if i<2:time.sleep(1)
-    return jsonify({"proxy":f"{proxy[0]}:{proxy[1]}","results":results,"note":"No credentials or patient data"})
+    start=time.monotonic()
+    result={"proxy":f"{proxy[0]}:{proxy[1]}","connect":"not_attempted","tls":"not_attempted"}
+    try:
+        with socket.create_connection(proxy,timeout=8) as sock:
+            result["connect"]="tcp_connected"
+            sock.settimeout(8)
+            nl=chr(13)+chr(10)
+            request_lines=["CONNECT "+target+":443 HTTP/1.1","Host: "+target+":443","",""]
+            sock.sendall(nl.join(request_lines).encode("ascii"))
+            header=b""
+            terminator=bytes([13,10,13,10])
+            while terminator not in header and len(header)<8192:
+                chunk=sock.recv(1024)
+                if not chunk: break
+                header+=chunk
+            firstline=header.split(bytes([13,10]),1)[0]
+            result["connect"]=firstline.decode("ascii","replace")[:100]
+            if result["connect"].startswith(("HTTP/1.0 200","HTTP/1.1 200")) and not header.partition(terminator)[2]:
+                sock.settimeout(8)
+                with ssl.create_default_context().wrap_socket(sock,server_hostname=target) as tls:
+                    result["tls"]="verified"
+                    result["version"]=tls.version()
+    except Exception as exc:
+        result["error"]=type(exc).__name__
+    result["seconds"]=round(time.monotonic()-start,2)
+    return jsonify(result)
