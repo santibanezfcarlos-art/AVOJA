@@ -162,6 +162,9 @@ def _cors(response):
     if origin in ALLOWED_ORIGINS and not request.path.startswith("/admin"):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
+        if request.path.startswith("/api/fonasa/book/"):
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
