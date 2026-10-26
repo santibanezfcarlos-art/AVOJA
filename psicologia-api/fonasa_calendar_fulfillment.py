@@ -86,3 +86,83 @@ def confirm_fonasa_booking():
         return jsonify(state="CONFIRMED",event_id=event_id,meet_url=meet)
     except (CalendarIntegrationError,OSError,ValueError,TypeError):
         return jsonify(state="CALENDAR_UNAVAILABLE"),503
+
+
+@bp.post("/internal/psicologia/fonasa/mail")
+def send_fonasa_confirmation():
+    """Send existing PSC-branded messages only for a verified Calendar event.
+
+    Reuses the already configured Resend identity of the Webpay pilot;
+    independently idempotent per recipient and reservation. No PDF/clinical data.
+    """
+    body=_authorize()
+    if not body or not _enabled():
+        return jsonify(state="NOT_AUTHORIZED"),403
+    import json
+    from html import escape
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    from demo_notifications import _brand
+    source=body.get("intake_id","")
+    role=body.get("role","")
+    recipient=body.get("email","")
+    patient=body.get("patient_name","")
+    date=body.get("date","")
+    hour=body.get("time","")
+    minutes=body.get("minutes",45)
+    if (not isinstance(source,str) or not re.fullmatch(r"[A-Za-z0-9_-]{15,40}",source)
+       or role not in ("patient","professional")
+       or not isinstance(recipient,str) or len(recipient)>254
+       or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",recipient)
+       or not isinstance(patient,str) or not 3<=len(patient)<=120
+       or not isinstance(date,str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}",date)
+       or not isinstance(hour,str) or not re.fullmatch(r"(09|1[0-9]):(00|15|30|45)",hour)
+       or type(minutes)!=int or minutes not in (45,60,90)):
+        return jsonify(state="INVALID"),400
+    if role=="professional":
+        expected=os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","").lower()
+        if not expected or recipient.lower()!=expected:
+            return jsonify(state="COORDINATOR_NOT_CONFIGURED"),503
+    # Each notification must be associated with an existing, verified own event.
+    hold_id=uuid.uuid5(FONASA_OWNER,"fonasa:"+source)
+    try:
+        start=datetime.fromisoformat(date+"T"+hour).replace(tzinfo=TZ)
+        end=start+timedelta(minutes=minutes)
+        writer=CalendarWriter()
+        event=writer.transport("GET",writer._calendar_path+"/"+event_id_for_hold(hold_id),{},None)
+        if not _owns(event,hold_id,start=start,end=end,service="psicoterapia"):
+            return jsonify(state="CALENDAR_NOT_CONFIRMED"),409
+    except (CalendarIntegrationError,ValueError,TypeError,OSError):
+        return jsonify(state="CALENDAR_NOT_CONFIRMED"),503
+    api_key=os.environ.get("PSICOLOGIA_PILOT_RESEND_API_KEY","")
+    if (os.environ.get("PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED")!="true"
+       or len(api_key)<24):
+        return jsonify(state="MAIL_NOT_CONFIGURED"),503
+    brand,_,contact,website=_brand()
+    pretty=start.strftime("%d/%m/%Y a las %H:%M")
+    subject=("Nueva atención confirmada · Fonasa" if role=="professional"
+             else "Confirmación de tu atención | PSC Santibáñez")
+    content=(("Se confirmó una reserva Fonasa para "+patient+"." if role=="professional"
+              else "Hola, "+patient+". Tu hora está confirmada.")
+              +"\nFecha y hora: "+pretty+" (Chile)\nDuración: "+str(minutes)+" minutos\n"
+              +"Modalidad: Online\n")
+    if role=="professional":
+        content+="Correo de contacto del paciente: "+body.get("patient_email","")+"\n"
+    meet=writer.get_meet_link(hold_id)
+    if meet:
+        content+="Google Meet: "+meet+"\n"
+    content+="\n"+brand+"\n"+contact+"\n"+website
+    from_name="PSC Santibáñez <contacto@pscsantibanez.cl>"
+    payload={"from":from_name,"to":[recipient],"subject":subject,"text":content}
+    req=Request("https://api.resend.com/emails",method="POST",
+        data=json.dumps(payload,ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json",
+                 "Idempotency-Key":"psc-fonasa-"+source+"-"+role+"-confirmed-v1"})
+    try:
+        with urlopen(req,timeout=14) as response:
+            parsed=json.loads(response.read(3000))
+        if not isinstance(parsed.get("id"),str):
+            return jsonify(state="MAIL_UNCONFIRMED"),503
+    except (HTTPError,URLError,OSError,ValueError):
+        return jsonify(state="MAIL_UNAVAILABLE"),503
+    return jsonify(state="SENT")
