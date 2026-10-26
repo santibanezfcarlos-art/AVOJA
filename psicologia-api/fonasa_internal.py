@@ -205,6 +205,19 @@ def _send_notification(role,recipient,row):
         raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
     if state!="SENT":
         raise RuntimeError("mail_status_"+state[:48])
+    # Calendar is complementary. Its success or failure never changes the
+    # acknowledgement already received from the corporate email provider.
+    from webpay_demo_bridge import fonasa_calendar_invitation
+    import logging
+    try:
+        invite=fonasa_calendar_invitation(
+            intake_id=row["id"],role=role,email=recipient,
+            day=row["requested_date"],hour=row["requested_time"],minutes=minutes)
+        label=invite if invite in ("INVITE_ACCEPTED","ALREADY_INVITED") else "unconfirmed"
+    except BridgeError:
+        label="unavailable"
+    logging.getLogger("fonasa_mail").warning(
+        "FONASA_CALENDAR_COMPLEMENT role=%s status=%s",role,label)
 
 
 
