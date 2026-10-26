@@ -1086,6 +1086,10 @@ def _sii_probe_once():
                 "credentials_used": False, "submitted": False, "emitted": False}
 
     started = time.monotonic()
+    logger = logging.getLogger("sii_probe")
+    def stage(name, **flags):
+        logger.warning("SII_REACHABILITY_STAGE %s", json.dumps({"stage": name, **flags}, separators=(",", ":")))
+    stage("probe_started")
     report = {
         "status": "started",
         "browser": "not_started",
@@ -1107,10 +1111,12 @@ def _sii_probe_once():
     }
     try:
         with sync_playwright() as playwright:
+            stage("chromium_launch_started")
             browser = playwright.chromium.launch(
                 headless=True, args=["--no-sandbox"], timeout=10000, proxy=proxy
             )
             report["browser"] = "started"
+            stage("chromium_started")
             try:
                 context = browser.new_context(ignore_https_errors=False)
                 context.route(
@@ -1122,6 +1128,7 @@ def _sii_probe_once():
                 page = context.new_page()
                 try:
                     try:
+                        stage("egress_request_started")
                         geo = page.goto(
                             "https://ipinfo.io/country",
                             wait_until="commit",
@@ -1131,14 +1138,17 @@ def _sii_probe_once():
                         report["country"] = country if re.fullmatch(r"[A-Z]{2}", country) else "unknown"
                         report["chile_egress"] = report["country"] == "CL"
                         report["egress_check_http"] = geo.status if geo else None
+                        stage("egress_request_finished", country=report["country"], http_status=report["egress_check_http"])
                     except Exception as exc:
                         report["egress_check_error"] = type(exc).__name__
+                        stage("egress_request_failed", error_type=type(exc).__name__)
 
                     for key, url, expected_host in (
                         ("sii_home", "https://www.sii.cl/", "www.sii.cl"),
                         ("eboleta", "https://eboleta.sii.cl/emitir/", "eboleta.sii.cl"),
                     ):
                         try:
+                            stage("sii_request_started", target=key)
                             response = page.goto(url, wait_until="commit", timeout=10000)
                             parsed = urlparse(page.url)
                             final_host = parsed.hostname or ""
@@ -1151,20 +1161,24 @@ def _sii_probe_once():
                             if key == "eboleta":
                                 report["login_form_detected"] = page.locator('input[type="password"]').count() > 0
                             report[key] = item
+                            stage("sii_request_finished", target=key, http_status=item["http_status"], origin_matches=item["origin_matches"])
                         except Exception as exc:
                             error = {"status": "failed", "error_type": type(exc).__name__}
                             match = re.search(r"net::ERR_[A-Z_]+", str(exc))
                             if match:
                                 error["network_error"] = match.group(0)
                             report[key] = error
+                            stage("sii_request_failed", target=key, error_type=type(exc).__name__, network_error=error.get("network_error"))
                 finally:
                     page.close()
                     context.close()
             finally:
                 browser.close()
         report["status"] = "completed"
+        stage("probe_completed", elapsed_seconds=round(time.monotonic() - started, 2))
     except Exception as exc:
         report["status"] = "failed"
+        stage("probe_failed", error_type=type(exc).__name__)
         report["error_type"] = type(exc).__name__
         match = re.search(r"net::ERR_[A-Z_]+", str(exc))
         if match:
@@ -1201,6 +1215,7 @@ def _sii_reachability_startup_once():
     import os
     import time
 
+    logging.getLogger("sii_probe").warning("SII_REACHABILITY_STARTUP_STARTED")
     time.sleep(2)
     try:
         if not _SII_PROBE_LOCK.acquire(blocking=False):
