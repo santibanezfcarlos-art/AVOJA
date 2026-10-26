@@ -282,6 +282,16 @@ def _deliver_pending_notifications(intake_id):
     return outcome
 
 
+@bp.get("/admin/fonasa/mail-status")
+@billing.private
+def mail_status():
+    transport,_=_notification_sender()
+    return jsonify(mail_configured=transport is not None,
+                   mail_transport=transport or "not_configured",
+                   coordinator_address_configured=bool(
+                       os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL")))
+
+
 @bp.post("/admin/fonasa/notify/<id>")
 @billing.private
 def notify_saved_request(id):
