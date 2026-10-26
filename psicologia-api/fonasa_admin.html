@@ -20,7 +20,7 @@ small,.muted{color:#5d786b;font-size:13px}.notice{border-radius:9px;background:#
 </style><script defer src="/admin/fonasa-ui.js"></script></head><body>
 <header><strong>CS · Psicología aplicada</strong><a href="/admin">← Volver al panel de administración</a></header>
 <main>
-<p class="kicker">Herramienta privada · Prueba interna</p>
+<p class="kicker">Herramienta privada · Agendamiento Fonasa</p>
 <h1>Consulta de bonos Fonasa</h1>
 <p class="subtitle">Adjunta el bono para reconocer nombre, RUT y folio. El sistema consultará Bono Web mediante Decodo y, si encuentra la opción <b>Activar</b>, permitirá generar un enlace privado de agendamiento. <b>No activa bonos.</b></p>
 <section class="card">
@@ -45,7 +45,7 @@ small,.muted{color:#5d786b;font-size:13px}.notice{border-radius:9px;background:#
 <section class="card" id="linkCard" hidden>
 <h2>3. Enlace para agendamiento</h2>
 <p>Fonasa encontró el bono y mostró <b>Activar</b>. El enlace permite que la persona seleccione fecha y hora disponible e ingrese su propio correo.</p>
-<p class="warn notice">La aparición del botón no equivale a una activación ni a una transferencia. El registro de hora quedará como solicitud pendiente hasta la confirmación en Google Calendar.</p>
+<p class="warn notice">La aparición del botón no equivale a una activación ni a una transferencia. Después de elegir una hora, el sistema intentará confirmarla en Google Calendar y enviar invitaciones, igual que después del pago con Transbank. Si falla alguna etapa, quedará pendiente de recuperación sin duplicar la cita.</p>
 <div class="actions"><button id="linkBtn" type="button">Generar enlace privado (7 días)</button><button type="button" class="secondary" id="copyBtn" hidden>Copiar enlace</button></div>
 <a id="linkOutput" target="_blank" rel="noopener noreferrer"></a>
 </section>
