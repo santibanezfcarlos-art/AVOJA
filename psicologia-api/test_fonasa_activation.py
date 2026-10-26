@@ -45,3 +45,13 @@ class Tests(unittest.TestCase):
   response=self.app.test_client().post('/admin/fonasa/link/test',json={},headers=self.headers)
   self.assertEqual(response.status_code,200)
   self.assertIn('link',response.get_json())
+
+ def test_duplicate_upload_resumes_existing_record(self):
+  import io
+  info={'folio':'123456','rut':'12345678-5','patient_name':'Test','emitted':'2026-10-26'}
+  with patch.object(f,'parse_tcpdf',return_value=info):
+   response=self.app.test_client().post('/admin/fonasa/upload',data={'bono':(io.BytesIO(b'test-only'),'test.pdf')},headers=self.headers)
+  self.assertEqual(response.status_code,200,response.get_json())
+  self.assertTrue(response.get_json()['existing'])
+  self.assertEqual(response.get_json()['bono']['id'],'test')
+  self.assertEqual(self.con.execute('SELECT count(*) FROM fonasa_intake').fetchone()[0],1)

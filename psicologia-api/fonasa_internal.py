@@ -390,7 +390,12 @@ def upload():
                 (id,info["folio"],info["rut"],info["patient_name"],
                  info["emitted"],_utc(),_utc()))
     except sqlite3.IntegrityError:
-        return jsonify(error="Ese folio ya fue cargado. Revisa el historial Fonasa."),409
+        with billing.db() as con:
+            _schema(con)
+            existing=con.execute("SELECT * FROM fonasa_intake WHERE folio=?",(info["folio"],)).fetchone()
+        if existing and existing["rut"]==info["rut"]:
+            return jsonify(ok=True,existing=True,bono={**_admin_item(existing),"emitted":existing["emitted"]},state=existing["state"])
+        return jsonify(error="El folio ya existe con datos distintos. Revisa el historial."),409
     return jsonify(ok=True,bono={"id":id,**info},state="pdf_read"),201
 
 @bp.get("/admin/fonasa/items")

@@ -43,7 +43,7 @@ $("uploadForm").addEventListener("submit",async event=>{
  try{
   const form=new FormData();form.append("bono",file);
   const result=await api("/admin/fonasa/upload",{method:"POST",body:form});
-  note("uploadStatus","Bono leído. Prestador y prestación verificados.");
+  note("uploadStatus",result.existing?"Este bono ya estaba cargado. Abrimos su registro para continuar sin duplicarlo.":"Bono leído. Prestador y prestación verificados.");
   choose({...result.bono,state:result.state});
   await refresh();
  }catch(err){note("uploadStatus",err.message,true)}
@@ -113,7 +113,7 @@ async function refresh(){
   for(const item of result.items){
    const row=document.createElement("tr");
    const cells=[(item.created_at||"").slice(0,10),item.patient_name,item.folio,
-      (item.activation_status==="activated"&&["ready_to_activate","link_issued"].includes(item.state)?"Bono activado · listo para agendar":states[item.state]||item.state),(item.date||"")+(item.time?" "+item.time:"")];
+      (item.activation_status==="needs_review"?"Activación por verificar":item.activation_status==="running"?"Consultando activación":item.activation_status==="activated"&&["ready_to_activate","link_issued"].includes(item.state)?"Bono activado · listo para agendar":states[item.state]||item.state),(item.date||"")+(item.time?" "+item.time:"")];
    cells.forEach(text=>{const td=document.createElement("td");td.textContent=text||"—";row.append(td)});
    const td=document.createElement("td"),button=document.createElement("button");
    button.type="button";button.className="secondary";button.textContent="Ver";
