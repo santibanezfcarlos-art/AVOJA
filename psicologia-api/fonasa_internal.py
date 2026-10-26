@@ -300,7 +300,7 @@ def _deliver_pending_notifications(intake_id):
                 outcome[role]="sent";continue
             if previous["status"]=="sending":
                 outcome[role]="in_progress";continue
-            if previous["attempts"]>=3:
+            if previous["attempts"]>=5:
                 outcome[role]="needs_manual_review";continue
             con.execute("""UPDATE fonasa_notifications SET status='sending',attempts=attempts+1,
                            updated_at=? WHERE intake_id=? AND role=?""",(_utc(),intake_id,role))
