@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 from flask import Blueprint, Response, jsonify, request
 import billing
-from webpay_gateway import Gateway, GatewayError
+from webpay_gateway import Gateway, GatewayError, GatewaySettings, validate_checkout_url
 
 bp = Blueprint('webpay_validation', __name__)
 SITE = 'https://pscsantibanez.cl'
@@ -18,7 +18,7 @@ def _page(title, message, status=200):
 @billing.private
 def start_validation():
     try:
-        gateway = Gateway(mode='production')
+        gateway = Gateway(GatewaySettings.from_environment(mode='production'))
         with billing.db() as con:
             current=con.execute('SELECT state FROM webpay_validation WHERE id=1').fetchone()
         if current and current['state']=='pending':
@@ -27,7 +27,7 @@ def start_validation():
         session = 'PSIVS' + secrets.token_hex(12).upper()
         result = gateway._request('POST', data={'buy_order': order, 'session_id': session,
             'amount': 50, 'return_url': gateway.config.return_url.replace('/api/webpay/return','/api/webpay/validation/return')})
-        if not isinstance(result.get('token'), str) or not gateway.valid_checkout(result.get('url')):
+        if not isinstance(result.get('token'), str) or not validate_checkout_url(result.get('url'), gateway.config.host):
             raise GatewayError('Transbank devolvió una respuesta inválida.')
         with billing.db() as con:
             con.execute('INSERT INTO webpay_validation(commerce_code,order_id,session_id,token_hash,state,amount,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET commerce_code=excluded.commerce_code,order_id=excluded.order_id,session_id=excluded.session_id,token_hash=excluded.token_hash,state=excluded.state,amount=excluded.amount,created_at=excluded.created_at,paid_at=NULL',
@@ -46,7 +46,7 @@ def validation_return():
             row=con.execute('SELECT * FROM webpay_validation WHERE id=1').fetchone()
         if not row or row['token_hash']!=hashlib.sha256(token.encode()).hexdigest() or row['state']!='pending':
             return _page('Validación pendiente', 'No se encontró una compra pendiente para confirmar. Revisa el panel antes de iniciar otra.', 409)
-        result=Gateway(mode='production').commit(token)
+        result=Gateway(GatewaySettings.from_environment(mode='production')).commit(token)
         approved=(result.get('status')=='AUTHORIZED' and result.get('response_code')==0
                   and result.get('buy_order')==row['order_id'] and result.get('session_id')==row['session_id']
                   and result.get('amount')==50)
