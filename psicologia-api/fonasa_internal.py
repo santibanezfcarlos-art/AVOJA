@@ -245,6 +245,8 @@ def _send_notification(role,recipient,row):
 
 def _deliver_pending_notifications(intake_id):
     """Try both recipients independently; persist status so admin can retry failures."""
+    if _notification_sender()[0] is None:
+        return {"professional":"mail_not_configured","patient":"mail_not_configured"}
     outcome={}
     for role in ("professional","patient"):
         with billing.db() as con:
@@ -301,6 +303,38 @@ def mail_status():
                    mail_transport=transport or "not_configured",
                    coordinator_address_configured=bool(
                        os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL")))
+
+
+@bp.get("/admin/fonasa/mail-drafts/<id>")
+@billing.private
+def coordination_mail_drafts(id):
+    """Admin-only mailto fallback when no server email credentials are configured."""
+    with billing.db() as con:
+        row=_record(con,id)
+        if not row:
+            return jsonify(error="Solicitud no encontrada."),404
+        if row["state"]!="appointment_requested" or not row["patient_email"]:
+            return jsonify(error="No hay una solicitud de hora registrada."),409
+        recipient=row["patient_email"]
+        coordinator=(os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL")
+                     or "contacto@pscsantibanez.cl")
+        when=(row["requested_date"]+" "+row["requested_time"]+" (Chile)")
+        professional=("Nueva solicitud Fonasa pendiente de confirmación\\n\\n"
+                      "Paciente: "+row["patient_name"]+"\\n"
+                      "Fecha y hora: "+when+"\\n"
+                      "Correo de contacto: "+recipient+"\\n\\n"
+                      "La cita todavía NO está confirmada en Google Calendar.")
+        patient=("Hola, "+row["patient_name"]+".\\n\\n"
+                 "Recibimos tu solicitud de psicoterapia online para "+when+".\\n"
+                 "La cita está PENDIENTE de confirmación en Google Calendar. "
+                 "Nos comunicaremos contigo para confirmar.\\n\\n"
+                 "PSC Santibáñez")
+    return jsonify(
+        professional={"to":coordinator,"subject":"Solicitud Fonasa pendiente de coordinación",
+                      "body":professional.replace("\\\\n","\\n")},
+        patient={"to":recipient,"subject":"Tu solicitud de hora Fonasa | PSC Santibáñez",
+                 "body":patient.replace("\\\\n","\\n")},
+        status="draft_only_not_sent")
 
 
 @bp.post("/admin/fonasa/notify/<id>")
