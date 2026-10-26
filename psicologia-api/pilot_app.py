@@ -18,6 +18,8 @@ app.register_blueprint(demo_bp)
 
 from public_demo_bridge import public_bridge_bp
 app.register_blueprint(public_bridge_bp)
+from fonasa_calendar_fulfillment import bp as fonasa_calendar_fulfillment_bp
+app.register_blueprint(fonasa_calendar_fulfillment_bp)
 
 from rebooking_preview import rebooking_bp
 app.register_blueprint(rebooking_bp)
