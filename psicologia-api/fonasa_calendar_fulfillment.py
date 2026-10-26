@@ -166,6 +166,21 @@ def send_fonasa_confirmation():
             parsed=json.loads(response.read(3000))
         if not isinstance(parsed.get("id"),str):
             return jsonify(state="MAIL_UNCONFIRMED"),503
-    except (HTTPError,URLError,OSError,ValueError):
-        return jsonify(state="MAIL_UNAVAILABLE"),503
+    except HTTPError as exc:
+        # Only the HTTP status and provider error code are logged, never addresses,
+        # patient data, request bodies or secret keys.
+        status=exc.code
+        provider_code="unspecified"
+        try:
+            detail=json.loads(exc.read(1600))
+            code=detail.get("name") or detail.get("code")
+            if isinstance(code,str) and re.fullmatch(r"[a-z_]{1,50}",code):
+                provider_code=code
+        except (ValueError,TypeError,OSError):
+            pass
+        print("FONASA_MAIL_PROVIDER_FAILURE status="+str(status)+" code="+provider_code,flush=True)
+        return jsonify(state="MAIL_HTTP_"+str(status)),503
+    except (URLError,OSError,ValueError):
+        print("FONASA_MAIL_PROVIDER_FAILURE status=network",flush=True)
+        return jsonify(state="MAIL_NETWORK_UNAVAILABLE"),503
     return jsonify(state="SENT")
