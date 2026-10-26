@@ -1062,275 +1062,169 @@ from fonasa_live_bridge import bp as fonasa_live_bridge_bp
 app.register_blueprint(fonasa_live_bridge_bp)
 
 
-@app.post("/sii-eboleta-reachability")
-def sii_eboleta_reachability():
-    """Authenticated, read-only Chromium+Decodo SII connectivity check.
+# SII diagnostic: on-demand or explicitly opted-in one-shot startup only.
+# A process-local lock prevents overlapping Chromium sessions from this diagnostic.
+import threading as _sii_probe_threading
+_SII_PROBE_LOCK = _sii_probe_threading.Lock()
 
-    Never authenticates, supplies credentials, clicks or submits a form.
-    Never returns page HTML, cookies, tokens or proxy secrets.
-    """
-    import hmac
+
+def _sii_probe_once():
+    """One read-only Decodo-to-SII check. Never authenticates or submits forms."""
+    import json
+    import logging
     import os
     import re
     import time
     from urllib.parse import urlparse
-    from flask import request, jsonify
     from playwright.sync_api import sync_playwright
-    secret=os.environ.get("DECODO_TEST_TOKEN","")
-    if not secret or not hmac.compare_digest(
-            request.headers.get("X-Test-Token",""),secret):
-        return jsonify(status="unauthorized"),403
-    keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT",
-          "DECODO_PROXY_USER","DECODO_PROXY_PASSWORD")
-    missing=[k for k in keys if not os.environ.get(k)]
+
+    keys = ("DECODO_PROXY_HOST", "DECODO_PROXY_PORT",
+            "DECODO_PROXY_USER", "DECODO_PROXY_PASSWORD")
+    missing = [key for key in keys if not os.environ.get(key)]
     if missing:
-        return jsonify(status="configuration_missing",missing=missing),503
-    result={"status":"started","browser":"not_started",
-            "sii_http_status":None,"sii_origin_ok":False,
-            "login_form_detected":False,"authenticated":False,
-            "credentials_used":False,"submitted":False,"emitted":False}
-    started=time.monotonic()
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
-    proxy_server="http://"+os.environ["DECODO_PROXY_HOST"].strip()+":"+os.environ["DECODO_PROXY_PORT"].strip()
+        return {"status": "configuration_missing", "missing": missing,
+                "credentials_used": False, "submitted": False, "emitted": False}
+
+    started = time.monotonic()
+    report = {
+        "status": "started",
+        "browser": "not_started",
+        "country": "unknown",
+        "chile_egress": False,
+        "sii_home": {"status": "not_attempted"},
+        "eboleta": {"status": "not_attempted"},
+        "login_form_detected": False,
+        "credentials_used": False,
+        "submitted": False,
+        "emitted": False,
+    }
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+    proxy_server = "http://" + os.environ["DECODO_PROXY_HOST"].strip() + ":" + os.environ["DECODO_PROXY_PORT"].strip()
+    proxy = {
+        "server": proxy_server,
+        "username": os.environ["DECODO_PROXY_USER"],
+        "password": os.environ["DECODO_PROXY_PASSWORD"],
+    }
     try:
-        with sync_playwright() as p:
-            browser=p.chromium.launch(
-                headless=True,args=["--no-sandbox"],timeout=12000,
-                proxy={"server":proxy_server,"username":os.environ["DECODO_PROXY_USER"],
-                       "password":os.environ["DECODO_PROXY_PASSWORD"]})
-            result["browser"]="started"
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(
+                headless=True, args=["--no-sandbox"], timeout=10000, proxy=proxy
+            )
+            report["browser"] = "started"
             try:
-                context=browser.new_context(ignore_https_errors=False)
-                context.route("**/*",lambda route:route.abort()
-                    if route.request.resource_type in ("image","font","media")
-                    else route.continue_())
-                page=context.new_page()
+                context = browser.new_context(ignore_https_errors=False)
+                context.route(
+                    "**/*",
+                    lambda route: route.abort()
+                    if route.request.resource_type in ("image", "font", "media")
+                    else route.continue_(),
+                )
+                page = context.new_page()
                 try:
-                    response=page.goto("https://eboleta.sii.cl/emitir/",
-                                       wait_until="domcontentloaded",timeout=18000)
-                    origin=urlparse(page.url)
-                    result["sii_http_status"]=response.status if response else None
-                    result["sii_origin_ok"]=origin.scheme=="https" and origin.hostname=="eboleta.sii.cl"
-                    result["redirect_host"]=origin.hostname if origin.hostname in (
-                        "eboleta.sii.cl","www.sii.cl","zeusr.sii.cl","hercules.sii.cl") else "other"
-                    result["login_form_detected"]=page.locator('input[type="password"]').count()>0
-                    result["status"]="page_loaded" if result["sii_origin_ok"] else "redirected_or_blocked"
+                    try:
+                        geo = page.goto(
+                            "https://ipinfo.io/country",
+                            wait_until="commit",
+                            timeout=7000,
+                        )
+                        country = (page.locator("body").inner_text(timeout=2500) or "").strip().upper()
+                        report["country"] = country if re.fullmatch(r"[A-Z]{2}", country) else "unknown"
+                        report["chile_egress"] = report["country"] == "CL"
+                        report["egress_check_http"] = geo.status if geo else None
+                    except Exception as exc:
+                        report["egress_check_error"] = type(exc).__name__
+
+                    for key, url, expected_host in (
+                        ("sii_home", "https://www.sii.cl/", "www.sii.cl"),
+                        ("eboleta", "https://eboleta.sii.cl/emitir/", "eboleta.sii.cl"),
+                    ):
+                        try:
+                            response = page.goto(url, wait_until="commit", timeout=10000)
+                            parsed = urlparse(page.url)
+                            final_host = parsed.hostname or ""
+                            item = {
+                                "status": "connected" if response else "no_response",
+                                "http_status": response.status if response else None,
+                                "origin_matches": parsed.scheme == "https" and final_host == expected_host,
+                                "final_host": final_host if final_host.endswith(".sii.cl") else "other",
+                            }
+                            if key == "eboleta":
+                                report["login_form_detected"] = page.locator('input[type="password"]').count() > 0
+                            report[key] = item
+                        except Exception as exc:
+                            error = {"status": "failed", "error_type": type(exc).__name__}
+                            match = re.search(r"net::ERR_[A-Z_]+", str(exc))
+                            if match:
+                                error["network_error"] = match.group(0)
+                            report[key] = error
                 finally:
                     page.close()
                     context.close()
             finally:
                 browser.close()
+        report["status"] = "completed"
     except Exception as exc:
-        result["status"]="connection_error"
-        result["error_type"]=type(exc).__name__
-        code=re.search(r"net::ERR_[A-Z_]+",str(exc))
-        if code:result["network_error"]=code.group(0)
-    result["elapsed_seconds"]=round(time.monotonic()-started,2)
-    return jsonify(result)
+        report["status"] = "failed"
+        report["error_type"] = type(exc).__name__
+        match = re.search(r"net::ERR_[A-Z_]+", str(exc))
+        if match:
+            report["network_error"] = match.group(0)
+    report["elapsed_seconds"] = round(time.monotonic() - started, 2)
+    return report
+
+
+@app.post("/sii-eboleta-reachability")
+def sii_eboleta_reachability():
+    """Run one serialized, read-only Decodo-to-SII check; no login or form actions."""
+    import hmac
+    import os
+    from flask import jsonify, request
+
+    secret = os.environ.get("DECODO_TEST_TOKEN", "")
+    if not secret or not hmac.compare_digest(
+        request.headers.get("X-Test-Token", ""), secret
+    ):
+        return jsonify(status="unauthorized"), 403
+    if not _SII_PROBE_LOCK.acquire(blocking=False):
+        return jsonify(status="busy", credentials_used=False, submitted=False, emitted=False), 409
+    try:
+        report = _sii_probe_once()
+        return jsonify(report), 200 if report.get("status") == "completed" else 503
+    finally:
+        _SII_PROBE_LOCK.release()
 
 
 def _sii_reachability_startup_once():
-    """One read-only diagnostic on startup; report only sanitized state."""
+    """Run only when explicitly enabled for one deployment; emit sanitized flags."""
     import json
     import logging
-    import threading
-    import time
     import os
-    time.sleep(3)
-    token=os.environ.get("DECODO_TEST_TOKEN","")
-    if not token:
-        logging.getLogger("sii_probe").warning('SII_REACHABILITY %s',
-             json.dumps({"status":"token_not_configured"}))
-        return
-    try:
-        with app.test_client() as client:
-            response=client.post("/sii-eboleta-reachability",
-                                 headers={"X-Test-Token":token})
-            body=response.get_json(silent=True) or {}
-            allowed=("status","browser","sii_http_status","sii_origin_ok",
-                     "redirect_host","login_form_detected",
-                     "authenticated","credentials_used","submitted",
-                     "emitted","error_type","network_error")
-            report={k:body[k] for k in allowed if k in body}
-            logging.getLogger("sii_probe").warning("SII_REACHABILITY %s",json.dumps(report))
-    except Exception as exc:
-        logging.getLogger("sii_probe").warning("SII_REACHABILITY %s",
-             json.dumps({"status":"internal_probe_failed","error_type":type(exc).__name__}))
-
-
-import threading as _sii_probe_threading
-_sii_probe_threading.Thread(target=_sii_reachability_startup_once,daemon=True).start()
-
-
-def _sii_direct_comparison_once():
-    """One startup diagnostic: compare direct HTTPS access to public SII pages.
-
-    Uses no proxy and no user credentials. No HTML, cookies or secrets logged.
-    """
-    import json
-    import logging
     import time
-    from urllib.parse import urlparse
-    from playwright.sync_api import sync_playwright
-    time.sleep(5)
-    result={"status":"started","credentials_used":False,"submitted":False,"emitted":False}
+
+    time.sleep(2)
     try:
-        with sync_playwright() as p:
-            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=12000)
+        if not _SII_PROBE_LOCK.acquire(blocking=False):
+            result = {"status": "busy", "submitted": False, "emitted": False}
+        else:
             try:
-                context=browser.new_context(ignore_https_errors=False)
-                for name,url,host in (
-                    ("sii_home","https://www.sii.cl/","www.sii.cl"),
-                    ("eboleta","https://eboleta.sii.cl/emitir/","eboleta.sii.cl")):
-                    page=context.new_page()
-                    try:
-                        response=page.goto(url,wait_until="commit",timeout=12000)
-                        result[name]={"http":response.status if response else None,
-                                      "origin_matches":urlparse(page.url).hostname==host,
-                                      "status":"connected"}
-                    except Exception as exc:
-                        import re
-                        match=re.search(r"net::ERR_[A-Z_]+",str(exc))
-                        result[name]={"status":"failed","error_type":type(exc).__name__,
-                                      "network_error":match.group(0) if match else "none"}
-                    finally:page.close()
-                context.close()
-            finally:browser.close()
-        result["status"]="completed"
+                result = _sii_probe_once()
+            finally:
+                _SII_PROBE_LOCK.release()
+        logging.getLogger("sii_probe").warning(
+            "SII_REACHABILITY %s",
+            json.dumps(result, ensure_ascii=True, separators=(",", ":")),
+        )
     except Exception as exc:
-        result["status"]="browser_error"
-        result["error_type"]=type(exc).__name__
-    logging.getLogger("sii_probe").warning("SII_DIRECT_COMPARISON %s",json.dumps(result))
+        logging.getLogger("sii_probe").warning(
+            "SII_REACHABILITY %s",
+            json.dumps({"status": "failed", "error_type": type(exc).__name__}),
+        )
 
 
-import threading as _sii_compare_threading
-_sii_compare_threading.Thread(target=_sii_direct_comparison_once,daemon=True).start()
-
-
-def _sii_login_screen_once():
-    """Inspect public SII login screen, never typing or submitting credentials."""
-    import json
-    import logging
-    import time
-    from urllib.parse import urlparse
-    from playwright.sync_api import sync_playwright
-    time.sleep(7)
-    report={"status":"started","credentials_used":False,"form_submitted":False,"emitted":False}
-    try:
-        with sync_playwright() as p:
-            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=12000)
-            try:
-                context=browser.new_context(ignore_https_errors=False)
-                page=context.new_page()
-                try:
-                    resp=page.goto("https://eboleta.sii.cl/emitir/",
-                        wait_until="commit",timeout=22000)
-                    page.wait_for_timeout(500)
-                    host=urlparse(page.url).hostname
-                    report["http"]=resp.status if resp else None
-                    report["expected_origin"]=host in ("eboleta.sii.cl","eboletacert.sii.cl")
-                    report["authentication_screen"]=page.locator('input[type="password"]').count()>0
-                    report["rut_input_present"]=page.locator('input').count()>1
-                    report["final_host_class"]="sii" if host and host.endswith(".sii.cl") else "other"
-                    report["status"]="screen_inspected"
-                finally:
-                    page.close()
-                    context.close()
-            finally:browser.close()
-    except Exception as exc:
-        import re
-        report["status"]="failed"
-        report["error_type"]=type(exc).__name__
-        match=re.search(r"net::ERR_[A-Z_]+",str(exc))
-        if match:report["network_error"]=match.group(0)
-    logging.getLogger("sii_probe").warning("SII_LOGIN_SCREEN %s",json.dumps(report))
-
-
-import threading as _sii_login_threading
-_sii_login_threading.Thread(target=_sii_login_screen_once,daemon=True).start()
-
-
-def _sii_entry_navigation_once():
-    """Observe unauthenticated SII entry controls, never use credentials."""
-    import json,logging,time,re
-    from urllib.parse import urlparse
-    from playwright.sync_api import sync_playwright
-    time.sleep(9)
-    report={"status":"started","credentials_used":False,"submitted":False,"emitted":False}
-    try:
-        with sync_playwright() as p:
-            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=12000)
-            try:
-                context=browser.new_context(ignore_https_errors=False,locale="es-CL")
-                page=context.new_page()
-                response=page.goto("https://eboleta.sii.cl/emitir/",wait_until="commit",timeout=18000)
-                page.wait_for_timeout(1900)
-                report["http"]=response.status if response else None
-                report["url_host"]=urlparse(page.url).hostname
-                report["control_labels"]=page.locator('a,button,input[type="submit"]').evaluate_all(
-                  """nodes => nodes.slice(0,70).map(n=>({
-                    kind:n.tagName.toLowerCase(),
-                    label:(n.innerText||n.value||n.getAttribute('aria-label')||'').trim().slice(0,55),
-                    host:(()=>{try{return new URL(n.getAttribute('href')||'',location.href).hostname}catch(e){return ''}})()
-                  })).filter(n=>n.label).slice(0,22)""")
-                report["inputs"]=page.locator('input').evaluate_all(
-                  """nodes => nodes.slice(0,15).map(n=>({type:n.type||'',name:n.name||'',id:n.id||''}))""")
-                report["status"]="inspected"
-                context.close()
-            finally:browser.close()
-    except Exception as exc:
-        report["status"]="failed"
-        report["error_type"]=type(exc).__name__
-    logging.getLogger("sii_probe").warning("SII_ENTRY_NAVIGATION %s",json.dumps(report))
-
-import threading as _sii_entry_threading
-_sii_entry_threading.Thread(target=_sii_entry_navigation_once,daemon=True).start()
-
-
-def _sii_proxy_comparison_once():
-    """Read-only country-routed proxy connectivity comparison, no SII login."""
-    import os,json,logging,time,re
-    from urllib.parse import urlparse
-    from playwright.sync_api import sync_playwright
-    time.sleep(11)
-    result={"status":"started","credentials_used":False,"submitted":False,"emitted":False}
-    keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER","DECODO_PROXY_PASSWORD")
-    if any(not os.environ.get(k) for k in keys):
-        result["status"]="proxy_config_missing"
-    else:
-        proxy={"server":"http://"+os.environ["DECODO_PROXY_HOST"].strip()+":"+os.environ["DECODO_PROXY_PORT"].strip(),
-               "username":os.environ["DECODO_PROXY_USER"],
-               "password":os.environ["DECODO_PROXY_PASSWORD"]}
-        try:
-            with sync_playwright() as p:
-                browser=p.chromium.launch(headless=True,args=["--no-sandbox"],proxy=proxy,timeout=14000)
-                try:
-                    context=browser.new_context(ignore_https_errors=False)
-                    for label,url in (("ip_check","https://ipinfo.io/json"),
-                                      ("sii_home","https://www.sii.cl/"),
-                                      ("sii_eboleta","https://eboleta.sii.cl/emitir/"),
-                                      ("sii_auth","https://eboletacert.sii.cl/")):
-                        pg=context.new_page()
-                        try:
-                            response=pg.goto(url,wait_until="commit",timeout=16000)
-                            result[label]={"status":"connected","http":response.status if response else None,
-                                "origin_same":urlparse(pg.url).hostname==urlparse(url).hostname}
-                            if label=="ip_check" and response and response.status==200:
-                                try:
-                                    geo=json.loads(pg.locator("body").inner_text(timeout=3000))
-                                    result[label]["country"]=geo.get("country","unknown")
-                                except Exception:pass
-                        except Exception as exc:
-                            match=re.search(r"net::ERR_[A-Z_]+",str(exc))
-                            result[label]={"status":"failed","error":match.group(0) if match else type(exc).__name__}
-                        finally:pg.close()
-                    context.close()
-                finally:browser.close()
-            result["status"]="completed"
-        except Exception as exc:
-            result["status"]="failed"
-            result["error_type"]=type(exc).__name__
-    logging.getLogger("sii_probe").warning("SII_PROXY_COMPARISON %s",json.dumps(result))
-
-import threading as _sii_proxy_comparison_threading
-_sii_proxy_comparison_threading.Thread(target=_sii_proxy_comparison_once,daemon=True).start()
+if __import__("os").environ.get("SII_REACHABILITY_ON_START") == "once":
+    import threading as _sii_startup_threading
+    _sii_startup_threading.Thread(
+        target=_sii_reachability_startup_once,
+        daemon=True,
+        name="sii-decodo-readonly-probe",
+    ).start()
