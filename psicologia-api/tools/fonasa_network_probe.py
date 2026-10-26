@@ -779,8 +779,7 @@ def fonasa_login_inspect():
                         raw_text=page.locator("body").inner_text(timeout=2000).lower()
                         result["possible_auth_error"]=any(word in raw_text for word in (
                             "contraseña incorrecta","clave incorrecta","usuario incorrecto",
-                            "datos incorrectos","usuario o contraseña","credenciales incorrectas",
-                            "recaptcha","captcha"))
+                            "datos incorrectos","usuario o contraseña","credenciales incorrectas"))
                     except Exception:
                         result["possible_auth_error"]=False
                     result["login_form_still_visible"]=page.locator('input[type="password"]').count()>0
