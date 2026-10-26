@@ -206,20 +206,19 @@ def _send_notification(role,recipient,row):
     when=datetime.fromisoformat(row["requested_date"]+"T"+row["requested_time"]).replace(tzinfo=TZ)
     friendly=when.strftime("%d/%m/%Y a las %H:%M")
     professional=role=="professional"
-    subject=("Nueva solicitud de atención Fonasa" if professional
-             else "Recibimos tu solicitud de hora | PSC Santibáñez")
+    subject=("Nueva atención Fonasa confirmada" if professional
+             else "Tu hora Fonasa está confirmada | PSC Santibáñez")
     if professional:
         message=("Se registró una solicitud de atención con bono Fonasa.\n"
                  "Paciente: "+name+"\nFecha y hora: "+friendly+" (Chile)\n"
                  "Correo para coordinación: "+row["patient_email"]+"\n"
-                 "Estado: PENDIENTE de confirmación en Google Calendar.\n"
+                 "Estado: CONFIRMADA en Google Calendar.\n"
                  "Accede al panel privado de PSC para revisar el caso.")
     else:
         message=("Hola, "+name+".\nRecibimos tu solicitud de atención online para "
                  +friendly+" (Chile).\n"
-                 "Tu horario está PENDIENTE de confirmación. Esta notificación "
-                 "no significa que la cita ya esté registrada en Google Calendar.\n"
-                 "Nos comunicaremos contigo para confirmar la atención.\n"
+                 "Tu sesión está CONFIRMADA en Google Calendar.\n"
+                 "Te enviaremos cualquier actualización por este medio.\n"
                  "PSC Santibáñez · contacto@pscsantibanez.cl")
     if sender=="resend":
         payload={"from":os.environ.get("PSICOLOGIA_FONASA_MAIL_FROM",
@@ -331,14 +330,14 @@ def coordination_mail_drafts(id):
                       "Paciente: "+row["patient_name"]+"\\n"
                       "Fecha y hora: "+when+"\\n"
                       "Correo de contacto: "+recipient+"\\n\\n"
-                      "La cita todavía NO está confirmada en Google Calendar.")
+                      "La cita quedó CONFIRMADA en Google Calendar.")
         patient=("Hola, "+row["patient_name"]+".\\n\\n"
                  "Recibimos tu solicitud de psicoterapia online para "+when+".\\n"
                  "La cita está PENDIENTE de confirmación en Google Calendar. "
                  "Nos comunicaremos contigo para confirmar.\\n\\n"
                  "PSC Santibáñez")
     return jsonify(
-        professional={"to":coordinator,"subject":"Solicitud Fonasa pendiente de coordinación",
+        professional={"to":coordinator,"subject":"Reserva Fonasa confirmada · coordinación",
                       "body":professional.replace("\\\\n","\\n")},
         patient={"to":recipient,"subject":"Tu solicitud de hora Fonasa | PSC Santibáñez",
                  "body":patient.replace("\\\\n","\\n")},
