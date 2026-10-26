@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, Response, jsonify, request
 import billing
+from patient_names import display_name
 
 bp=Blueprint("fonasa_private",__name__)
 TZ=ZoneInfo("America/Santiago")
@@ -172,7 +173,7 @@ def _call_worker(path,body=None,timeout=12):
 
 def _admin_item(row):
     return {"id":row["id"],"folio":row["folio"],"rut":row["rut"],
-            "patient_name":row["patient_name"],"emitted":row["emitted"],
+            "patient_name":display_name(row["patient_name"]),"emitted":row["emitted"],
             "state":row["state"],"date":row["requested_date"],
             "time":row["requested_time"],"email":row["patient_email"],
             "created_at":row["created_at"],"check_detail":row["check_detail"],
@@ -198,27 +199,15 @@ def _send_notification(role,recipient,row):
     try:
         state=fonasa_confirmation_email(
             intake_id=row["id"],role=role,email=recipient,
-            patient_name=row["patient_name"],day=row["requested_date"],
+            patient_name=display_name(row["patient_name"]),day=row["requested_date"],
             hour=row["requested_time"],minutes=minutes,
             patient_email=row["patient_email"])
     except BridgeError as exc:
         raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
     if state!="SENT":
         raise RuntimeError("mail_status_"+state[:48])
-    # Calendar is complementary. Its success or failure never changes the
-    # acknowledgement already received from the corporate email provider.
-    from webpay_demo_bridge import fonasa_calendar_invitation
-    import logging
-    try:
-        invite=fonasa_calendar_invitation(
-            intake_id=row["id"],role=role,email=recipient,
-            day=row["requested_date"],hour=row["requested_time"],minutes=minutes)
-        label=invite if invite in ("INVITE_ACCEPTED","ALREADY_INVITED") else "unconfirmed"
-    except BridgeError:
-        label="unavailable"
-    logging.getLogger("fonasa_mail").warning(
-        "FONASA_CALENDAR_COMPLEMENT role=%s status=%s",role,label)
-
+    # The corporate patient email carries the calendar attachment. Do not send
+    # a second native Google invitation from the personal calendar owner.
 
 
 def _deliver_pending_notifications(intake_id):
@@ -328,7 +317,7 @@ def _confirm_fonasa_calendar(intake_id):
             return {"state":"calendar_confirmed","meet_url":row["meet_url"]}
         starts=row["requested_date"]
         clock=row["requested_time"]
-        name=row["patient_name"]
+        name=display_name(row["patient_name"])
         from admin import settings
         cfg,_=settings()
         minutes=cfg["services"]["psicoterapia"]["minutes"]
@@ -483,7 +472,7 @@ def booking_info(token):
     with billing.db() as con:
         _schema(con);row=_by_token(con,token)
     if row is None:return jsonify(error="Este enlace no es válido o venció."),404
-    return jsonify(name=row["patient_name"],state=row["state"],
+    return jsonify(name=display_name(row["patient_name"]),state=row["state"],
                    booked_date=row["requested_date"],booked_time=row["requested_time"],
                    service="Psicoterapia individual online",duration=45,
                    meet_url=row["meet_url"] if row["state"]=="calendar_confirmed" else None,
@@ -657,3 +646,37 @@ def private_cache_headers(response):
     response.headers["X-Frame-Options"]="DENY"
     response.headers["X-Content-Type-Options"]="nosniff"
     return response
+
+
+@bp.post("/internal/fonasa/rescheduled")
+def sync_rescheduled_booking():
+    """Signed mirror update from the shared rescheduling engine; no Calendar write."""
+    key=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY", "")
+    raw=request.get_data(cache=True)
+    stamp=request.headers.get("X-Psc-Timestamp", "")
+    signature=request.headers.get("X-Psc-Signature", "")
+    if (len(key)<40 or len(raw)>1800 or not re.fullmatch(r"[0-9]{10,12}",stamp)
+        or abs(time.time()-int(stamp))>120 or not re.fullmatch(r"[a-f0-9]{64}",signature)
+        or not hmac.compare_digest(signature,hmac.new(key.encode(),stamp.encode()+b"."+raw,hashlib.sha256).hexdigest())):
+        return jsonify(state="NOT_AUTHORIZED"),403
+    data=request.get_json(silent=True)
+    if not isinstance(data,dict):return jsonify(state="INVALID"),400
+    try:
+        old=datetime.fromisoformat(data["old_start"])
+        new=datetime.fromisoformat(data["new_start"])
+        if old.tzinfo is None or new.tzinfo is None:
+            return jsonify(state="INVALID"),400
+        old,new=old.astimezone(TZ),new.astimezone(TZ)
+        with billing.db() as con:
+            row=_record(con,data["intake_id"])
+            if not row or row["state"]!="calendar_confirmed" or row["calendar_event_id"]!=data["event_id"]:
+                return jsonify(state="BOOKING_NOT_CONFIRMED"),409
+            current=(row["requested_date"],row["requested_time"])
+            target=(new.date().isoformat(),new.strftime("%H:%M"))
+            if current==target:return jsonify(state="SYNCED")
+            if current!=(old.date().isoformat(),old.strftime("%H:%M")):
+                return jsonify(state="BOOKING_CHANGED"),409
+            con.execute("UPDATE fonasa_intake SET requested_date=?,requested_time=?,updated_at=? WHERE id=?",(*target,_utc(),row["id"]))
+        return jsonify(state="SYNCED")
+    except (KeyError,ValueError,TypeError):
+        return jsonify(state="INVALID"),400
