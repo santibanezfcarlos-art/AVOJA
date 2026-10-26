@@ -704,8 +704,8 @@ def request_booking(token):
 @bp.get("/admin/fonasa")
 @billing.private
 def admin_page():
-    from flask import send_file
-    return send_file(Path(__file__).parent/"fonasa_admin.html")
+    from flask import redirect
+    return redirect("/admin#fonasa", code=302)
 
 @bp.get("/admin/fonasa-ui.js")
 @billing.private

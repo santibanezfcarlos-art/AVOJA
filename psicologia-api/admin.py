@@ -104,7 +104,7 @@ def panel():
 @admin_bp.get('/admin/assets/<asset>')
 @billing.private
 def assets(asset):
-    if asset not in ('admin.js','admin.css'):
+    if asset not in ('admin.js','admin.css','fonasa_panel.css'):
         return '',404
     return send_file(Path(__file__).parent/asset)
 

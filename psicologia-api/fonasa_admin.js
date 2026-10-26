@@ -1,3 +1,4 @@
+(()=>{
 "use strict";
 const $=id=>document.getElementById(id);
 let current=null,link=null,pollTimer=null,polls=0;
@@ -231,3 +232,5 @@ function pollActivation(id,attempt){
 
 refresh();
 
+
+})();
