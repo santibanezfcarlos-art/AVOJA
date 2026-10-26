@@ -42,3 +42,22 @@ class Tests(unittest.TestCase):
   with patch.dict(os.environ,{'PSC_FONASA_BRIDGE_KEY':'k'*50,'PSC_FONASA_ACTIVATION_ENABLED':'false'}),patch.object(f,'_start_job') as job:
    response=app.test_client().post('/bridge/fonasa/activate',json={},headers={'Authorization':'Bearer '+'k'*50})
   self.assertEqual(response.status_code,503);job.assert_not_called()
+
+class ReadonlyVerificationTests(unittest.TestCase):
+ def test_active_record_can_be_verified_without_pressing_activate_or_deactivate(self):
+  row=Row(active=True)
+  class Menu:
+   @property
+   def first(self):return self
+   def count(self):return 1
+   def is_visible(self):return True
+   def click(self,**kwargs):pass
+  class Field:
+   def wait_for(self,**kwargs):pass
+   def fill(self,*args):pass
+   def click(self,**kwargs):pass
+  class Inquiry(Page):
+   def get_by_text(self,*args):return Menu()
+   def locator(self,path):return self if path=='table:visible tr' else Field()
+  result=f._verify_activated_view(Inquiry(row),'12345678-5','123456')
+  self.assertTrue(result['activated']);self.assertEqual(row.clicks,0)

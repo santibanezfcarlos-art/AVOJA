@@ -82,6 +82,49 @@ def _activate_matched(page,row,rut,folio):
         return result
 
 
+def _verify_activated_view(page,rut,folio):
+    """Read-only search in the deactivation view; NEVER presses Desactivar."""
+    diagnosis={"activated":False,"verification_view":"not_observed"}
+    try:
+        label=re.compile(r"^\s*Desactivaci[oó]n Cuenta M[eé]dica\s*$",re.I)
+        submenu=page.get_by_text(label)
+        if not submenu.count() or not submenu.first.is_visible():
+            parent=page.get_by_text(re.compile(r"Activaci[oó]n y desactivar Cuenta M[eé]dica",re.I))
+            if parent.count() and parent.first.is_visible():parent.first.click(timeout=5000)
+            submenu=page.get_by_text(label)
+        if not submenu.count() or not submenu.first.is_visible():
+            labels=[]
+            for text in page.locator('a:visible').all_inner_texts():
+                text=re.sub(r"\s+"," ",text).strip()
+                if (re.match(r"^(Consulta|Desactiva|Activa|Cuenta|Bono|Liquidaci)",text,re.I)
+                    and len(text)<=100 and not re.search(r"[0-9@]",text)):
+                    labels.append(text)
+            diagnosis['navigation_options']=list(dict.fromkeys(labels))[:15]
+            return diagnosis
+        submenu.first.click(timeout=6500)
+        diagnosis['verification_view']='deactivation_search'
+        for selector in ('#RutBeneficiario','#FolioBono','#btnBuscar'):
+            page.locator(selector).wait_for(state='visible',timeout=8000)
+        page.locator('#RutBeneficiario').fill(rut)
+        page.locator('#FolioBono').fill(folio)
+        page.locator('#btnBuscar').click(timeout=8000)
+        limit=time.monotonic()+25
+        while time.monotonic()<limit:
+            for row in page.locator('table:visible tr').all():
+                cells=row.locator('td').all_inner_texts()
+                folio_match=any(x.strip().replace('.','').replace(' ','')==folio for x in cells)
+                rut_match=any(_rut(x.strip().lstrip('0'))==rut for x in cells)
+                if folio_match and rut_match and _row_status(row):
+                    return {'state':'activated','activated':True,'activate_available':False,
+                            'stage':'activation_verified_readonly','verification_view':'deactivation_search'}
+            page.wait_for_timeout(650)
+        diagnosis['verification_result']='matching_active_row_not_observed'
+        return diagnosis
+    except Exception as exc:
+        diagnosis['verification_error_class']=type(exc).__name__
+        return diagnosis
+
+
 def _work(job_id,rut,folio,activate=False):
     result={"state":"error","activate_available":False,"activated":False}
     stage="configuration"
@@ -161,6 +204,10 @@ def _work(job_id,rut,folio,activate=False):
                                 if activate:
                                     stage="activation_submitted"
                                     result=_activate_matched(page,row,rut,folio)
+                                    if result.get('activated') is not True:
+                                        proof=_verify_activated_view(page,rut,folio)
+                                        if proof.get('activated') is True:result=proof
+                                        else:result.update(proof)
                                 else:
                                     result={"state":"ready_to_activate","activate_available":True,
                                             "activated":False,"stage":"matched_result_row"}
@@ -173,6 +220,10 @@ def _work(job_id,rut,folio,activate=False):
                         result["state"]="result_not_confirmed"
                     elif not result["rut_row_matched"]:
                         result["state"]="beneficiary_mismatch"
+                    if result["state"]=="result_not_confirmed":
+                        proof=_verify_activated_view(page,rut,folio)
+                        if proof.get('activated') is True:result=proof
+                        else:result.update(proof)
                 finally:
                     context.close()
             finally:
