@@ -265,6 +265,8 @@ from admin import admin_bp
 app.register_blueprint(admin_bp)
 from reschedules import reschedules_bp
 app.register_blueprint(reschedules_bp)
+from fonasa_internal import bp as fonasa_private_bp
+app.register_blueprint(fonasa_private_bp)
 
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
