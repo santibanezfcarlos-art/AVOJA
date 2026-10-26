@@ -798,10 +798,22 @@ def fonasa_login_inspect():
                             result["activation_submenu_matches"]=submenu.count()
                             if submenu.count()>0:
                                 submenu.first.click(timeout=5000)
-                                page.wait_for_timeout(900)
+                                page.wait_for_timeout(2300)
                                 rut=page.get_by_text(re.compile(r"Rut Beneficiario",re.I))
                                 folio=page.get_by_text(re.compile(r"Folio Bono",re.I))
                                 result["activation_form"]="observed" if rut.count()>0 and folio.count()>0 else "not_observed"
+                                # Inspect field identifiers even if labels have not rendered.
+                                result["form_controls"] = page.locator("input, button").evaluate_all("""els => els.filter(el => el.getClientRects().length>0).map(el => ({
+                                    tag:el.tagName.toLowerCase(),
+                                    id:el.id||"",name:el.name||"",type:el.type||"",
+                                    button_text:el.tagName.toLowerCase()==="button"?(el.textContent||"").trim().slice(0,40):"",
+                                    button_value:(el.type==="button"||el.type==="submit")?(el.value||"").slice(0,40):"",
+                                    onclick:(el.getAttribute("onclick")||"").slice(0,90)
+                                })).filter(e => e.id || e.name || e.button_text || e.button_value).slice(-32)""")
+                                result["buscar_button_count"]=page.get_by_role(
+                                    "button",name=re.compile(r"^Buscar$",re.I)).count()
+                                result["buscar_text_count"]=page.get_by_text(
+                                    re.compile(r"^Buscar$",re.I)).count()
                                 # Controls only: never capture input values, records, or personal data.
                                 if result["activation_form"]=="observed":
                                     result["activation_fields"] = {
