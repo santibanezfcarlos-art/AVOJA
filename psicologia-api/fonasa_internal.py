@@ -215,7 +215,21 @@ def _send_notification(role,recipient,row):
                 return
             raise RuntimeError("mail_status_"+state[:48])
         except BridgeError as exc:
-            raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
+            # Reuse Calendar's existing invitation mechanism if Resend rejects
+            # an external recipient. The event must already be confirmed.
+            if exc.state not in ("MAIL_HTTP_403","MAIL_NOT_CONFIGURED","MAIL_UNAVAILABLE","MAIL_NETWORK_UNAVAILABLE"):
+                raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
+            from webpay_demo_bridge import fonasa_calendar_invitation
+            try:
+                state=fonasa_calendar_invitation(
+                    intake_id=row["id"],role=role,email=recipient,
+                    day=row["requested_date"],hour=row["requested_time"],
+                    minutes=minutes)
+            except BridgeError as invite_error:
+                raise RuntimeError("calendar_invite_"+invite_error.state[:48]) from None
+            if state not in ("INVITE_ACCEPTED","ALREADY_INVITED"):
+                raise RuntimeError("calendar_invite_"+state[:48])
+            return
     name=row["patient_name"]
     when=datetime.fromisoformat(row["requested_date"]+"T"+row["requested_time"]).replace(tzinfo=TZ)
     friendly=when.strftime("%d/%m/%Y a las %H:%M")
