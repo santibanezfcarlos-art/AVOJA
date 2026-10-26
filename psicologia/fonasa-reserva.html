@@ -41,7 +41,7 @@ let slots={},done=false;
 function report(message,bad=false){const n=$("load");n.textContent=message;n.classList.toggle("warn",bad)}
 async function api(path,options={}){const response=await fetch(API+path,{...options,cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"});
 const data=await response.json().catch(()=>({error:"Respuesta no disponible."}));
-if(!response.ok)throw Error(data.error||"El servidor no respondió.");return data}
+if(!response.ok){const err=new Error(data.error||"El servidor no respondió.");err.status=response.status;err.reason=data.reason||"";throw err}return data}
 function dateLabel(iso){return new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",weekday:"long",day:"numeric",month:"long"}).format(new Date(iso+"T12:00:00Z"))}
 function loadHours(){
  const day=$("day").value,hour=$("hour");hour.replaceChildren();
@@ -58,7 +58,18 @@ async function init(){
   if(data.state==="appointment_requested"){
    report("Ya existe una solicitud para este bono.");return
   }
-  const avail=await api("/api/fonasa/book/"+encodeURIComponent(token)+"/availability");
+  let avail;
+  for(let attempt=1;attempt<=4;attempt++){
+   try {
+    avail=await api("/api/fonasa/book/"+encodeURIComponent(token)+"/availability");
+    break;
+   }catch(err){
+    const retry=err.status===503 && !["calendar_missing","settings_unavailable"].includes(err.reason);
+    if(!retry || attempt===4)throw err;
+    report("Actualizando disponibilidad de Google Calendar… Reintentando automáticamente ("+attempt+"/3).");
+    await new Promise(resolve=>setTimeout(resolve,6000));
+   }
+  }
   slots=avail.available||{};
   for(const day of Object.keys(slots).sort()){
    const option=document.createElement("option");option.value=day;option.textContent=dateLabel(day);
