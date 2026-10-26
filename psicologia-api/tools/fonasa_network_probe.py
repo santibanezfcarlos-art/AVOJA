@@ -1109,7 +1109,40 @@ def _sii_probe_once():
         "username": os.environ["DECODO_PROXY_USER"],
         "password": os.environ["DECODO_PROXY_PASSWORD"],
     }
+
+    def check_proxy_connect(target):
+        import base64
+        import socket
+        userpass = (os.environ["DECODO_PROXY_USER"] + ":" +
+                    os.environ["DECODO_PROXY_PASSWORD"]).encode("utf-8")
+        authorization = base64.b64encode(userpass).decode("ascii")
+        request = (
+            f"CONNECT {target}:443 HTTP/1.1\\r\\n"
+            f"Host: {target}:443\\r\\n"
+            f"Proxy-Authorization: Basic {authorization}\\r\\n"
+            "Proxy-Connection: close\\r\\n\\r\\n"
+        ).encode("ascii")
+        try:
+            with socket.create_connection(
+                (os.environ["DECODO_PROXY_HOST"].strip(),
+                 int(os.environ["DECODO_PROXY_PORT"].strip())),
+                timeout=6,
+            ) as sock:
+                sock.settimeout(6)
+                sock.sendall(request)
+                status = sock.recv(512).split(b"\\r\\n", 1)[0].decode("ascii", "replace")
+            match = re.fullmatch(r"HTTP/1\\.[01] (\\d{3})(?: ([A-Za-z ]{0,60}))?", status)
+            return {"status": "received", "http_status": int(match.group(1)) if match else None,
+                    "reason": (match.group(2) or "")[:60] if match else "unrecognized"}
+        except Exception as exc:
+            return {"status": "failed", "error_type": type(exc).__name__}
+
     try:
+        report["proxy_connect"] = {}
+        for target in ("www.google.com", "www.sii.cl", "eboleta.sii.cl"):
+            report["proxy_connect"][target] = check_proxy_connect(target)
+            stage("proxy_connect_checked", target=target,
+                  result=report["proxy_connect"][target])
         with sync_playwright() as playwright:
             stage("chromium_launch_started")
             browser = playwright.chromium.launch(
@@ -1144,6 +1177,7 @@ def _sii_probe_once():
                         stage("egress_request_failed", error_type=type(exc).__name__)
 
                     for key, url, expected_host in (
+                        ("control", "https://www.google.com/generate_204", "www.google.com"),
                         ("sii_home", "https://www.sii.cl/", "www.sii.cl"),
                         ("eboleta", "https://eboleta.sii.cl/emitir/", "eboleta.sii.cl"),
                     ):
