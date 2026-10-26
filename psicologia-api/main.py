@@ -277,6 +277,29 @@ from billing import configured as _billing_is_ready
 print("PSICOLOGIA_PUBLIC_DEMO_BRIDGE: " + ("ready" if _demo_bridge_is_ready() else "not_configured"),flush=True)
 print("PSICOLOGIA_PUBLIC_BILLING: " + ("ready" if _billing_is_ready() else "not_configured"),flush=True)
 
+def _diagnose_fonasa_slots_once():
+    """Read-only, non-patient availability check. No calendar event details logged."""
+    import logging
+    import time as _time
+    _time.sleep(4)
+    try:
+        from fonasa_internal import _slots, _schema, AvailabilityUnavailable
+        import billing
+        with billing.db() as connection:
+            _schema(connection)
+            available=_slots(connection,None,days=2)
+        logging.getLogger("fonasa_availability").warning(
+            "FONASA_SLOTS_STARTUP_PROBE status=ok days=%d slots=%d",
+            len(available),sum(len(v) for v in available.values()))
+    except Exception as exc:
+        logging.getLogger("fonasa_availability").warning(
+            "FONASA_SLOTS_STARTUP_PROBE status=failed reason=%s kind=%s",
+            getattr(exc,"code","unexpected"),type(exc).__name__)
+
+if os.environ.get("FONASA_SLOTS_DIAG_ON_START")=="yes":
+    threading.Thread(target=_diagnose_fonasa_slots_once,daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
