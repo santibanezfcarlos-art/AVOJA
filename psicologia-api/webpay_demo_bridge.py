@@ -133,3 +133,9 @@ def fonasa_confirmation_email(*,intake_id,role,email,patient_name,day,hour,minut
           "patient_name":patient_name,"date":day,"time":hour,
           "minutes":minutes,"patient_email":patient_email}
     return _request("/internal/psicologia/fonasa/mail",data)
+
+def fonasa_calendar_invitation(*,intake_id,role,email,day,hour,minutes):
+    """Google Calendar invitation on an existing, signed, confirmed Fonasa event."""
+    return _request("/internal/psicologia/fonasa/invite",{
+        "intake_id":intake_id,"role":role,"email":email,"date":day,
+        "time":hour,"minutes":minutes})
