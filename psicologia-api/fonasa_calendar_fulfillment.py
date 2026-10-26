@@ -193,3 +193,61 @@ def send_fonasa_confirmation():
         print("FONASA_MAIL_PROVIDER_FAILURE status=network",flush=True)
         return jsonify(state="MAIL_NETWORK_UNAVAILABLE"),503
     return jsonify(state="SENT")
+
+
+@bp.post("/internal/psicologia/fonasa/invite")
+def invite_to_verified_fonasa_booking():
+    """Use Google Calendar invite delivery when Resend cannot send email.
+
+    Sends an invitation ONLY for an existing own event and preserves the event,
+    its time, Google Meet, and already invited attendees. Idempotent per email.
+    """
+    body=_authorize()
+    if not body or not _enabled():return jsonify(state="NOT_AUTHORIZED"),403
+    source=body.get("intake_id","")
+    role=body.get("role","")
+    recipient=body.get("email","")
+    date=body.get("date","")
+    hour=body.get("time","")
+    minutes=body.get("minutes")
+    if not (isinstance(source,str) and re.fullmatch(r"[A-Za-z0-9_-]{15,40}",source)
+         and role in ("patient","professional")
+         and isinstance(recipient,str) and len(recipient)<=254
+         and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",recipient)
+         and isinstance(date,str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}",date)
+         and isinstance(hour,str) and re.fullmatch(r"(09|1[0-9]):(00|15|30|45)",hour)
+         and type(minutes)==int and minutes in (45,60,90)):
+        return jsonify(state="INVALID"),400
+    if role=="professional":
+        trusted={"contacto@pscsantibanez.cl"}
+        professional=os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","").strip().lower()
+        if professional:trusted.add(professional)
+        if recipient.lower() not in trusted:
+            return jsonify(state="NOT_COORDINATOR"),403
+    hold_id=uuid.uuid5(FONASA_OWNER,"fonasa:"+source)
+    try:
+        start=datetime.fromisoformat(date+"T"+hour).replace(tzinfo=TZ)
+        end=start+timedelta(minutes=minutes)
+        writer=CalendarWriter()
+        writer._check(write=True)
+        path=writer._calendar_path+"/"+event_id_for_hold(hold_id)
+        event=writer.transport("GET",path,{},None)
+        if not _owns(event,hold_id,start=start,end=end,service="psicoterapia"):
+            return jsonify(state="EVENT_NOT_OWNED"),409
+        existing=event.get("attendees") or []
+        if not isinstance(existing,list):return jsonify(state="CALENDAR_UNAVAILABLE"),503
+        if any(x.get("email","").casefold()==recipient.casefold() for x in existing if isinstance(x,dict)):
+            return jsonify(state="ALREADY_INVITED")
+        if len(existing)>=18:
+            return jsonify(state="TOO_MANY_ATTENDEES"),409
+        invitations=[dict(x) for x in existing if isinstance(x,dict)]
+        invitations.append({"email":recipient})
+        updated=writer.transport("PATCH",path,{"sendUpdates":"all"},
+                                 {"attendees":invitations})
+        if (not _owns(updated,hold_id,start=start,end=end,service="psicoterapia")
+            or not any(x.get("email","").casefold()==recipient.casefold()
+                       for x in updated.get("attendees",[]) if isinstance(x,dict))):
+            return jsonify(state="INVITE_NOT_VERIFIED"),503
+        return jsonify(state="INVITE_ACCEPTED")
+    except (CalendarIntegrationError,TypeError,ValueError,OSError):
+        return jsonify(state="CALENDAR_UNAVAILABLE"),503
