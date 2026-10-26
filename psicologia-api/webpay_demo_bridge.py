@@ -59,11 +59,13 @@ def complete(*,order,session,amount,outcome):
     return _request("/internal/psicologia/demo/complete",{
         "order":order,"session":session,"amount":amount,"outcome":outcome})
 
-def busy_intervals(first,last):
-    """Private authenticated read of booked and temporarily held slots."""
+def busy_intervals(first,last,include_calendar=False):
+    """Private authenticated read of held slots and optional live Google occupied times."""
     if not enabled():
         raise BridgeError("BRIDGE_DISABLED")
     data={"from":first.isoformat(),"to":last.isoformat()}
+    if include_calendar:
+        data["include_calendar"]=True
     raw=json.dumps(data,separators=(",",":"),ensure_ascii=True,sort_keys=True).encode()
     stamp=str(int(time.time()))
     signature=hmac.new(os.environ[KEY_NAME].encode(),
