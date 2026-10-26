@@ -282,6 +282,17 @@ def _deliver_pending_notifications(intake_id):
     return outcome
 
 
+# Log configuration readiness only; never log SMTP passwords, API keys or recipients.
+try:
+    import logging
+    logging.getLogger("fonasa_mail").warning(
+        "FONASA_MAIL_READY configured=%s provider=%s",
+        _notification_sender()[0] is not None,
+        _notification_sender()[0] or "missing")
+except Exception:
+    pass
+
+
 @bp.get("/admin/fonasa/mail-status")
 @billing.private
 def mail_status():
