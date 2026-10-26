@@ -268,6 +268,38 @@ def busy():
         counts = Counter(row["starts_at"].astimezone(TZ).date() for row in rows)
         intervals = [[row["starts_at"].isoformat(), row["ends_at"].isoformat()]
                      for row in rows]
+        if data.get("include_calendar") is True:
+            # Only signed server callers may request live Google Calendar occupancy.
+            # No names, titles, attendee lists, RUTs or event identifiers are returned.
+            from datetime import time as day_time
+            from google_calendar_writer import CalendarWriter, _parse_edge
+            client=CalendarWriter()
+            earliest=datetime.combine(first,day_time.min,tzinfo=TZ)
+            latest=datetime.combine(last+timedelta(days=1),day_time.min,tzinfo=TZ)
+            query={"timeMin":earliest.isoformat(),"timeMax":latest.isoformat(),
+                   "singleEvents":"true","showDeleted":"false","maxResults":"2500"}
+            cursor=None
+            for _ in range(10):
+                params=dict(query)
+                if cursor:
+                    params["pageToken"]=cursor
+                response=client.transport("GET",client._calendar_path,params,None)
+                if not isinstance(response,dict) or not isinstance(response.get("items"),list):
+                    raise ValueError("Incomplete calendar response")
+                for event in response["items"]:
+                    if event.get("status")=="cancelled" or event.get("transparency")=="transparent":
+                        continue
+                    start_edge=_parse_edge(event["start"])
+                    end_edge=_parse_edge(event["end"])
+                    if end_edge>start_edge and start_edge<latest and earliest<end_edge:
+                        intervals.append([start_edge.isoformat(),end_edge.isoformat()])
+                cursor=response.get("nextPageToken")
+                if not cursor:
+                    break
+                if not isinstance(cursor,str) or len(cursor)>2048:
+                    raise ValueError("Invalid calendar pagination")
+            else:
+                raise ValueError("Google Calendar result limit reached")
         for day, total in counts.items():
             if total >= MAX_DAILY:
                 begin = datetime.combine(day, time.min, tzinfo=TZ)
