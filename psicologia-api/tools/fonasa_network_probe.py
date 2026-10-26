@@ -1117,10 +1117,10 @@ def _sii_probe_once():
                     os.environ["DECODO_PROXY_PASSWORD"]).encode("utf-8")
         authorization = base64.b64encode(userpass).decode("ascii")
         request = (
-            f"CONNECT {target}:443 HTTP/1.1\\r\\n"
-            f"Host: {target}:443\\r\\n"
-            f"Proxy-Authorization: Basic {authorization}\\r\\n"
-            "Proxy-Connection: close\\r\\n\\r\\n"
+            f"CONNECT {target}:443 HTTP/1.1\r\n"
+            f"Host: {target}:443\r\n"
+            f"Proxy-Authorization: Basic {authorization}\r\n"
+            "Proxy-Connection: close\r\n\r\n"
         ).encode("ascii")
         try:
             with socket.create_connection(
@@ -1130,8 +1130,8 @@ def _sii_probe_once():
             ) as sock:
                 sock.settimeout(6)
                 sock.sendall(request)
-                status = sock.recv(512).split(b"\\r\\n", 1)[0].decode("ascii", "replace")
-            match = re.fullmatch(r"HTTP/1\\.[01] (\\d{3})(?: ([A-Za-z ]{0,60}))?", status)
+                status = sock.recv(512).split(b"\r\n", 1)[0].decode("ascii", "replace")
+            match = re.fullmatch(r"HTTP/1\.[01] (\d{3})(?: ([A-Za-z ]{0,60}))?", status)
             return {"status": "received", "http_status": int(match.group(1)) if match else None,
                     "reason": (match.group(2) or "")[:60] if match else "unrecognized"}
         except Exception as exc:
