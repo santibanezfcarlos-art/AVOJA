@@ -61,3 +61,66 @@ class ReadonlyVerificationTests(unittest.TestCase):
    def locator(self,path):return self if path=='table:visible tr' else Field()
   result=f._verify_activated_view(Inquiry(row),'12345678-5','123456')
   self.assertTrue(result['activated']);self.assertEqual(row.clicks,0)
+
+
+class SuccessWindowTests(unittest.TestCase):
+ def test_exact_success_message_and_requested_folio_required(self):
+  class Element:
+   def is_visible(self):return True
+  class Matches:
+   def __init__(self,matched):self.matched=matched
+   def all(self):return [Element()] if self.matched else []
+  class SuccessPage:
+   def __init__(self,message):self.message=message
+   def get_by_text(self,pattern):return Matches(bool(pattern.search(self.message)))
+  self.assertTrue(f._activation_success_message(SuccessPage('FolioBono activado 123456'),'123456'))
+  self.assertFalse(f._activation_success_message(SuccessPage('FolioBono activado 1234567'),'123456'))
+  self.assertFalse(f._activation_success_message(SuccessPage('FolioBono activado 654321'),'123456'))
+  self.assertFalse(f._activation_success_message(SuccessPage('¿Está seguro de activar el bono 123456?'),'123456'))
+ def test_success_window_completes_without_searching_empty_result_table(self):
+  row=Row()
+  with patch.object(f,'_activation_success_message',return_value=True):
+   result=f._activate_matched(Page(row),row,'12345678-5','123456')
+  self.assertTrue(result['activated']);self.assertEqual(result['activation_evidence'],'success_confirmation')
+  self.assertEqual(row.clicks,1)
+
+
+class FullConfirmationFlowTests(unittest.TestCase):
+ def run_flow(self,confirm_folio='123456',success=True):
+  trace=[]
+  class Dialog:
+   type='confirm'
+   message='Esta seguro de activar el bono ? '+confirm_folio
+   accepted=False
+   def accept(self):self.accepted=True;trace.append('validation_accepted')
+   def dismiss(self):trace.append('validation_rejected')
+  dialog=Dialog()
+  class Element:
+   def is_visible(self):return True
+  class Matches:
+   def __init__(self,matched):self.matched=matched
+   def all(self):return [Element()] if self.matched else []
+  class ConfirmationPage:
+   def on(self,event,handler):self.handler=handler
+   def get_by_text(self,pattern):
+    matched=dialog.accepted and success and bool(pattern.search('FolioBono activado 123456'))
+    if matched:trace.append('success_visible')
+    return Matches(matched)
+   def locator(self,*args):raise RuntimeError('No success message; do not claim activation')
+  page=ConfirmationPage()
+  class Control:
+   def click(self,**kwargs):trace.append('activate_click');page.handler(dialog)
+  class ConfirmationRow:
+   def get_by_role(self,*args,**kwargs):return Control()
+  result=f._activate_matched(page,ConfirmationRow(),'12345678-5','123456')
+  return result,trace
+ def test_activate_confirm_then_matching_success(self):
+  result,trace=self.run_flow()
+  self.assertTrue(result['activated']);self.assertTrue(result['confirmation_accepted'])
+  self.assertEqual(trace,['activate_click','validation_accepted','success_visible'])
+ def test_confirmation_for_other_voucher_not_accepted(self):
+  result,trace=self.run_flow(confirm_folio='654321')
+  self.assertFalse(result['activated']);self.assertIn('validation_rejected',trace)
+ def test_accepting_validation_alone_is_not_success(self):
+  result,trace=self.run_flow(success=False)
+  self.assertTrue(result['confirmation_accepted']);self.assertFalse(result['activated'])

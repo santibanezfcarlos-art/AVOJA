@@ -39,13 +39,25 @@ def _row_status(row):
     return any(x in {"activado","activada","cuenta médica activada","bono activado"} for x in cells)
 
 
+def _activation_success_message(page,folio):
+    """Observed BonoWeb success window; require this exact voucher number."""
+    try:
+        pattern=re.compile(r"\bFolio\s*Bono\s+activado\s*"+re.escape(folio)+r"(?![0-9])",re.I)
+        return any(item.is_visible() for item in page.get_by_text(pattern).all())
+    except Exception:return False
+
+
 def _activate_matched(page,row,rut,folio):
     """A click is a request, never proof of completion."""
     control=row.get_by_role("button",name=re.compile(r"^\s*Activar\s*$",re.I))
     dialog_unknown=[]
+    confirmation_accepted=[False]
     def dialog_handler(dialog):
-        if dialog.type=="confirm" and re.search(r"\bactivar\b|\bactivaci[oó]n\b",dialog.message,re.I):
+        same_folio=bool(re.search(r"(?<![0-9])"+re.escape(folio)+r"(?![0-9])",dialog.message))
+        activation_prompt=bool(re.search(r"\bactivar\b|\bactivaci[oó]n\b|\bvalidaci[oó]n\b",dialog.message,re.I))
+        if dialog.type=="confirm" and same_folio and activation_prompt:
             dialog.accept()
+            confirmation_accepted[0]=True
         elif dialog.type=="alert" and re.search(r"activad[oa]|activaci[oó]n",dialog.message,re.I):
             dialog.dismiss()
         else:
@@ -57,8 +69,13 @@ def _activate_matched(page,row,rut,folio):
             "activate_available":False,"stage":"activation_submitted"}
     try:
         control.click(timeout=8000)
+        result['confirmation_accepted']=confirmation_accepted[0]
+        if confirmation_accepted[0]:result['stage']='awaiting_activation_confirmation'
         limit=time.monotonic()+12
         while time.monotonic()<limit:
+            if _activation_success_message(page,folio):
+                return {**result,"state":"activated","activated":True,
+                        "stage":"activation_confirmation_observed","activation_evidence":"success_confirmation"}
             if dialog_unknown:return result
             for candidate in page.locator("table:visible tr").all():
                 cells=candidate.locator("td").all_inner_texts()
@@ -66,6 +83,9 @@ def _activate_matched(page,row,rut,folio):
                 if _row_status(candidate):
                     return {**result,"state":"activated","activated":True,"stage":"activation_verified"}
             page.wait_for_timeout(500)
+        if _activation_success_message(page,folio):
+            return {**result,"state":"activated","activated":True,
+                    "stage":"activation_confirmation_observed","activation_evidence":"success_confirmation"}
         # Re-query the same voucher once; absence of Activar alone is never proof.
         search=page.locator("#btnBuscar")
         if search.count()==1 and search.is_visible() and search.is_enabled():
@@ -79,6 +99,7 @@ def _activate_matched(page,row,rut,folio):
                 page.wait_for_timeout(650)
         return result
     except Exception:
+        result['confirmation_accepted']=confirmation_accepted[0]
         return result
 
 
