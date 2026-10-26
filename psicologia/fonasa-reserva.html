@@ -1,101 +1,228 @@
-<!doctype html><html lang="es"><head>
+<!doctype html>
+<html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
 <title>Agendar con Fonasa | PSC Santibáñez</title>
 <style>
-:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f7f4;color:#193e33}
-*{box-sizing:border-box}body{margin:0}header{background:#173f35;color:white;padding:21px 5vw}
-header a{color:white;text-decoration:none}main{max-width:620px;padding:0 15px;margin:38px auto 70px}
-.card{background:white;border:1px solid #d7e7dc;border-radius:18px;padding:26px;box-shadow:0 7px 28px #11372110}
-h1{font-size:clamp(25px,5vw,34px);margin:4px 0 12px}p{line-height:1.6}
-.muted{font-size:14px;color:#587165}.pill{color:#216347;background:#e3f3e9;padding:6px 10px;border-radius:30px;font-size:12px;font-weight:750}
-label{display:block;font-weight:700;font-size:13px;margin:18px 0 6px}
-input:not([type=checkbox]),select{display:block;width:100%;padding:13px;border:1px solid #b4d0bf;border-radius:10px;background:#fff;font:inherit;color:#1c4439}
-button{border:0;border-radius:10px;padding:14px 18px;background:#17694f;color:#fff;font:inherit;font-weight:700;cursor:pointer;width:100%;margin-top:21px}
-button:disabled{opacity:.55;cursor:not-allowed}.note{padding:12px 15px;border-radius:9px;background:#edf5ee;border:1px solid #d0e3d3;white-space:pre-wrap;font-size:14px}
-.warn{background:#fff5e8;border-color:#eddbb6}.check{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.5;margin-top:18px}
-.check input{margin-top:5px}.footer{margin-top:18px;font-size:12px;color:#5b776b;text-align:center}
-</style></head><body><header><a href="https://pscsantibanez.cl/"><strong>CS</strong> · Psicología aplicada al bienestar</a></header>
-<main><div class="card"><span class="pill">Atención por Bono Fonasa</span>
-<h1>Elige tu fecha y horario</h1>
-<p class="muted">Tu bono fue reconocido en Bono Web. Selecciona una de las horas que figuran disponibles y confirma tu dirección de correo. No necesitas volver a escribir tu nombre ni RUT.</p>
-<div id="load" class="note" role="status">Comprobando el enlace privado…</div>
-<form id="form" hidden>
-<label>Paciente</label><input id="name" readonly>
-<label>Fecha disponible</label><select id="day" required><option value="">Selecciona una fecha</option></select>
-<label>Hora (Chile continental)</label><select id="hour" required disabled><option value="">Selecciona primero la fecha</option></select>
-<label for="email">Tu correo electrónico personal</label>
-<input id="email" type="email" autocomplete="email" required maxlength="254" placeholder="tu.correo@ejemplo.cl">
-<label class="check"><input id="myEmail" type="checkbox" required> Confirmo que este correo es mío y que puedo recibir mensajes en él.</label>
-<p class="note warn">Esta es una prueba interna de agendamiento Fonasa. La selección se registrará como <b>solicitud pendiente de confirmación</b>; no se considerará una cita confirmada hasta que el horario quede registrado en Google Calendar.</p>
-<button type="submit" id="book">Registrar solicitud de hora</button>
-</form>
-<div id="finish" class="note" hidden role="status"></div>
-</div><p class="footer">El enlace es personal y vence a los siete días. Si no te corresponde, no ingreses datos y comunícate con el profesional.</p></main>
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:#f4f8f4;color:#173e35;--green:#186b4e;--ink:#173e35;--line:#d7e5d9;--light:#e8f4ea;--muted:#61786c}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}
+header{background:#173f35;color:white;padding:22px max(4vw,18px)}
+header a{color:white;text-decoration:none;font-weight:700;font-size:17px}
+main{max-width:1100px;margin:35px auto 70px;padding:0 16px}
+h1{font-size:clamp(26px,4vw,37px);margin:7px 0 10px;letter-spacing:-.7px}
+h2{font-size:20px;margin:0 0 7px;letter-spacing:-.5px}h3{font-size:16px}
+p{line-height:1.6}.muted{color:var(--muted);font-size:14px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--green)}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;box-shadow:0 10px 30px #173e350a}
+.layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr);gap:21px;align-items:start;margin-top:19px}
+.note{background:#ecf5ed;color:#245942;border:1px solid #cfdfd1;border-radius:10px;padding:12px 15px;font-size:13px;line-height:1.55;margin:15px 0}
+.note.warn{background:#fff4e8;border-color:#f0d6aa;color:#795023}
+label{display:block;font-weight:700;font-size:13px;margin:18px 0 7px}
+input:not([type=checkbox]){width:100%;min-height:45px;border:1px solid #bad4c4;background:white;color:var(--ink);border-radius:10px;padding:12px;font:inherit}
+input[readonly]{background:#f9fbf9}
+button{font:inherit;cursor:pointer}
+button:disabled{cursor:default}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:22px 0 13px}
+.nav #period{font-size:14px;font-weight:800;text-transform:capitalize}
+.nav button{border:1px solid var(--line);border-radius:9px;background:white;width:36px;height:36px;font-size:20px;color:var(--ink)}
+.nav button:disabled{opacity:.3}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.day{height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:12px;color:var(--ink);gap:3px}
+.day .dow{font-size:11px;color:var(--muted)}.day strong{font-size:20px}
+.day .dot{height:5px;width:5px;border-radius:50%;background:#5ba47d}
+.day.active{border-color:var(--green);background:var(--light)}
+.day:disabled{opacity:.28}.day:not(:disabled):hover{background:#eff6f0}
+.legend{font-size:12px;color:#6c8075;display:flex;gap:15px;margin-top:12px;flex-wrap:wrap}
+.legend b{display:inline-block;border-radius:2px;width:9px;height:9px;background:#77a889;margin-right:5px}
+.legend b.gray{background:#d5dcd7}
+.rule{border:0;border-top:1px solid var(--line);margin:24px 0 20px}
+.heading{display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap}
+.pill{background:var(--light);color:var(--green);font-size:11px;font-weight:700;border-radius:20px;padding:7px 10px}
+.hours{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:17px}
+.hour{border:1px solid var(--line);border-radius:11px;background:white;min-height:73px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px}
+.hour strong{font-size:17px}.hour span{font-size:11px;color:var(--green)}
+.hour:not(:disabled):hover{background:var(--light);border-color:var(--green)}
+.hour.active{background:var(--ink);border-color:var(--ink);color:white}.hour.active span{color:#d3f0dc}
+.hour:disabled{background:#f3f5f3;color:#a0ada6}.hour:disabled span{color:#a3afa9}
+.detail{display:flex;justify-content:space-between;gap:15px;font-size:13px;padding:12px 0;border-bottom:1px solid #e6eee8}
+.detail strong{text-align:right}.kicker{font-size:11px;text-transform:uppercase;letter-spacing:1.1px;font-weight:800;color:var(--green)}
+.checkbox{display:flex;align-items:flex-start;gap:9px;line-height:1.5;font-size:13px;font-weight:600}
+.checkbox input{margin-top:3px;flex-shrink:0}
+.primary{background:var(--green);border:1px solid var(--green);color:#fff;border-radius:10px;padding:14px 18px;width:100%;font-weight:750;margin-top:19px}
+.primary:disabled{opacity:.48}
+.secondary{border:1px solid var(--line);background:white;color:var(--green);border-radius:9px;padding:10px 14px;font-size:12px;font-weight:700}
+.footer{text-align:center;color:#718376;font-size:12px;margin:25px auto;line-height:1.6}
+#dateHeading{text-transform:capitalize}
+[hidden]{display:none!important}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.card{padding:20px}.hours{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.week{gap:2px}.day{height:66px}.day strong{font-size:18px}.day .dow{font-size:10px}.hours{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style></head><body>
+<header><a href="https://pscsantibanez.cl/">CS · Psicología aplicada al bienestar</a></header>
+<main>
+<div class="eyebrow">Atención con bono Fonasa</div>
+<h1>Elige tu día y horario</h1>
+<p class="muted">Tu bono fue reconocido en Bono Web. Utilizamos la misma disponibilidad semanal, horarios y bloqueos de Google Calendar que en los demás servicios de PSC.</p>
+<p id="status" class="note" role="status">Comprobando el enlace privado y la disponibilidad…</p>
+<div id="layout" class="layout" hidden>
+ <section class="card" aria-label="Calendario y horarios disponibles">
+  <h2>Disponibilidad semanal</h2><p class="muted">Selecciona un día para consultar sus horarios.</p>
+  <div class="nav"><span id="period"></span><div><button id="prev" type="button" aria-label="Semana anterior">‹</button> <button id="next" type="button" aria-label="Semana siguiente">›</button></div></div>
+  <div class="week" id="week" aria-label="Días disponibles"></div>
+  <div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div>
+  <hr class="rule">
+  <div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="muted" style="margin:0">Hora local de Chile</p></div><span id="capacity" class="pill"></span></div>
+  <div class="hours" id="hours" aria-label="Horas disponibles"></div>
+  <p class="muted">Solo puedes seleccionar horarios habilitados y sin reservas que se hayan podido verificar.</p>
+  <button type="button" id="refresh" class="secondary">Actualizar disponibilidad</button>
+ </section>
+ <aside class="card">
+  <div class="kicker">Paso 1 de 2 · Selecciona tu horario</div>
+  <h2 style="margin-top:10px">Tu sesión online</h2>
+  <label for="name">Paciente</label><input id="name" readonly autocomplete="off">
+  <div class="detail"><span>Servicio</span><strong>Psicoterapia breve</strong></div>
+  <div class="detail"><span>Duración</span><strong id="duration">45 minutos</strong></div>
+  <div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div>
+  <div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div>
+  <div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div>
+  <form id="form" autocomplete="on">
+    <div class="kicker" style="margin-top:23px">Paso 2 de 2 · Tus datos de contacto</div>
+    <label for="email">Tu correo electrónico personal</label>
+    <input id="email" type="email" autocomplete="email" placeholder="tu.correo@ejemplo.cl" maxlength="254" required>
+    <label class="checkbox"><input id="myEmail" type="checkbox" required><span>Confirmo que esta dirección de correo es mía y que puedo recibir mensajes en ella.</span></label>
+    <p class="note warn">Esta es una prueba interna. La selección quedará como <strong>solicitud pendiente de confirmación</strong> hasta registrar la cita en Google Calendar.</p>
+    <button id="book" type="submit" class="primary" disabled>Registrar solicitud de hora</button>
+  </form>
+ </aside>
+</div>
+<div id="finish" class="card" hidden role="status"></div>
+<p class="footer">El enlace es personal y tiene una vigencia de siete días. Si no te corresponde, no ingreses datos y comunícate con el profesional.</p>
+</main>
 <script>
-(()=>{"use strict";
+(()=>{
+"use strict";
 const $=id=>document.getElementById(id),API="https://psicologia-carlos-calendar-api.onrender.com";
-const token=(location.hash||"").slice(1);
-// Keep token in URL fragment so the patient can reload; fragments are not sent with HTTP requests.
-let slots={},done=false;
-function report(message,bad=false){const n=$("load");n.textContent=message;n.classList.toggle("warn",bad)}
-async function api(path,options={}){const response=await fetch(API+path,{...options,cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"});
-const data=await response.json().catch(()=>({error:"Respuesta no disponible."}));
-if(!response.ok){const err=new Error(data.error||"El servidor no respondió.");err.status=response.status;err.reason=data.reason||"";throw err}return data}
-function dateLabel(iso){return new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",weekday:"long",day:"numeric",month:"long"}).format(new Date(iso+"T12:00:00Z"))}
-function loadHours(){
- const day=$("day").value,hour=$("hour");hour.replaceChildren();
- const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Selecciona una hora";hour.append(placeholder);
- for(const v of slots[day]||[]){const o=document.createElement("option");o.value=v;o.textContent=v+" hrs";hour.append(o)}
- hour.disabled=!(slots[day]||[]).length;
+const token=location.hash.slice(1);
+let available={},scheduled={},selectedDay="",selectedHour="",weekStart="",rangeStart="",rangeEnd="",minutes=45;
+let loading=false,submitted=false;
+const shortDays=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+function utcDate(d){return new Date(d+"T12:00:00Z")}
+function iso(d){return d.toISOString().slice(0,10)}
+function add(d,n){const date=utcDate(d);date.setUTCDate(date.getUTCDate()+n);return iso(date)}
+function monday(d){return add(d,-((utcDate(d).getUTCDay()+6)%7))}
+function labelDate(d,options){return new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",...options}).format(utcDate(d))}
+function status(text,isError=false){const e=$("status");e.textContent=text;e.classList.toggle("warn",isError)}
+function minutesOf(h){return Number(h.slice(0,2))*60+Number(h.slice(3,5))}
+function ends(h){const total=minutesOf(h)+minutes;return String(Math.floor(total/60)).padStart(2,"0")+":"+String(total%60).padStart(2,"0")}
+async function api(path,options={}){
+ const response=await fetch(API+path,{cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer",...options});
+ const data=await response.json().catch(()=>({error:"Respuesta no disponible."}));
+ if(!response.ok){const e=new Error(data.error||"El servidor no respondió.");e.status=response.status;e.reason=data.reason||"";throw e}
+ return data;
 }
-$("day").onchange=loadHours;
-async function init(){
- if(!/^[A-Za-z0-9_-]{40,80}$/.test(token)){report("Enlace inválido. Solicita uno nuevo al profesional.",true);return}
+function render(){
+ $("period").textContent=labelDate(weekStart,{day:"numeric",month:"short"})+" – "+labelDate(add(weekStart,6),{day:"numeric",month:"short",year:"numeric"});
+ $("prev").disabled=weekStart<=monday(rangeStart);
+ $("next").disabled=add(weekStart,7)>rangeEnd;
+ $("week").replaceChildren();
+ for(let n=0;n<7;n++){
+  const date=add(weekStart,n),inside=date>=rangeStart&&date<=rangeEnd,
+        free=inside&&(available[date]||[]).length>0,active=date===selectedDay,
+        b=document.createElement("button");
+  b.type="button";b.className="day"+(active?" active":"");b.disabled=!free;
+  b.setAttribute("aria-pressed",String(active));
+  b.setAttribute("aria-label",labelDate(date,{weekday:"long",day:"numeric",month:"long"}));
+  const day=document.createElement("span");day.className="dow";day.textContent=shortDays[utcDate(date).getUTCDay()];
+  const number=document.createElement("strong");number.textContent=String(utcDate(date).getUTCDate());
+  b.append(day,number);
+  if(free){const dot=document.createElement("span");dot.className="dot";b.append(dot)}
+  b.onclick=()=>{selectedDay=date;selectedHour="";render()};
+  $("week").append(b);
+ }
+ $("dateHeading").textContent=selectedDay?labelDate(selectedDay,{weekday:"long",day:"numeric",month:"long"}):"Horarios";
+ $("capacity").textContent="45 min · Máx. 3 atenciones/día".replace("45",String(minutes));
+ $("hours").replaceChildren();
+ const offered=scheduled[selectedDay]||[],free=new Set(available[selectedDay]||[]);
+ if(!offered.length){const p=document.createElement("p");p.className="muted";p.textContent="No hay horarios habilitados para este día."; $("hours").append(p)}
+ for(const hour of offered){
+  const b=document.createElement("button"),isFree=free.has(hour),active=hour===selectedHour;
+  b.type="button";b.className="hour"+(active?" active":"");b.disabled=!isFree;
+  b.setAttribute("aria-pressed",String(active));
+  const strong=document.createElement("strong");strong.textContent=hour;
+  const caption=document.createElement("span");caption.textContent=active?"Seleccionado":isFree?"Disponible":"No disponible";
+  b.append(strong,caption);
+  b.onclick=()=>{selectedHour=hour;render()};
+  $("hours").append(b);
+ }
+ $("selectedDate").textContent=selectedHour?labelDate(selectedDay,{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"Selecciona una fecha";
+ $("selectedTime").textContent=selectedHour?selectedHour+" a "+ends(selectedHour):"Sin seleccionar";
+ $("duration").textContent=minutes+" minutos";
+ $("book").disabled=!selectedHour||submitted||loading||!free.has(selectedHour);
+}
+async function refresh(){
+ if(loading)return;loading=true;$("book").disabled=true;$("refresh").disabled=true;
+ status("Verificando Google Calendar y reservas recientes…");
  try{
-  const data=await api("/api/fonasa/book/"+encodeURIComponent(token));
-  $("name").value=data.name;
-  if(data.state==="appointment_requested"){
-   report("Ya existe una solicitud para este bono.");return
-  }
-  let avail;
+  let data;
   for(let attempt=1;attempt<=4;attempt++){
-   try {
-    avail=await api("/api/fonasa/book/"+encodeURIComponent(token)+"/availability");
-    break;
-   }catch(err){
-    const retry=err.status===503 && !["calendar_missing","settings_unavailable"].includes(err.reason);
-    if(!retry || attempt===4)throw err;
-    report("Actualizando disponibilidad de Google Calendar… Reintentando automáticamente ("+attempt+"/3).");
+   try{data=await api("/api/fonasa/book/"+encodeURIComponent(token)+"/availability");break}
+   catch(err){
+    const retryable=err.status===503&&!["calendar_missing","settings_unavailable","service_unavailable"].includes(err.reason);
+    if(!retryable||attempt===4)throw err;
+    status("Actualizando la agenda y reservas recientes… Reintento "+attempt+" de 3.");
     await new Promise(resolve=>setTimeout(resolve,6000));
    }
   }
-  slots=avail.available||{};
-  for(const day of Object.keys(slots).sort()){
-   const option=document.createElement("option");option.value=day;option.textContent=dateLabel(day);
-   $("day").append(option)
+  if(data.already_requested){
+   $("layout").hidden=true;status("Ya existe una solicitud de hora para este bono.");return;
   }
-  if(!Object.keys(slots).length){report("No hay horarios verificables en este momento. Vuelve a consultar más adelante.",true);return}
-  $("form").hidden=false;
-  report("Enlace verificado. Selecciona una fecha y hora disponible.");
- }catch(err){report(err.message,true)}
+  available=data.available||{};scheduled=data.scheduled||{};minutes=data.minutes||45;
+  rangeStart=data.range_start;rangeEnd=data.range_end;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(rangeStart||"")||!/^\d{4}-\d{2}-\d{2}$/.test(rangeEnd||""))throw Error("La agenda no devolvió un rango válido.");
+  if(!selectedDay||!Array.isArray(available[selectedDay])||!available[selectedDay].length){
+    selectedDay=Object.keys(available).sort()[0]||rangeStart;selectedHour="";
+  }
+  if(selectedHour&&!(available[selectedDay]||[]).includes(selectedHour))selectedHour="";
+  weekStart=monday(selectedDay);
+  $("layout").hidden=false;render();
+  status(Object.keys(available).length?"Google Calendar consultado. Selecciona un día y una hora disponible.":"No se verificaron horas disponibles en este período.",!Object.keys(available).length);
+ }catch(err){
+  available={};scheduled={};selectedHour="";$("layout").hidden=true;
+  status(err.message||"No se pudo verificar disponibilidad. Intenta nuevamente.",true);
+ }finally{loading=false;$("refresh").disabled=false}
 }
-$("form").onsubmit=async ev=>{
- ev.preventDefault();if(done)return;
- const date=$("day").value,time=$("hour").value,email=$("email").value.trim();
- if(!date||!(slots[date]||[]).includes(time)||!$("myEmail").checked){report("Revisa los datos de la solicitud.",true);return}
+$("prev").onclick=()=>{weekStart=add(weekStart,-7);selectedDay="";selectedHour="";render()};
+$("next").onclick=()=>{weekStart=add(weekStart,7);selectedDay="";selectedHour="";render()};
+$("refresh").onclick=refresh;
+$("form").onsubmit=async event=>{
+ event.preventDefault();if(loading||submitted)return;
+ const day=selectedDay,hour=selectedHour,email=$("email").value.trim();
+ if(!day||!hour||!(available[day]||[]).includes(hour)||!$("myEmail").checked){status("Selecciona una hora disponible y confirma tu correo.",true);return}
  $("book").disabled=true;
  try{
   const result=await api("/api/fonasa/book/"+encodeURIComponent(token),{
    method:"POST",headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({date,time,email,email_is_mine:true})
+   body:JSON.stringify({date:day,time:hour,email,email_is_mine:true})
   });
-  done=true;$("form").hidden=true;$("load").hidden=true;
+  submitted=true;$("layout").hidden=true;$("status").hidden=true;
   $("finish").hidden=false;
-  $("finish").textContent="Solicitud recibida: "+result.date+" a las "+result.time+
-   " (hora de Chile). Tu horario quedó registrado como solicitud pendiente de confirmación.";
- }catch(err){report(err.message,true);$("book").disabled=false}
+  $("finish").textContent="Solicitud recibida para "+result.date+" a las "+result.time+" (hora de Chile). El horario está pendiente de confirmación en Google Calendar.";
+ }catch(err){
+  status(err.message,true);
+  if(err.status===409)await refresh();
+  $("book").disabled=false;
+ }
 };
-init();
+async function start(){
+ if(!/^[A-Za-z0-9_-]{40,80}$/.test(token)){status("Enlace inválido. Solicita uno nuevo al profesional.",true);return}
+ try{
+  const data=await api("/api/fonasa/book/"+encodeURIComponent(token));
+  $("name").value=data.name||"";
+  if(data.state==="appointment_requested"){
+   status("Ya existe una solicitud para este bono.");return;
+  }
+  await refresh();
+ }catch(err){status(err.message,true)}
+}
+start();
 })();
-</script></body></html>
+</script>
+</body></html>
