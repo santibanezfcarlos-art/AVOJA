@@ -768,7 +768,7 @@ def fonasa_login_inspect():
                     result["login_submit"]="clicked"
                     try:page.wait_for_load_state("domcontentloaded",timeout=8000)
                     except Exception:pass
-                    page.wait_for_timeout(8000)
+                    page.wait_for_timeout(5000)
                     result["server_response_statuses"]=network_events[:15]
                     challenge=page.locator('iframe[src*="recaptcha"], .g-recaptcha')
                     result["captcha_elements_present"]=challenge.count()
