@@ -102,7 +102,7 @@ button:disabled{cursor:default}
 const $=id=>document.getElementById(id),API="https://psicologia-carlos-calendar-api.onrender.com";
 const token=location.hash.slice(1);
 let available={},scheduled={},selectedDay="",selectedHour="",weekStart="",rangeStart="",rangeEnd="",minutes=45;
-let loading=false,submitted=false;
+let loading=false,submitted=false,maxPerDay=3;
 const shortDays=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 function utcDate(d){return new Date(d+"T12:00:00Z")}
 function iso(d){return d.toISOString().slice(0,10)}
@@ -138,7 +138,7 @@ function render(){
   $("week").append(b);
  }
  $("dateHeading").textContent=selectedDay?labelDate(selectedDay,{weekday:"long",day:"numeric",month:"long"}):"Horarios";
- $("capacity").textContent="45 min · Máx. 3 atenciones/día".replace("45",String(minutes));
+ $("capacity").textContent=minutes+" min · Máx. "+maxPerDay+" atenciones/día";
  $("hours").replaceChildren();
  const offered=scheduled[selectedDay]||[],free=new Set(available[selectedDay]||[]);
  if(!offered.length){const p=document.createElement("p");p.className="muted";p.textContent="No hay horarios habilitados para este día."; $("hours").append(p)}
@@ -174,7 +174,7 @@ async function refresh(){
   if(data.already_requested){
    $("layout").hidden=true;status("Ya existe una solicitud de hora para este bono.");return;
   }
-  available=data.available||{};scheduled=data.scheduled||{};minutes=data.minutes||45;
+  available=data.available||{};scheduled=data.scheduled||{};minutes=data.minutes||45;maxPerDay=data.maximum_daily||3;
   rangeStart=data.range_start;rangeEnd=data.range_end;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(rangeStart||"")||!/^\d{4}-\d{2}-\d{2}$/.test(rangeEnd||""))throw Error("La agenda no devolvió un rango válido.");
   if(!selectedDay||!Array.isArray(available[selectedDay])||!available[selectedDay].length){
