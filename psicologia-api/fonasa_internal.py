@@ -73,10 +73,10 @@ def _schema(con):
         UPDATE fonasa_intake SET
           manual_completed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
           manual_completion_note='Regularización manual solicitada por el profesional: atención ya realizada; bono usado en pruebas.'
-        WHERE folio IN ('38310910','38272397','38310529')
+        WHERE folio IN ('438310910','438272397','438310529')
           AND manual_completed_at IS NULL
           AND (SELECT count(*) FROM fonasa_intake
-               WHERE folio IN ('38310910','38272397','38310529'))=3;
+               WHERE folio IN ('438310910','438272397','438310529'))=3;
     """)
     completed=con.execute("SELECT changes()").fetchone()[0]
     if completed:

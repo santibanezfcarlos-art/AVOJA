@@ -131,7 +131,7 @@ async function refresh(){
     ["Agendamiento",booked?"Cita confirmada":pending?"Confirmación en curso":"Sin hora todavía",booked,false]
    ];
    for(let [label,value,done,warning] of steps){
-    if(item.manual_completed_at){value="Completado";done=true;warning=false}
+    if(item.manual_completed_at){value="✓ Completado";done=true;warning=false}
     const step=document.createElement("li");step.className=done?"done":warning?"attention":"pending";
     const title=document.createElement("span");title.textContent=label;
     const status=document.createElement("strong");status.textContent=value;
