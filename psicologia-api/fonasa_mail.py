@@ -17,7 +17,7 @@ def calendar_attachment(event, start, end):
     cal.add('method','PUBLISH')
     item=Event()
     item.add('uid',uid)
-    item.add('dtstamp',datetime.now(timezone.utc))
+    item.add('dtstamp',start.astimezone(timezone.utc))
     item.add('dtstart',start)
     item.add('dtend',end)
     item.add('sequence',int(event.get('sequence',0)))

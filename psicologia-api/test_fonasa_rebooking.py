@@ -65,7 +65,7 @@ class FonasaTests(unittest.TestCase):
 class PreparationTests(unittest.TestCase):
  def test_prepare_does_not_send(self):
   import fonasa_calendar_fulfillment as f
-  body={'intake_id':'a'*20,'role':'patient','email':'test@example.org','patient_name':'NADIA ARAVENA','date':'2026-10-30','time':'09:00','minutes':45,'prepare_only':True,'refresh_presentation':True}
+  body={'intake_id':'a'*20,'role':'patient','email':'test@example.org','patient_name':'NADIA ARAVENA','date':'2026-10-30','time':'09:00','minutes':45,'prepare_only':True}
   app=Flask(__name__);app.register_blueprint(f.bp)
   @contextmanager
   def database():yield object()

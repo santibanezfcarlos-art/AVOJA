@@ -331,8 +331,37 @@ def sync_fonasa_intake(booking,event,start):
 
 @bp.post('/internal/psicologia/fonasa/rebooking-prepare')
 def prepare_fonasa_rebooking():
-    """Non-sending preparation is exposed separately from mail delivery."""
+    """Register an existing own event without invoking any mail transport."""
     body=_authorize()
-    if not body or body.get('prepare_only') is not True:
+    if not body or body.get('prepare_only') is not True or not _enabled():
         return jsonify(state='NOT_AUTHORIZED'),403
-    return send_fonasa_confirmation()
+    source=body.get('intake_id','')
+    email=body.get('email','')
+    if (not isinstance(source,str) or not re.fullmatch(r'[A-Za-z0-9_-]{15,40}',source)
+        or not isinstance(email,str) or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email)):
+        return jsonify(state='INVALID'),400
+    try:
+        minutes=body.get('minutes',45)
+        if type(minutes)!=int or minutes not in (45,60,90):return jsonify(state='INVALID'),400
+        start=datetime.fromisoformat(body['date']+'T'+body['time']).replace(tzinfo=TZ)
+        end=start+timedelta(minutes=minutes)
+        hold_id=uuid.uuid5(FONASA_OWNER,'fonasa:'+source)
+        writer=CalendarWriter()
+        path=writer._calendar_path+'/'+event_id_for_hold(hold_id)
+        event=writer.transport('GET',path,{},None)
+        if not _owns(event,hold_id,start=start,end=end,service='psicoterapia'):
+            return jsonify(state='CALENDAR_NOT_CONFIRMED'),409
+        from booking_holds import _database_connection
+        from fonasa_rebooking import register
+        name=display_name(body.get('patient_name',''))
+        with _database_connection() as conn:
+            token=register(conn,source,hold_id,name,email,start,end)
+        if body.get('refresh_presentation') is True:
+            event=writer.transport('PATCH',path,{'sendUpdates':'none'},
+                  {'summary':'Atención Fonasa · '+name,'description':'Reserva de psicoterapia online con bono Fonasa.'})
+            if not _owns(event,hold_id,start=start,end=end,service='psicoterapia') or event.get('summary')!='Atención Fonasa · '+name:
+                return jsonify(state='EVENT_UNVERIFIED'),503
+        return jsonify(state='PREPARED',rebooking_url='https://psicologia-retenciones-piloto.onrender.com/reagendar?t='+token)
+    except Exception:
+        print('FONASA_REBOOKING_PREPARATION_FAILED',flush=True)
+        return jsonify(state='PREPARATION_UNAVAILABLE'),503
