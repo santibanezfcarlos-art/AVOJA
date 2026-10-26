@@ -82,6 +82,21 @@ def _activate_matched(page,row,rut,folio):
         return result
 
 
+def _safe_form_controls(page):
+    """Identifiers only: never input values, page text, tokens or patient records."""
+    try:
+        controls=page.locator('input:visible,select:visible,button:visible').evaluate_all("""els => els.map(e=>({id:e.id||'',name:e.name||'',type:e.type||e.tagName.toLowerCase()}))""")
+        safe=[]
+        for item in controls:
+            value={}
+            for key in ('id','name','type'):
+                text=item.get(key,'')
+                if isinstance(text,str) and re.fullmatch(r'[A-Za-z_][-A-Za-z0-9_]{0,39}',text) and not re.search(r'[0-9]{5}',text):value[key]=text
+            if value:safe.append(value)
+        return safe[:12]
+    except Exception:return []
+
+
 def _verify_activated_view(page,rut,folio):
     """Read-only search in the deactivation view; NEVER presses Desactivar."""
     diagnosis={"activated":False,"verification_view":"not_observed"}
@@ -99,7 +114,8 @@ def _verify_activated_view(page,rut,folio):
                 if (re.match(r"^(Consulta|Desactiva|Activa|Cuenta|Bono|Liquidaci)",text,re.I)
                     and len(text)<=100 and not re.search(r"[0-9@]",text)):
                     labels.append(text)
-            diagnosis['navigation_options']=list(dict.fromkeys(labels))[:15]
+            diagnosis['navigation_options']=list(dict.fromkeys(labels))[:8]
+            diagnosis['verification_controls']=_safe_form_controls(page)
             return diagnosis
         submenu.first.click(timeout=6500)
         diagnosis['verification_view']='deactivation_search'
@@ -119,9 +135,11 @@ def _verify_activated_view(page,rut,folio):
                             'stage':'activation_verified_readonly','verification_view':'deactivation_search'}
             page.wait_for_timeout(650)
         diagnosis['verification_result']='matching_active_row_not_observed'
+        diagnosis['verification_controls']=_safe_form_controls(page)
         return diagnosis
     except Exception as exc:
         diagnosis['verification_error_class']=type(exc).__name__
+        diagnosis['verification_controls']=_safe_form_controls(page)
         return diagnosis
 
 
