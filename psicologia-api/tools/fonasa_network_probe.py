@@ -1127,3 +1127,36 @@ def sii_eboleta_reachability():
         if code:result["network_error"]=code.group(0)
     result["elapsed_seconds"]=round(time.monotonic()-started,2)
     return jsonify(result)
+
+
+def _sii_reachability_startup_once():
+    """One read-only diagnostic on startup; report only sanitized state."""
+    import json
+    import logging
+    import threading
+    import time
+    import os
+    time.sleep(3)
+    token=os.environ.get("DECODO_TEST_TOKEN","")
+    if not token:
+        logging.getLogger("sii_probe").warning('SII_REACHABILITY %s',
+             json.dumps({"status":"token_not_configured"}))
+        return
+    try:
+        with app.test_client() as client:
+            response=client.post("/sii-eboleta-reachability",
+                                 headers={"X-Test-Token":token})
+            body=response.get_json(silent=True) or {}
+            allowed=("status","browser","sii_http_status","sii_origin_ok",
+                     "redirect_host","login_form_detected",
+                     "authenticated","credentials_used","submitted",
+                     "emitted","error_type","network_error")
+            report={k:body[k] for k in allowed if k in body}
+            logging.getLogger("sii_probe").warning("SII_REACHABILITY %s",json.dumps(report))
+    except Exception as exc:
+        logging.getLogger("sii_probe").warning("SII_REACHABILITY %s",
+             json.dumps({"status":"internal_probe_failed","error_type":type(exc).__name__}))
+
+
+import threading as _sii_probe_threading
+_sii_probe_threading.Thread(target=_sii_reachability_startup_once,daemon=True).start()
