@@ -968,13 +968,16 @@ def fonasa_lookup_once():
                     result["login"]="clicked"
                     try:page.wait_for_load_state("domcontentloaded",timeout=8500)
                     except Exception:pass
-                    page.wait_for_timeout(3500)
-                    if page.locator("#Password").is_visible() or urlparse(page.url).hostname!=host:
-                        result["status"]="login_not_confirmed"
+                    page.wait_for_timeout(3800)
+                    if urlparse(page.url).hostname!=host:
+                        result["status"]="login_origin_unexpected"
                         return jsonify(result)
                     menu=page.get_by_text(re.compile(r"Activaci[oó]n y desactivar Cuenta M[eé]dica",re.I))
-                    if menu.count()==0:
-                        result["status"]="menu_not_found"
+                    try:
+                        menu.first.wait_for(state="visible",timeout=12000)
+                    except Exception:
+                        result["status"]="menu_not_visible_after_wait"
+                        result["login_form_visible"]=page.locator("#Password:visible").count()>0
                         return jsonify(result)
                     result["login"]="authenticated"
                     menu.first.click(timeout=6000)
