@@ -18,6 +18,8 @@ app.register_blueprint(demo_bp)
 
 from public_demo_bridge import public_bridge_bp
 app.register_blueprint(public_bridge_bp)
+from production_fulfillment import bp as production_fulfillment_bp
+app.register_blueprint(production_fulfillment_bp)
 from fonasa_calendar_fulfillment import bp as fonasa_calendar_fulfillment_bp
 app.register_blueprint(fonasa_calendar_fulfillment_bp)
 
@@ -50,7 +52,8 @@ def health():
         service="psicologia-retenciones-piloto",
         mode="TEST_ONLY",
         production_payments=False,
-        patient_bookings=False,
+        patient_bookings=os.environ.get('PSICOLOGIA_PRODUCTION_FULFILLMENT_ENABLED')=='true',
+        production_fulfillment_enabled=os.environ.get('PSICOLOGIA_PRODUCTION_FULFILLMENT_ENABLED')=='true',
         demo_checkout_enabled=pilot_enabled(),
         demo_notifications_configured=__import__("demo_notifications").configured(),
         public_demo_bridge_enabled=__import__("public_demo_bridge")._enabled(),
