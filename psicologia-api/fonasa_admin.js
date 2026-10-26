@@ -133,6 +133,26 @@ async function refresh(){
        finally{notify.disabled=false;notify.textContent="Revisar avisos"}
      };
      td.append(notify);
+     const compose=document.createElement("button");
+     compose.type="button";compose.className="secondary";
+     compose.textContent="Preparar correos";compose.style.marginLeft="8px";
+     compose.onclick=async()=>{
+       compose.disabled=true;
+       try{
+         const result=await api("/admin/fonasa/mail-drafts/"+encodeURIComponent(item.id));
+         const drafts=[result.professional,result.patient];
+         const choice=window.confirm("Se prepararán dos correos SIN enviarlos: primero coordinación, después paciente. ¿Abrir el primer borrador?");
+         if(!choice)return;
+         for(let i=0;i<drafts.length;i++){
+           if(i===1&&!window.confirm("¿Abrir ahora el borrador para el paciente?"))break;
+           const draft=drafts[i];
+           const url="mailto:"+encodeURIComponent(draft.to)+"?subject="+encodeURIComponent(draft.subject)+"&body="+encodeURIComponent(draft.body);
+           window.location.href=url;
+         }
+       }catch(err){alert(err.message)}
+       finally{compose.disabled=false}
+     };
+     td.append(compose);
    }
    row.append(td);table.append(row);
   }
