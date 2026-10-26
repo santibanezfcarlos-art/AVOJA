@@ -207,6 +207,7 @@ def public_communications():
 def transbank():
     import os
     import webpay_demo as webpay
+    from webpay_gateway import Gateway, GatewayError
     if request.method=='POST':
         body=request.get_json(silent=True)
         if not isinstance(body,dict) or type(body.get('paused')) is not bool:
@@ -215,11 +216,26 @@ def transbank():
             con.execute('CREATE TABLE IF NOT EXISTS payment_controls (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL)')
             con.execute('INSERT INTO payment_controls(id,paused) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET paused=excluded.paused',(int(body['paused']),))
             con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',('transbank','paused' if body['paused'] else 'resumed',billing.now(),request.authorization.username))
+    production_ready=False
+    production_code=''
+    validation_paid=False
+    try:
+        gateway=Gateway(mode='production')
+        production_ready=True
+        production_code=gateway.config.commerce_code
+        with billing.db() as con:
+            row=con.execute('SELECT state,commerce_code FROM webpay_validation WHERE id=1').fetchone()
+            validation_paid=bool(row and row['state']=='approved' and row['commerce_code']==production_code)
+    except (GatewayError,RuntimeError,sqlite3.Error,OSError):
+        pass
     code=os.environ.get('PSICOLOGIA_WEBPAY_COMMERCE_CODE','')
     return jsonify(mode=os.environ.get('PSICOLOGIA_WEBPAY_MODE','disabled'),commerce_code=code,
                    api_key_configured=bool(os.environ.get('PSICOLOGIA_WEBPAY_API_KEY')),
                    signing_configured=len(os.environ.get(webpay.SIGNING_KEY_VAR,''))>=40,
-                   enabled=webpay._enabled(),paused=payments_paused(),production_supported=False,
+                   enabled=webpay._enabled(),paused=payments_paused(),production_supported=True,
+                   production_ready=production_ready,production_commerce_code=production_code,
+                   validation_paid=validation_paid,live_sales_enabled=False,
+                   production_return_url=os.environ.get('PSICOLOGIA_API_PUBLIC_URL','https://psicologia-carlos-calendar-api.onrender.com')+'/api/webpay/validation/return',
                    return_url=webpay.RETURN_URL)
 
 
