@@ -22,7 +22,7 @@ small,.muted{color:#5d786b;font-size:13px}.notice{border-radius:9px;background:#
 <main>
 <p class="kicker">Herramienta privada · Agendamiento Fonasa</p>
 <h1>Consulta de bonos Fonasa</h1>
-<p class="subtitle">Adjunta el bono para reconocer nombre, RUT y folio. El sistema consultará Bono Web mediante Decodo y, si encuentra la opción <b>Activar</b>, permitirá generar un enlace privado de agendamiento. <b>No activa bonos.</b></p>
+<p class="subtitle">Adjunta el bono y verifica sus datos en Fonasa. Luego pulsa <b>Activar bono</b> en el historial. Cuando Fonasa confirme la activación, podrás generar el enlace privado para que el paciente elija su horario.</p>
 <section class="card">
 <h2>1. Cargar comprobante</h2>
 <form id="uploadForm"><label for="bonoPdf">Bono de atención Fonasa (PDF)</label>
@@ -45,7 +45,7 @@ small,.muted{color:#5d786b;font-size:13px}.notice{border-radius:9px;background:#
 <section class="card" id="linkCard" hidden>
 <h2>3. Enlace para agendamiento</h2>
 <p>Fonasa encontró el bono y mostró <b>Activar</b>. El enlace permite que la persona seleccione fecha y hora disponible e ingrese su propio correo.</p>
-<p class="warn notice">La aparición del botón no equivale a una activación ni a una transferencia. Después de elegir una hora, el sistema intentará confirmarla en Google Calendar y enviar invitaciones, igual que después del pago con Transbank. Si falla alguna etapa, quedará pendiente de recuperación sin duplicar la cita.</p>
+<p class="warn notice">Orden del proceso: verificar el bono → activar en Fonasa → generar el enlace → seleccionar horario → confirmar la cita en Google Calendar y enviar los correos PSC. Si una respuesta queda pendiente, usa «Revisar activación» para consultar el resultado.</p>
 <div class="actions"><button id="linkBtn" type="button">Generar enlace privado (7 días)</button><button type="button" class="secondary" id="copyBtn" hidden>Copiar enlace</button></div>
 <a id="linkOutput" target="_blank" rel="noopener noreferrer"></a>
 </section>

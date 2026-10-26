@@ -27,10 +27,10 @@ function choose(record){
  const state=record.state||"pdf_read";
  $("checkBtn").disabled=!["pdf_read","check_failed"].includes(state);
  $("checkStatus").hidden=true;
- $("linkCard").hidden=!["ready_to_activate","link_issued","appointment_requested"].includes(state);
+ $("linkCard").hidden=record.activation_status!=="activated"||!["ready_to_activate","link_issued"].includes(state);
  if(state==="checking"){note("checkStatus","Consultando Fonasa…");polls=0;poll();}
  else if(state==="appointment_requested"){note("checkStatus","La persona ya registró una solicitud de hora. Revisa el historial.");}
- else if(state==="ready_to_activate"||state==="link_issued"){note("checkStatus","Fonasa muestra el botón Activar. No se ha pulsado.");}
+ else if(state==="ready_to_activate"||state==="link_issued"){note("checkStatus",record.activation_status==="activated"?"Bono activado en Fonasa. Ya puedes generar el enlace de agenda.":"Bono verificado. Actívalo desde el historial antes de generar el enlace de agenda.");}
  else if(state==="check_failed"){note("checkStatus","Consulta sin validación. Puedes volver a intentar.",true);}
 }
 $("uploadForm").addEventListener("submit",async event=>{
@@ -70,7 +70,7 @@ async function poll(){
   current.state=r.state;
   if(r.state==="ready_to_activate"){
    note("checkStatus","Bono reconocido: Fonasa mostró el botón Activar. No se ha activado.");
-   $("linkCard").hidden=false;
+   $("linkCard").hidden=!r.activated;
   }else{
    note("checkStatus","No se pudo confirmar la opción Activar. Revisa el resultado antes de generar el enlace.",true);
    $("checkBtn").disabled=false;
@@ -104,6 +104,7 @@ async function refresh(){
  try{
   const result=await api("/admin/fonasa/items");
   container.replaceChildren();
+  if(current){const updated=result.items.find(x=>x.id===current.id);if(updated){current={...current,...updated};$("linkCard").hidden=current.activation_status!=="activated"||!["ready_to_activate","link_issued"].includes(current.state)}}
   if(!result.items.length){const p=document.createElement("p");p.textContent="Aún no hay bonos cargados.";container.append(p);return}
   const table=document.createElement("table"),tr=document.createElement("tr");
   ["Fecha","Beneficiario","Folio","Estado","Hora solicitada","Acción"].forEach(n=>{
@@ -112,7 +113,7 @@ async function refresh(){
   for(const item of result.items){
    const row=document.createElement("tr");
    const cells=[(item.created_at||"").slice(0,10),item.patient_name,item.folio,
-      states[item.state]||item.state,(item.date||"")+(item.time?" "+item.time:"")];
+      (item.activation_status==="activated"&&["ready_to_activate","link_issued"].includes(item.state)?"Bono activado · listo para agendar":states[item.state]||item.state),(item.date||"")+(item.time?" "+item.time:"")];
    cells.forEach(text=>{const td=document.createElement("td");td.textContent=text||"—";row.append(td)});
    const td=document.createElement("td"),button=document.createElement("button");
    button.type="button";button.className="secondary";button.textContent="Ver";
@@ -149,11 +150,45 @@ async function refresh(){
      };
      td.append(notify);
 
+
+
    }
+     if(["ready_to_activate","link_issued"].includes(item.state)){
+       const activate=document.createElement("button");
+       const labels={not_requested:"Activar bono",running:"Consultando activación…",activated:"Bono activado",needs_review:"Revisar activación"};
+       activate.type="button";activate.className="secondary";activate.style.marginLeft="8px";
+       const status=item.activation_status||"not_requested";
+       activate.textContent=labels[status]||"Revisar activación";
+       activate.disabled=status==="activated"||status==="running";
+       activate.onclick=async()=>{
+         activate.disabled=true;
+         try{
+           const result=await api("/admin/fonasa/activate/"+encodeURIComponent(item.id),{method:"POST",body:{}});
+           if(result.activation_status==="running")pollActivation(item.id,0);
+           await refresh();
+         }catch(err){alert(err.message);await refresh()}
+       };
+       td.append(activate);
+       if(status==="running")pollActivation(item.id,0);
+     }
    row.append(td);table.append(row);
   }
   container.append(table);
  }catch(err){container.textContent=err.message}
 }
 $("refreshBtn").onclick=refresh;
+
+const activationPolls=new Map();
+function pollActivation(id,attempt){
+ if(activationPolls.has(id))return;
+ activationPolls.set(id,setTimeout(async()=>{
+   activationPolls.delete(id);
+   try{
+     const result=await api("/admin/fonasa/activation/"+encodeURIComponent(id));
+     if(result.activation_status==="running"&&attempt<35){pollActivation(id,attempt+1);return}
+     await refresh();
+   }catch(err){if(attempt<35)pollActivation(id,attempt+1)}
+ },3000));
+}
+
 refresh();

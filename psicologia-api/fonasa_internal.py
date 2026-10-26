@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS fonasa_notifications (
 def _schema(con):
     con.executescript(SCHEMA)
     columns={row["name"] for row in con.execute("PRAGMA table_info(fonasa_intake)").fetchall()}
+    for key,definition in (("activation_status","TEXT NOT NULL DEFAULT 'not_requested'"),
+                           ("activation_job","TEXT"),("activation_updated_at","TEXT")):
+        if key not in columns:
+            con.execute("ALTER TABLE fonasa_intake ADD COLUMN "+key+" "+definition)
     if "check_detail" not in columns:
         con.execute("ALTER TABLE fonasa_intake ADD COLUMN check_detail TEXT")
     if "calendar_event_id" not in columns:
@@ -178,7 +182,8 @@ def _admin_item(row):
             "time":row["requested_time"],"email":row["patient_email"],
             "created_at":row["created_at"],"check_detail":row["check_detail"],
             "calendar_event_id":row["calendar_event_id"],"meet_url":row["meet_url"],
-            "calendar_error":row["calendar_error"]}
+            "calendar_error":row["calendar_error"],
+            "activation_status":row["activation_status"]}
 
 
 def _notification_sender():
@@ -317,6 +322,8 @@ def _confirm_fonasa_calendar(intake_id):
             return {"state":"calendar_confirmed","meet_url":row["meet_url"]}
         starts=row["requested_date"]
         clock=row["requested_time"]
+        if row["activation_status"]!="activated":
+            return {"state":"activation_pending","meet_url":None}
         name=display_name(row["patient_name"])
         from admin import settings
         cfg,_=settings()
@@ -417,6 +424,7 @@ def lookup_status(id):
         row=_record(con,id)
         if not row:return jsonify(error="Bono no encontrado."),404
         state=row["state"]
+        activated=row["activation_status"]=="activated"
         detail=row["check_detail"]
         if state=="checking":
             try:remote=_call_worker("/bridge/fonasa/status/"+row["worker_job"])
@@ -429,7 +437,12 @@ def lookup_status(id):
                 state="check_failed"
                 detail="La consulta expiró o se reinició el servicio. Puedes volver a intentarla."
             else:
-                if remote.get("state")=="ready_to_activate" and remote.get("activate_available") is True:
+                if remote.get("state")=="activated" and remote.get("activated") is True:
+                    state="ready_to_activate"
+                    detail=None
+                    activated=True
+                    con.execute("UPDATE fonasa_intake SET activation_status='activated',activation_updated_at=? WHERE id=?",(_utc(),id))
+                elif remote.get("state")=="ready_to_activate" and remote.get("activate_available") is True:
                     state="ready_to_activate"
                     detail=None
                 elif remote.get("state")!="running":
@@ -438,8 +451,8 @@ def lookup_status(id):
             if state!=row["state"]:
                 con.execute("UPDATE fonasa_intake SET state=?,check_detail=?,updated_at=? WHERE id=?",
                            (state,detail,_utc(),id))
-    return jsonify(id=id,state=state,activate_available=state=="ready_to_activate",
-                   activated=False,reason=detail)
+    return jsonify(id=id,state=state,activate_available=state=="ready_to_activate" and not activated,
+                   activated=activated,reason=detail)
 
 @bp.post("/admin/fonasa/link/<id>")
 @billing.private
@@ -449,6 +462,8 @@ def issue_booking_link(id):
         if not row:return jsonify(error="Bono no encontrado."),404
         if row["state"] not in ("ready_to_activate","link_issued"):
             return jsonify(error="Primero debe aparecer Activar en Fonasa."),409
+        if row["activation_status"]!="activated":
+            return jsonify(error="Primero activa el bono y espera la confirmación de Fonasa."),409
         token=secrets.token_urlsafe(32)
         token_hash=hashlib.sha256(token.encode()).hexdigest()
         expiry=int(time.time())+7*86400
@@ -465,6 +480,7 @@ def _by_token(con,token):
     if not row or not row["token_expiry"] or row["token_expiry"]<int(time.time()):
         return None
     if row["state"] not in ("link_issued","appointment_requested","calendar_pending","calendar_confirmed"):return None
+    if row["state"]=="link_issued" and row["activation_status"]!="activated":return None
     return row
 
 @bp.get("/api/fonasa/book/<token>")
@@ -680,3 +696,58 @@ def sync_rescheduled_booking():
         return jsonify(state="SYNCED")
     except (KeyError,ValueError,TypeError):
         return jsonify(state="INVALID"),400
+
+
+@bp.post("/admin/fonasa/activate/<id>")
+@billing.private
+def request_bono_activation(id):
+    """The operator selects the voucher; existing bookings are never bulk activated."""
+    with billing.db() as con:
+        row=_record(con,id)
+        if not row:return jsonify(error="Bono no encontrado."),404
+        if row["state"] not in ("ready_to_activate","link_issued"):
+            return jsonify(error="Primero verifica el bono en Fonasa. La activación ocurre antes del agendamiento."),409
+        previous=row["activation_status"]
+        if previous in ("activated","running"):
+            return jsonify(activation_status=previous)
+        # An uncertain result is reconciled through LOOKUP, without another click.
+        verify_only=previous=="needs_review"
+        claim=con.execute("""UPDATE fonasa_intake SET activation_status='running',
+            activation_job=NULL,activation_updated_at=? WHERE id=? AND activation_status=?""",(_utc(),id,previous))
+        if claim.rowcount!=1:return jsonify(activation_status="running")
+    path="/bridge/fonasa/start" if verify_only else "/bridge/fonasa/activate"
+    try:
+        result=_call_worker(path,{"rut":row["rut"],"folio":row["folio"]})
+        job=result.get("job_id")
+        if not isinstance(job,str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,60}",job):
+            raise RuntimeError("Worker did not acknowledge")
+    except RuntimeError:
+        with billing.db() as con:
+            con.execute("UPDATE fonasa_intake SET activation_status='needs_review',activation_updated_at=? WHERE id=?",(_utc(),id))
+        return jsonify(error="No se pudo confirmar la solicitud. Usa Revisar activación para consultar el estado sin volver a activar."),503
+    with billing.db() as con:
+        con.execute("UPDATE fonasa_intake SET activation_job=?,activation_updated_at=? WHERE id=?",(job,_utc(),id))
+    return jsonify(activation_status="running")
+
+
+@bp.get("/admin/fonasa/activation/<id>")
+@billing.private
+def bono_activation_status(id):
+    with billing.db() as con:
+        row=_record(con,id)
+        if not row:return jsonify(error="Bono no encontrado."),404
+        state=row["activation_status"]
+        if state!="running":return jsonify(activation_status=state)
+        if not row["activation_job"]:return jsonify(activation_status="running")
+        try:remote=_call_worker("/bridge/fonasa/status/"+row["activation_job"])
+        except RuntimeError:
+            remote={"state":"unavailable"}
+        if remote.get("state")=="running":return jsonify(activation_status="running")
+        if remote.get("state")=="activated" and remote.get("activated") is True:
+            state="activated"
+        elif remote.get("state")=="ready_to_activate" and remote.get("activated") is False:
+            state="not_requested"
+        else:
+            state="needs_review"
+        con.execute("UPDATE fonasa_intake SET activation_status=?,activation_updated_at=? WHERE id=?",(state,_utc(),id))
+    return jsonify(activation_status=state)
