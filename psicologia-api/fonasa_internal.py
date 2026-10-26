@@ -293,7 +293,6 @@ def request_booking(token):
         return jsonify(error="Selecciona una hora e indica un correo propio válido."),400
     with billing.db() as con:
         _schema(con)
-        con.execute("BEGIN IMMEDIATE")
         row=_by_token(con,token)
         if row is None:return jsonify(error="Enlace inválido o vencido."),404
         if row["state"]!="link_issued":
@@ -302,6 +301,21 @@ def request_booking(token):
         except Exception:return jsonify(error="No se pudo verificar la agenda. No se guardó la solicitud."),503
         if hour not in slots.get(day,[]):
             return jsonify(error="Ese horario ya no está disponible."),409
+        # Recheck our own reservations atomically, without network I/O under SQLite write lock.
+        con.execute("BEGIN IMMEDIATE")
+        row=_by_token(con,token)
+        if not row or row["state"]!="link_issued":
+            return jsonify(error="La solicitud ya cambió de estado."),409
+        existing=con.execute("""SELECT requested_time FROM fonasa_intake
+            WHERE state='appointment_requested' AND requested_date=?""",(day,)).fetchall()
+        chosen_mins=int(hour[:2])*60+int(hour[3:])
+        for record in existing:
+            other=record["requested_time"]
+            minute=int(other[:2])*60+int(other[3:])
+            if chosen_mins<minute+45 and minute<chosen_mins+45:
+                return jsonify(error="Ese horario acaba de ocuparse."),409
+        if len(existing)>=3:
+            return jsonify(error="Ya no hay cupos para esa fecha."),409
         con.execute("""UPDATE fonasa_intake SET state='appointment_requested',
             requested_date=?,requested_time=?,patient_email=?,updated_at=?
             WHERE id=? AND state='link_issued'""",(day,hour,email.strip().lower(),_utc(),row["id"]))
