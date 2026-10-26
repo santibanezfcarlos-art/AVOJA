@@ -442,6 +442,20 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 #prestaciones .psc-booking-bubble p{color:#466650;font-size:14px;line-height:1.6;margin:0 0 16px}
 #prestaciones .psc-booking-bubble .offer-cta{background:#1a4b3a;color:#fff;border-color:#1a4b3a;margin-top:16px}
 #prestaciones .psc-booking-bubble .offer-cta:hover{background:#276047;color:#fff}
+
+/* Equal service rows measured at the actual viewport width. */
+#prestaciones .offer-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+#prestaciones .offer-card{min-width:0;min-height:0;display:grid;grid-template-rows:50px var(--psc-title,auto) var(--psc-copy,auto) var(--psc-facts,auto) 1fr;gap:16px;padding:27px}
+#prestaciones .offer-card-top,#prestaciones .offer-card h3,#prestaciones .offer-copy,#prestaciones .offer-facts{margin:0}
+#prestaciones .offer-copy{flex:none}
+#prestaciones .offer-facts{align-content:start;align-items:start}
+#prestaciones .psc-uniform-bottom{display:grid;grid-template-rows:var(--psc-panel,auto) auto;gap:16px;margin:0;padding-top:18px}
+#prestaciones .psc-service-panel{min-width:0;display:flex;flex-direction:column;justify-content:center;padding:22px;border-radius:19px}
+#prestaciones .psc-fonasa-option{border-top:1px solid #a9c9ad;margin-top:18px;padding-top:18px}
+#prestaciones .psc-fonasa-option h4{font-size:17px;margin:0 0 10px}
+#prestaciones .psc-service-panel .offer-cta{min-height:48px;box-sizing:border-box;border-radius:12px;margin-top:0;font-size:13px}
+#prestaciones .psc-uniform-bottom .offer-more{margin:0;text-align:center;align-self:end}
+@media(max-width:900px){#prestaciones .offer-grid{grid-template-columns:1fr}#prestaciones .offer-card{padding:23px}}
 </style>
 </head><body>
 
@@ -475,26 +489,23 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
    <h3>Sesión de Psicoterapia Breve</h3>
    <p class="offer-copy">Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y trabajar objetivos terapéuticos concretos.</p>
    <div class="offer-facts"><span>45 minutos</span><span>Adultos</span><span>Online</span></div>
-   <div class="offer-bottom psc-booking-options">
-    <div class="psc-booking-bubble"><div class="offer-caption">Valor particular por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div><a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad para psicoterapia breve particular">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
-    <div class="psc-booking-bubble"><h4>¿Tienes un bono Fonasa?</h4><p>Carga tu bono PDF y continúa a la agenda después de validarlo y activarlo.</p><a class="offer-cta" href="fonasa.html">Ingresar con mi bono <span aria-hidden="true">→</span></a></div>
-    <a class="offer-more" href="#detalle-psicoterapia">Qué incluye este servicio ↓</a></div>
+   <div class="offer-bottom psc-uniform-bottom"><div class="psc-service-panel psc-booking-bubble"><div class="offer-caption">VALOR PARTICULAR / ISAPRE</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div><a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad para psicoterapia breve particular">Ver disponibilidad <span aria-hidden="true">→</span></a><div class="psc-fonasa-option"><h4>¿Tienes un bono Fonasa?</h4><a class="offer-cta" href="fonasa.html">Agendar con bono Fonasa <span aria-hidden="true">→</span></a></div></div><a class="offer-more" href="#detalle-psicoterapia">Qué incluye este servicio ↓</a></div>
   </article>
   <article class="offer-card offer-tone-sage">
    <div class="offer-card-top"><span class="offer-type">Orientación laboral</span><span class="offer-icon" aria-hidden="true">↗</span></div>
    <h3>Asesoría en Empleabilidad</h3>
    <p class="offer-copy">Revisa tu perfil laboral, mejora tu currículum, prepara entrevistas y fortalece tu estrategia de búsqueda de trabajo.</p>
    <div class="offer-facts"><span>90 minutos</span><span>Personalizada</span><span>Online</span></div>
-   <div class="offer-bottom"><div class="offer-caption">Valor de la asesoría</div><div class="offer-values"><strong class="offer-current">$45.000 <small>CLP</small></strong><span class="offer-was">$60.000</span></div>
-    <a class="offer-cta" href="#agenda" data-service="empleabilidad" aria-label="Ver agenda de prueba para asesoría en empleabilidad">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-empleabilidad">Qué incluye este servicio ↓</a></div>
+   <div class="offer-bottom psc-uniform-bottom"><div class="psc-service-panel"><div class="offer-caption">Valor de la asesoría</div><div class="offer-values"><strong class="offer-current">$45.000 <small>CLP</small></strong><span class="offer-was">$60.000</span></div>
+    <a class="offer-cta" href="#agenda" data-service="empleabilidad" aria-label="Ver agenda de prueba para asesoría en empleabilidad">Ver disponibilidad <span aria-hidden="true">→</span></a></div><a class="offer-more" href="#detalle-empleabilidad">Qué incluye este servicio ↓</a></div>
   </article>
   <article class="offer-card offer-tone-mist">
    <div class="offer-card-top"><span class="offer-type">Habilidades para el trabajo</span><span class="offer-icon" aria-hidden="true">◇</span></div>
    <h3>Potencia tus competencias</h3>
    <p class="offer-copy">Fortalece la comunicación, el autoconocimiento, la organización y las habilidades necesarias para alcanzar objetivos personales y profesionales.</p>
    <div class="offer-facts"><span>45 minutos</span><span>Objetivos claros</span><span>Online</span></div>
-   <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
-    <a class="offer-cta" href="#agenda" data-service="competencias" aria-label="Ver agenda de prueba para desarrollo de competencias">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-competencias">Qué incluye este servicio ↓</a></div>
+   <div class="offer-bottom psc-uniform-bottom"><div class="psc-service-panel"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
+    <a class="offer-cta" href="#agenda" data-service="competencias" aria-label="Ver agenda de prueba para desarrollo de competencias">Ver disponibilidad <span aria-hidden="true">→</span></a></div><a class="offer-more" href="#detalle-competencias">Qué incluye este servicio ↓</a></div>
   </article>
  </div>
 
@@ -917,6 +928,17 @@ route();
 })();
 </script>
 
-</body></html>
+<script>
+(()=>{const grid=document.querySelector('#prestaciones .offer-grid');if(!grid)return;
+let previousWidth=0,queued=false;
+function align(){queued=false;if(!grid.getBoundingClientRect().width)return;
+const groups=[['--psc-title','.offer-card > h3'],['--psc-copy','.offer-card > .offer-copy'],['--psc-facts','.offer-card > .offer-facts'],['--psc-panel','.psc-service-panel']];
+for(const [key] of groups)grid.style.removeProperty(key);
+for(const [key,selector] of groups){const height=Math.max(...Array.from(grid.querySelectorAll(selector),el=>el.getBoundingClientRect().height));grid.style.setProperty(key,Math.ceil(height)+'px')}
+}
+const observer=new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width!==previousWidth){previousWidth=width;if(!queued){queued=true;requestAnimationFrame(align)}}});observer.observe(grid);
+if(document.fonts)document.fonts.ready.then(align);window.addEventListener('load',align);align();
+})();
+</script></body></html>
 
 
