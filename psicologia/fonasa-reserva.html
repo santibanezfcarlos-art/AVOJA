@@ -204,7 +204,14 @@ $("form").onsubmit=async event=>{
   });
   submitted=true;$("layout").hidden=true;$("status").hidden=true;
   $("finish").hidden=false;
-  $("finish").textContent="Solicitud recibida para "+result.date+" a las "+result.time+" (hora de Chile). El horario está pendiente de confirmación en Google Calendar.";
+  const confirmed=result.status==="calendar_confirmed";
+  $("finish").textContent=(confirmed?"Reserva CONFIRMADA en Google Calendar para ":"Solicitud recibida, pendiente de confirmación en Google Calendar, para ")+result.date+" a las "+result.time+" (hora de Chile).";
+  if(confirmed&&result.meet_url){
+    const link=document.createElement("a");
+    link.href=result.meet_url;link.target="_blank";link.rel="noopener noreferrer";
+    link.textContent="Abrir enlace de Google Meet";
+    link.style.display="block";link.style.marginTop="12px";$("finish").append(link);
+  }
  }catch(err){
   status(err.message,true);
   if(err.status===409)await refresh();
@@ -216,8 +223,14 @@ async function start(){
  try{
   const data=await api("/api/fonasa/book/"+encodeURIComponent(token));
   $("name").value=data.name||"";
-  if(data.state==="appointment_requested"){
-   status("Ya existe una solicitud para este bono.");return;
+  if(["appointment_requested","calendar_pending","calendar_confirmed"].includes(data.state)){
+   if(data.state==="calendar_confirmed"){
+     status("Tu cita está CONFIRMADA en Google Calendar: "+data.booked_date+" a las "+data.booked_time+" (hora de Chile).");
+     if(data.meet_url){
+       const link=document.createElement("a");link.href=data.meet_url;link.target="_blank";link.rel="noopener noreferrer";link.textContent="Abrir Google Meet";link.style.display="block";link.style.marginTop="10px";$("status").append(link);
+     }
+   }else status("Recibimos tu solicitud para "+data.booked_date+" a las "+data.booked_time+". Está pendiente de confirmación en Google Calendar.");
+   return;
   }
   await refresh();
  }catch(err){status(err.message,true)}
