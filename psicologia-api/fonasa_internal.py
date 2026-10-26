@@ -305,7 +305,7 @@ def _slots(con,row,days=20,with_schedule=False):
     busy=list(calendar_intervals)
     if enabled():
         try:
-            busy+=busy_intervals(today,last)
+            busy+=busy_intervals(today,last,include_calendar=True)
         except (BridgeError,ValueError,TypeError,RuntimeError):
             raise AvailabilityUnavailable("booking_bridge_unavailable") from None
     # Pending requests in this module block the same period.
