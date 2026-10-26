@@ -1060,3 +1060,70 @@ if __import__("os").environ.get("FONASA_LOOKUP_ON_START")=="yes":
 # Internal PSC administration bridge. Credentials and patient data are never returned.
 from fonasa_live_bridge import bp as fonasa_live_bridge_bp
 app.register_blueprint(fonasa_live_bridge_bp)
+
+
+@app.post("/sii-eboleta-reachability")
+def sii_eboleta_reachability():
+    """Authenticated, read-only Chromium+Decodo SII connectivity check.
+
+    Never authenticates, supplies credentials, clicks or submits a form.
+    Never returns page HTML, cookies, tokens or proxy secrets.
+    """
+    import hmac
+    import os
+    import re
+    import time
+    from urllib.parse import urlparse
+    from flask import request, jsonify
+    from playwright.sync_api import sync_playwright
+    secret=os.environ.get("DECODO_TEST_TOKEN","")
+    if not secret or not hmac.compare_digest(
+            request.headers.get("X-Test-Token",""),secret):
+        return jsonify(status="unauthorized"),403
+    keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT",
+          "DECODO_PROXY_USER","DECODO_PROXY_PASSWORD")
+    missing=[k for k in keys if not os.environ.get(k)]
+    if missing:
+        return jsonify(status="configuration_missing",missing=missing),503
+    result={"status":"started","browser":"not_started",
+            "sii_http_status":None,"sii_origin_ok":False,
+            "login_form_detected":False,"authenticated":False,
+            "credentials_used":False,"submitted":False,"emitted":False}
+    started=time.monotonic()
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
+    proxy_server="http://"+os.environ["DECODO_PROXY_HOST"].strip()+":"+os.environ["DECODO_PROXY_PORT"].strip()
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(
+                headless=True,args=["--no-sandbox"],timeout=12000,
+                proxy={"server":proxy_server,"username":os.environ["DECODO_PROXY_USER"],
+                       "password":os.environ["DECODO_PROXY_PASSWORD"]})
+            result["browser"]="started"
+            try:
+                context=browser.new_context(ignore_https_errors=False)
+                context.route("**/*",lambda route:route.abort()
+                    if route.request.resource_type in ("image","font","media")
+                    else route.continue_())
+                page=context.new_page()
+                try:
+                    response=page.goto("https://eboleta.sii.cl/emitir/",
+                                       wait_until="domcontentloaded",timeout=18000)
+                    origin=urlparse(page.url)
+                    result["sii_http_status"]=response.status if response else None
+                    result["sii_origin_ok"]=origin.scheme=="https" and origin.hostname=="eboleta.sii.cl"
+                    result["redirect_host"]=origin.hostname if origin.hostname in (
+                        "eboleta.sii.cl","www.sii.cl","zeusr.sii.cl","hercules.sii.cl") else "other"
+                    result["login_form_detected"]=page.locator('input[type="password"]').count()>0
+                    result["status"]="page_loaded" if result["sii_origin_ok"] else "redirected_or_blocked"
+                finally:
+                    page.close()
+                    context.close()
+            finally:
+                browser.close()
+    except Exception as exc:
+        result["status"]="connection_error"
+        result["error_type"]=type(exc).__name__
+        code=re.search(r"net::ERR_[A-Z_]+",str(exc))
+        if code:result["network_error"]=code.group(0)
+    result["elapsed_seconds"]=round(time.monotonic()-started,2)
+    return jsonify(result)
