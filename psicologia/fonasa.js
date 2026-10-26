@@ -8,7 +8,7 @@
   const headers={};if(access)headers['X-Fonasa-Token']=access;
   const response=await fetch(API+path,{method:'POST',headers,body,cache:'no-store',credentials:'omit'});
   const data=await response.json().catch(()=>({error:'No se pudo leer la respuesta del servidor.'}));
-  if(!response.ok)throw Error(data.error||'No se pudo completar la validación.');return data;
+  if(!response.ok){const error=Error(data.error||'No se pudo completar la validación.');error.status=response.status;throw error}return data;
  }
  function steps(state){
   const n={pdf_read:0,checking:1,ready_to_activate:2,activating:2,reviewing:2,ready:4}[state]??1;
@@ -27,11 +27,11 @@
     try{await call('/api/fonasa/intake/link-received')}catch{}
     return;
    }
-   if(data.state==='already_booked'){message(data.message);return}
+   if(data.state==='already_booked'){message(data.message);$('newVoucher').hidden=false;return}
    message(data.state==='activating'?'Fonasa está procesando la activación de tu bono…':data.state==='reviewing'?'Estamos comprobando el resultado de la activación en Fonasa…':'Estamos validando tu bono en Fonasa…');
    if(++attempts>=24){message('La verificación está tardando más de lo habitual. Puedes revisar el resultado en unos minutos o contactar al profesional.');$('resume').hidden=false;return}
    timer=setTimeout(progress,(data.retry_after||17)*1000);
-  }catch(err){message(err.message,true);$('resume').hidden=false}
+  }catch(err){message(err.message,true);$('resume').hidden=err.status===404;$('newVoucher').hidden=err.status!==404}
   finally{busy=false}
  }
  $('patientUpload').addEventListener('submit',async ev=>{
@@ -46,6 +46,7 @@
    busy=false;attempts=0;await progress();
   }catch(err){message(err.message,true)}finally{busy=false;$('submit').disabled=false}
  });
+ $('newVoucher').onclick=()=>{access=null;clearTimeout(timer);try{sessionStorage.removeItem(KEY)}catch{}$('uploadCard').hidden=false;$('progressCard').hidden=true;$('ready').hidden=true;$('resume').hidden=true;$('newVoucher').hidden=true;$('message').hidden=true;$('patientUpload').reset()};
  $('resume').onclick=()=>{attempts=0;progress()};
  if(access){message('Tienes una validación en curso en este navegador.');$('resume').hidden=false;$('uploadCard').hidden=true;$('progressCard').hidden=false;}
 })();
