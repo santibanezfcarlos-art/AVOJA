@@ -431,6 +431,17 @@ header.site-header a.brand{color:inherit;text-decoration:none}
 header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offset:3px;border-radius:12px}
 
 .billing-fields{border:1px solid #c9dccc;border-radius:10px;padding:14px;margin:12px 0}.billing-fields legend{font-weight:750}.billing-fields label{display:block;font-size:12px;margin:12px 0 5px}.billing-fields input{width:100%;padding:11px;border:1px solid #dbe6df;border-radius:8px;font:inherit;color:var(--ink)}.billing-fields input[readonly]{background:#edf3ec}
+/* PSC: two booking options within the clinical card. */
+#prestaciones .offer-tone-forest .offer-type,#prestaciones .offer-tone-forest h3{color:#fff}
+#prestaciones .psc-booking-options{display:grid;gap:16px}
+#prestaciones .psc-booking-bubble{background:#dcecdc;color:#194b39;border-radius:19px;padding:22px;min-width:0}
+#prestaciones .psc-booking-bubble .offer-caption{color:#426951}
+#prestaciones .psc-booking-bubble .offer-current{color:#194b39}
+#prestaciones .psc-booking-bubble .offer-was{color:#607966}
+#prestaciones .psc-booking-bubble h4{color:#194b39;font-size:20px;line-height:1.3;margin:0 0 10px}
+#prestaciones .psc-booking-bubble p{color:#466650;font-size:14px;line-height:1.6;margin:0 0 16px}
+#prestaciones .psc-booking-bubble .offer-cta{background:#1a4b3a;color:#fff;border-color:#1a4b3a;margin-top:16px}
+#prestaciones .psc-booking-bubble .offer-cta:hover{background:#276047;color:#fff}
 </style>
 </head><body>
 
@@ -464,8 +475,10 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
    <h3>Sesión de Psicoterapia Breve</h3>
    <p class="offer-copy">Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y trabajar objetivos terapéuticos concretos.</p>
    <div class="offer-facts"><span>45 minutos</span><span>Adultos</span><span>Online</span></div>
-   <div class="offer-bottom"><div class="offer-caption">Valor por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div>
-    <a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad de prueba para psicoterapia breve">Ver disponibilidad <span aria-hidden="true">→</span></a><a class="offer-more" href="#detalle-psicoterapia">Qué incluye este servicio ↓</a></div>
+   <div class="offer-bottom psc-booking-options">
+    <div class="psc-booking-bubble"><div class="offer-caption">Valor particular por sesión</div><div class="offer-values"><strong class="offer-current">$30.000 <small>CLP</small></strong><span class="offer-was">$35.000</span></div><a class="offer-cta" href="#agenda" data-service="psicoterapia" aria-label="Ver disponibilidad para psicoterapia breve particular">Ver disponibilidad <span aria-hidden="true">→</span></a></div>
+    <div class="psc-booking-bubble"><h4>¿Tienes un bono Fonasa?</h4><p>Carga tu bono PDF y continúa a la agenda después de validarlo y activarlo.</p><a class="offer-cta" href="fonasa.html">Ingresar con mi bono <span aria-hidden="true">→</span></a></div>
+    <a class="offer-more" href="#detalle-psicoterapia">Qué incluye este servicio ↓</a></div>
   </article>
   <article class="offer-card offer-tone-sage">
    <div class="offer-card-top"><span class="offer-type">Orientación laboral</span><span class="offer-icon" aria-hidden="true">↗</span></div>
