@@ -1221,7 +1221,15 @@ def _sii_reachability_startup_once():
         )
 
 
-if __import__("os").environ.get("SII_REACHABILITY_ON_START") == "once":
+_sii_startup_enabled = __import__("os").environ.get("SII_REACHABILITY_ON_START") == "once"
+import json as _sii_startup_json
+import logging as _sii_startup_logging
+_sii_startup_logging.getLogger("sii_probe").warning(
+    "SII_REACHABILITY_SWITCH %s",
+    _sii_startup_json.dumps({"enabled": _sii_startup_enabled}, separators=(",", ":")),
+)
+
+if _sii_startup_enabled:
     import threading as _sii_startup_threading
     _sii_startup_threading.Thread(
         target=_sii_reachability_startup_once,
