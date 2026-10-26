@@ -117,7 +117,24 @@ async function refresh(){
    const td=document.createElement("td"),button=document.createElement("button");
    button.type="button";button.className="secondary";button.textContent="Ver";
    button.onclick=()=>{choose({...item,emitted:item.emitted||""});$("detailCard").scrollIntoView({behavior:"smooth",block:"start"})};
-   td.append(button);row.append(td);table.append(row);
+   td.append(button);
+   if(item.state==="appointment_requested"){
+     const notify=document.createElement("button");
+     notify.type="button";notify.className="secondary";notify.textContent="Enviar avisos";
+     notify.style.marginLeft="8px";
+     notify.onclick=async()=>{
+       notify.disabled=true;notify.textContent="Enviando…";
+       try{
+         const result=await api("/admin/fonasa/notify/"+encodeURIComponent(item.id),{method:"POST",body:{}});
+         const notices=result.notifications||{};
+         const details="Coordinación: "+(notices.professional||"pendiente")+" · Paciente: "+(notices.patient||"pendiente");
+         alert(details);
+       }catch(err){alert(err.message)}
+       finally{notify.disabled=false;notify.textContent="Revisar avisos"}
+     };
+     td.append(notify);
+   }
+   row.append(td);table.append(row);
   }
   container.append(table);
  }catch(err){container.textContent=err.message}
