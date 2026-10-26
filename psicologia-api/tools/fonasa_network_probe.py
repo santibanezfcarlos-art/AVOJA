@@ -877,3 +877,179 @@ def _fonasa_login_startup_probe():
 if __import__("os").environ.get("FONASA_LOGIN_ON_START")=="yes":
     import threading
     threading.Thread(target=_fonasa_login_startup_probe,daemon=True).start()
+
+
+# Single operator-authorized real voucher lookup; the voucher is NEVER activated.
+_fonasa_lookup_attempted = False
+
+@app.post("/fonasa-lookup-once")
+def fonasa_lookup_once():
+    import os, hmac, json, re, time, sys
+    from urllib.parse import urlparse
+    from flask import request
+    from playwright.sync_api import sync_playwright
+    global _fonasa_lookup_attempted
+    secret=os.environ.get("DECODO_TEST_TOKEN","")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Test-Token",""),secret):
+        return jsonify({"status":"unauthorized"}),403
+    keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER","DECODO_PROXY_PASSWORD",
+          "FONASA_MLE_USER","FONASA_MLE_PASSWORD","FONASA_TEST_RUT","FONASA_TEST_FOLIO")
+    missing=[key for key in keys if not os.environ.get(key)]
+    if missing:
+        return jsonify({"status":"missing_configuration","keys":missing}),200
+    if _fonasa_lookup_attempted:
+        return jsonify({"status":"already_executed"}),429
+    _fonasa_lookup_attempted=True
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
+    sys.path.insert(0,os.path.dirname(os.path.dirname(__file__)))
+    from fonasa_mle_busqueda import buscar_cuenta_medica, validar_rut
+    rut=validar_rut(os.environ["FONASA_TEST_RUT"])
+    folio=os.environ["FONASA_TEST_FOLIO"]
+    if not re.fullmatch(r"\d{5,30}",folio):
+        return jsonify({"status":"invalid_folio"}),400
+    host="bonowebptd.fonasa.cl"
+    result={"status":"started","proxy":"not_checked","chromium":"not_started",
+            "login":"not_attempted","activation_form":"not_observed",
+            "search_clicked":False,"voucher_activated":False,
+            "records_logged":False,"screenshot_logged":False}
+    t0=time.monotonic()
+    try:
+        proxy_server="http://"+os.environ["DECODO_PROXY_HOST"].strip()+":"+os.environ["DECODO_PROXY_PORT"].strip()
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=9000,
+                proxy={"server":proxy_server,"username":os.environ["DECODO_PROXY_USER"],
+                       "password":os.environ["DECODO_PROXY_PASSWORD"]})
+            result["chromium"]="started"
+            try:
+                context=browser.new_context(ignore_https_errors=False)
+                context.set_default_timeout(5000)
+                context.route("**/*",lambda route: route.abort()
+                    if route.request.resource_type in ("image","font","media")
+                    else route.continue_())
+                geo_page=context.new_page()
+                try:
+                    response=geo_page.goto("https://ipinfo.io/json",wait_until="domcontentloaded",timeout=7000)
+                    if response and response.status==200:
+                        geo=json.loads(geo_page.locator("body").inner_text(timeout=1200))
+                        result["proxy"]="chile" if geo.get("country")=="CL" else "other_location"
+                except Exception as exc:
+                    result["proxy"]="geo_check_failed"
+                    result["geo_error"]=type(exc).__name__
+                finally:
+                    geo_page.close()
+                if result["proxy"]!="chile":
+                    result["status"]="stopped_proxy_not_chile"
+                    return jsonify(result)
+                page=context.new_page()
+                events=[]
+                def on_response(response):
+                    try:
+                        if (urlparse(response.url).hostname==host and
+                            response.request.resource_type in ("document","xhr","fetch")):
+                            events.append({"type":response.request.resource_type,"status":response.status})
+                    except Exception:
+                        pass
+                page.on("response",on_response)
+                try:
+                    resp=page.goto("https://bonowebptd.fonasa.cl/login.php?v=18-06-2019_1.80",
+                                   wait_until="domcontentloaded",timeout=13000)
+                    if urlparse(page.url).hostname!=host:
+                        result["status"]="unexpected_origin"
+                        return jsonify(result)
+                    user_el=page.locator("#CodUsuario")
+                    pass_el=page.locator("#Password")
+                    login_el=page.locator('button[onclick="validafrmLogin()"]')
+                    if any(el.count()!=1 for el in (user_el,pass_el,login_el)):
+                        result["status"]="login_controls_missing"
+                        return jsonify(result)
+                    user_el.fill(os.environ["FONASA_MLE_USER"])
+                    pass_el.fill(os.environ["FONASA_MLE_PASSWORD"])
+                    login_el.click(timeout=6000)
+                    result["login"]="clicked"
+                    try:page.wait_for_load_state("domcontentloaded",timeout=8500)
+                    except Exception:pass
+                    page.wait_for_timeout(3500)
+                    if page.locator("#Password").is_visible() or urlparse(page.url).hostname!=host:
+                        result["status"]="login_not_confirmed"
+                        return jsonify(result)
+                    menu=page.get_by_text(re.compile(r"Activaci[oó]n y desactivar Cuenta M[eé]dica",re.I))
+                    if menu.count()==0:
+                        result["status"]="menu_not_found"
+                        return jsonify(result)
+                    result["login"]="authenticated"
+                    menu.first.click(timeout=6000)
+                    page.wait_for_timeout(700)
+                    submenu=page.get_by_text(re.compile(r"Activaci[oó]n Cuenta M[eé]dica",re.I))
+                    if submenu.count()==0:
+                        result["status"]="activation_submenu_missing"
+                        return jsonify(result)
+                    submenu.first.click(timeout=6000)
+                    try:
+                        page.locator("#RutBeneficiario").wait_for(state="visible",timeout=10000)
+                        page.locator("#FolioBono").wait_for(state="visible",timeout=4000)
+                        page.locator("#btnBuscar").wait_for(state="visible",timeout=4000)
+                    except Exception:
+                        result["status"]="activation_form_missing"
+                        return jsonify(result)
+                    result["activation_form"]="observed"
+                    events.clear()
+                    buscar_cuenta_medica(page,rut_beneficiario=rut,folio=folio)
+                    result["search_clicked"]=True
+                    result["status"]="search_submitted"
+                    page.wait_for_timeout(5000)
+                    result["response_statuses"]=events[:18]
+                    result["origin_after_search_ok"]=urlparse(page.url).hostname==host
+                    # Read result text only in-memory; publish generic classification flags,
+                    # never the full text, patient's identity, or raw HTML into logs.
+                    text=(page.locator("body").inner_text(timeout=5000) or "").casefold()
+                    markers={
+                        "no_records":r"no se encontr[oó]|sin resultados|no existe el bono|bono no encontrado|no se ha encontrado",
+                        "previously_activated":r"ya (?:se encuentra|est[aá]) activad|bono activado",
+                        "not_activated":r"no (?:se encuentra|est[aá]) activad|sin activar",
+                        "invalid_voucher":r"folio inv[aá]lido|bono inv[aá]lido|rut inv[aá]lido",
+                        "general_error":r"ocurri[oó] un error|error de consulta|intente nuevamente",
+                        "result_table":r"detalle (?:del )?bono|datos (?:del )?bono|resultado de (?:la )?b[uú]squeda"
+                    }
+                    result["status_clues"]={key:bool(re.search(pattern,text))
+                                           for key,pattern in markers.items()}
+                    result["visible_buttons"]=page.locator("button:visible").evaluate_all(
+                        """els => els.map(e => (e.textContent||'').trim())
+                           .filter(x => ['Buscar','Limpiar','Activar','Desactivar','Volver','Aceptar',
+                                          'Salir','Cerrar','Confirmar'].includes(x)).slice(0,18)""")
+                    result["visible_table_count"]=page.locator("table:visible").count()
+                    result["visible_table_rows"]=page.locator("table:visible tr:visible").count()
+                    result["visible_modal_count"]=page.locator(".modal:visible,[role='dialog']:visible").count()
+                    result["login_form_visible"]=page.locator("#Password:visible").count()>0
+                    result["search_form_visible"]=page.locator("#RutBeneficiario:visible").count()>0
+                    # No screenshots saved: after a live query they may expose medical data.
+                finally:
+                    page.close()
+                    context.close()
+            finally:
+                browser.close()
+    except Exception as exc:
+        result["status"]="failed"
+        result["error_type"]=type(exc).__name__
+        code=re.search(r"net::ERR_[A-Z_]+",str(exc))
+        if code: result["network_error"]=code.group(0)
+    result["elapsed_seconds"]=round(time.monotonic()-t0,2)
+    return jsonify(result)
+
+
+def _fonasa_lookup_startup_once():
+    """Run once only when enabled, log status flags, never identifiers."""
+    import os, json, time
+    time.sleep(2)
+    secret=os.environ.get("DECODO_TEST_TOKEN","")
+    try:
+        with app.test_client() as c:
+            response=c.post("/fonasa-lookup-once",headers={"X-Test-Token":secret})
+            payload=response.get_json(silent=True) or {"status":"no_json"}
+            app.logger.warning("FONASA_LOOKUP_SAFE_RESULT %s",json.dumps(payload,ensure_ascii=True))
+    except Exception as exc:
+        app.logger.warning("FONASA_LOOKUP_SAFE_RESULT %s",
+                           json.dumps({"status":"failed","error_type":type(exc).__name__}))
+
+if __import__("os").environ.get("FONASA_LOOKUP_ON_START")=="yes":
+    import threading
+    threading.Thread(target=_fonasa_lookup_startup_once,daemon=True).start()
