@@ -333,42 +333,6 @@ if os.environ.get("FONASA_REPAIR_EXISTING_ON_START")=="yes":
     threading.Thread(target=_recover_one_existing_fonasa_booking,daemon=True).start()
 
 
-def _send_one_existing_fonasa_professional_invitation():
-    """One-off existing booking invite to PSC private coordination mailbox."""
-    import logging
-    import time as _time
-    _time.sleep(7)
-    log=logging.getLogger("fonasa_coordination")
-    try:
-        import billing
-        from fonasa_internal import _schema
-        from webpay_demo_bridge import fonasa_calendar_invitation, BridgeError
-        from admin import settings
-        recipient=os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL","").strip()
-        if not recipient or "@" not in recipient:
-            log.warning("FONASA_COORDINATION_ONCE status=missing_recipient")
-            return
-        with billing.db() as db:
-            _schema(db)
-            rows=db.execute("""SELECT id,requested_date,requested_time
-                FROM fonasa_intake WHERE requested_date='2026-10-30'
-                  AND requested_time='09:00' AND state='calendar_confirmed'""").fetchall()
-        if len(rows)!=1:
-            log.warning("FONASA_COORDINATION_ONCE status=skipped count=%d",len(rows))
-            return
-        config,_=settings()
-        result=fonasa_calendar_invitation(
-            intake_id=rows[0]["id"],role="professional",email=recipient,
-            day=rows[0]["requested_date"],hour=rows[0]["requested_time"],
-            minutes=config["services"]["psicoterapia"]["minutes"])
-        log.warning("FONASA_COORDINATION_ONCE status=%s",result)
-    except Exception as exc:
-        log.warning("FONASA_COORDINATION_ONCE status=failed kind=%s",type(exc).__name__)
-
-if os.environ.get("FONASA_COORDINATION_INVITE_ON_START")=="yes":
-    threading.Thread(target=_send_one_existing_fonasa_professional_invitation,daemon=True).start()
-
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 

@@ -193,87 +193,25 @@ def _notification_sender():
 
 
 def _send_notification(role,recipient,row):
-    from email.message import EmailMessage
-    from html import escape
-    import smtplib
-    from urllib.request import Request, urlopen
-    from urllib.error import HTTPError, URLError
-    sender,credential=_notification_sender()
-    if sender is None:
-        from webpay_demo_bridge import fonasa_confirmation_email, BridgeError
-        try:
-            from admin import settings
-            cfg,_=settings()
-            minutes=cfg["services"]["psicoterapia"]["minutes"]
-            state=fonasa_confirmation_email(
-                intake_id=row["id"],role=role,email=recipient,
-                patient_name=row["patient_name"],day=row["requested_date"],
-                hour=row["requested_time"],minutes=minutes,
-                patient_email=row["patient_email"])
-            if state=="SENT":
-                return
-            raise RuntimeError("mail_status_"+state[:48])
-        except BridgeError as exc:
-            # Reuse Calendar's existing invitation mechanism if Resend rejects
-            # an external recipient. The event must already be confirmed.
-            if exc.state not in ("MAIL_HTTP_403","MAIL_NOT_CONFIGURED","MAIL_UNAVAILABLE","MAIL_NETWORK_UNAVAILABLE"):
-                raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
-            from webpay_demo_bridge import fonasa_calendar_invitation
-            try:
-                state=fonasa_calendar_invitation(
-                    intake_id=row["id"],role=role,email=recipient,
-                    day=row["requested_date"],hour=row["requested_time"],
-                    minutes=minutes)
-            except BridgeError as invite_error:
-                raise RuntimeError("calendar_invite_"+invite_error.state[:48]) from None
-            if state not in ("INVITE_ACCEPTED","ALREADY_INVITED"):
-                raise RuntimeError("calendar_invite_"+state[:48])
-            return
-    name=row["patient_name"]
-    when=datetime.fromisoformat(row["requested_date"]+"T"+row["requested_time"]).replace(tzinfo=TZ)
-    friendly=when.strftime("%d/%m/%Y a las %H:%M")
-    professional=role=="professional"
-    subject=("Nueva atención Fonasa confirmada" if professional
-             else "Tu hora Fonasa está confirmada | PSC Santibáñez")
-    if professional:
-        message=("Se registró una solicitud de atención con bono Fonasa.\n"
-                 "Paciente: "+name+"\nFecha y hora: "+friendly+" (Chile)\n"
-                 "Correo para coordinación: "+row["patient_email"]+"\n"
-                 "Estado: CONFIRMADA en Google Calendar.\n"
-                 "Accede al panel privado de PSC para revisar el caso.")
-    else:
-        message=("Hola, "+name+".\nRecibimos tu solicitud de atención online para "
-                 +friendly+" (Chile).\n"
-                 "Tu sesión está CONFIRMADA en Google Calendar.\n"
-                 "Te enviaremos cualquier actualización por este medio.\n"
-                 "PSC Santibáñez · contacto@pscsantibanez.cl")
-    if sender=="resend":
-        payload={"from":"Ps. Carlos Santibáñez F. <contacto@pscsantibanez.cl>",
-                 "to":[recipient],"subject":subject,"text":message}
-        req=Request("https://api.resend.com/emails",
-            data=json.dumps(payload,ensure_ascii=False).encode(),
-            headers={"Authorization":"Bearer "+credential,
-                     "Content-Type":"application/json",
-                     "Idempotency-Key":"psc-fonasa-"+row["id"]+"-"+role+"-request-v1"},
-            method="POST")
-        try:
-            with urlopen(req,timeout=15) as response:
-                data=json.loads(response.read(2000))
-                if not data.get("id"):
-                    raise RuntimeError("mail_provider_no_ack")
-        except (HTTPError,URLError,OSError,ValueError) as exc:
-            raise RuntimeError("mail_delivery_failed_"+type(exc).__name__) from None
-    else:
-        username,password=credential
-        email=EmailMessage()
-        email["From"]=username;email["To"]=recipient;email["Subject"]=subject
-        email.set_content(message)
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com",465,timeout=15) as smtp:
-                smtp.login(username,password)
-                smtp.send_message(email)
-        except (smtplib.SMTPException,OSError) as exc:
-            raise RuntimeError("mail_delivery_failed_"+type(exc).__name__) from None
+    """Corporate email uses the same verified-event bridge and template as Webpay.
+
+    A Calendar invitation is never an acknowledgement from the email provider.
+    """
+    from webpay_demo_bridge import fonasa_confirmation_email, BridgeError
+    from admin import settings
+    cfg,_=settings()
+    minutes=cfg["services"]["psicoterapia"]["minutes"]
+    try:
+        state=fonasa_confirmation_email(
+            intake_id=row["id"],role=role,email=recipient,
+            patient_name=row["patient_name"],day=row["requested_date"],
+            hour=row["requested_time"],minutes=minutes,
+            patient_email=row["patient_email"])
+    except BridgeError as exc:
+        raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
+    if state!="SENT":
+        raise RuntimeError("mail_status_"+state[:48])
+
 
 
 def _deliver_pending_notifications(intake_id):
@@ -286,7 +224,7 @@ def _deliver_pending_notifications(intake_id):
             if not row or row["state"]!="calendar_confirmed" or not row["patient_email"]:
                 return {"state":"not_eligible"}
             email=(os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL") or
-                   "contacto@pscsantibanez.cl") if role=="professional" else row["patient_email"]
+                   "santibanezf.carlos@gmail.com") if role=="professional" else row["patient_email"]
             if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",email):
                 outcome[role]="invalid_recipient";continue
             con.execute("""INSERT OR IGNORE INTO fonasa_notifications
