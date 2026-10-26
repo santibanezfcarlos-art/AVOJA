@@ -181,15 +181,9 @@ def _admin_item(row):
 
 
 def _notification_sender():
-    """Only use explicitly configured server-side mail credentials."""
-    resend=(os.environ.get("PSICOLOGIA_FONASA_RESEND_API_KEY") or
-            os.environ.get("RESEND_API_KEY") or "").strip()
-    if len(resend)>=24:
-        return "resend",resend
-    # Do not use a personal Gmail SMTP identity: all outgoing emails must
-    # originate from the PSC corporate address, never a patient's or owner's
-    # personal mailbox. The signed Webpay mail bridge is preferred below.
-    return None,None
+    """Report the shared PSC bridge rather than unused local mail credentials."""
+    from webpay_demo_bridge import enabled
+    return ("psc_webpay_bridge", None) if enabled() else (None, None)
 
 
 def _send_notification(role,recipient,row):
