@@ -50,6 +50,12 @@ def _schema(con):
     columns={row["name"] for row in con.execute("PRAGMA table_info(fonasa_intake)").fetchall()}
     if "check_detail" not in columns:
         con.execute("ALTER TABLE fonasa_intake ADD COLUMN check_detail TEXT")
+    if "calendar_event_id" not in columns:
+        con.execute("ALTER TABLE fonasa_intake ADD COLUMN calendar_event_id TEXT")
+    if "meet_url" not in columns:
+        con.execute("ALTER TABLE fonasa_intake ADD COLUMN meet_url TEXT")
+    if "calendar_error" not in columns:
+        con.execute("ALTER TABLE fonasa_intake ADD COLUMN calendar_error TEXT")
 
 def _lookup_reason(remote):
     state=remote.get("state","")
@@ -169,7 +175,9 @@ def _admin_item(row):
             "patient_name":row["patient_name"],"emitted":row["emitted"],
             "state":row["state"],"date":row["requested_date"],
             "time":row["requested_time"],"email":row["patient_email"],
-            "created_at":row["created_at"],"check_detail":row["check_detail"]}
+            "created_at":row["created_at"],"check_detail":row["check_detail"],
+            "calendar_event_id":row["calendar_event_id"],"meet_url":row["meet_url"],
+            "calendar_error":row["calendar_error"]}
 
 
 def _notification_sender():
@@ -252,7 +260,7 @@ def _deliver_pending_notifications(intake_id):
         with billing.db() as con:
             _schema(con)
             row=_record(con,intake_id)
-            if not row or row["state"]!="appointment_requested" or not row["patient_email"]:
+            if not row or row["state"]!="calendar_confirmed" or not row["patient_email"]:
                 return {"state":"not_eligible"}
             email=(os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL") or
                    "contacto@pscsantibanez.cl") if role=="professional" else row["patient_email"]
@@ -313,7 +321,7 @@ def coordination_mail_drafts(id):
         row=_record(con,id)
         if not row:
             return jsonify(error="Solicitud no encontrada."),404
-        if row["state"]!="appointment_requested" or not row["patient_email"]:
+        if row["state"]!="calendar_confirmed" or not row["patient_email"]:
             return jsonify(error="No hay una solicitud de hora registrada."),409
         recipient=row["patient_email"]
         coordinator=(os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL")
@@ -337,14 +345,65 @@ def coordination_mail_drafts(id):
         status="draft_only_not_sent")
 
 
+def _confirm_fonasa_calendar(intake_id):
+    """Reconcile a real Fonasa booking using the same Google identity as Webpay.
+
+    No Transbank outcome is synthesized. The pilot uses a deterministic event
+    ID so retrying after a lost response cannot create a second event.
+    """
+    from webpay_demo_bridge import confirm_fonasa_booking, BridgeError
+    with billing.db() as con:
+        row=_record(con,intake_id)
+        if not row or row["state"] not in ("calendar_pending","appointment_requested","calendar_confirmed"):
+            return {"state":"not_eligible"}
+        if row["state"]=="calendar_confirmed":
+            return {"state":"calendar_confirmed","meet_url":row["meet_url"]}
+        starts=row["requested_date"]
+        clock=row["requested_time"]
+        name=row["patient_name"]
+        from admin import settings
+        cfg,_=settings()
+        minutes=cfg["services"]["psicoterapia"]["minutes"]
+    try:
+        result=confirm_fonasa_booking(intake_id=intake_id,day=starts,hour=clock,
+                                      patient_name=name,minutes=minutes)
+    except BridgeError as exc:
+        with billing.db() as con:
+            con.execute("""UPDATE fonasa_intake SET state='calendar_pending',
+                calendar_error=?,updated_at=? WHERE id=? AND state IN ('calendar_pending','appointment_requested')""",
+                (exc.state[:70],_utc(),intake_id))
+        return {"state":"calendar_pending","reason":exc.state}
+    with billing.db() as con:
+        con.execute("""UPDATE fonasa_intake SET state='calendar_confirmed',
+            calendar_event_id=?,meet_url=?,calendar_error=NULL,updated_at=?
+            WHERE id=? AND state IN ('calendar_pending','appointment_requested')""",
+            (result["event_id"],result["meet_url"],_utc(),intake_id))
+    return {"state":"calendar_confirmed","meet_url":result["meet_url"]}
+
+
+@bp.post("/admin/fonasa/confirm/<id>")
+@billing.private
+def reconcile_fonasa_booking(id):
+    """Admin-only retry for prior or in-flight Fonasa appointment requests."""
+    with billing.db() as con:
+        row=_record(con,id)
+        if not row:return jsonify(error="Solicitud no encontrada."),404
+        if row["state"] not in ("appointment_requested","calendar_pending","calendar_confirmed"):
+            return jsonify(error="El bono aún no tiene solicitud de hora."),409
+    result=_confirm_fonasa_calendar(id)
+    if result["state"]=="calendar_confirmed":
+        result["notifications"]=_deliver_pending_notifications(id)
+    return jsonify(result)
+
+
 @bp.post("/admin/fonasa/notify/<id>")
 @billing.private
 def notify_saved_request(id):
     with billing.db() as con:
         row=_record(con,id)
         if not row:return jsonify(error="Solicitud no encontrada."),404
-        if row["state"]!="appointment_requested":
-            return jsonify(error="Todavía no hay solicitud de hora."),409
+        if row["state"]!="calendar_confirmed":
+            return jsonify(error="La cita todavía no está confirmada en Google Calendar."),409
     return jsonify(notifications=_deliver_pending_notifications(id))
 
 
@@ -448,7 +507,7 @@ def _by_token(con,token):
     row=con.execute("SELECT * FROM fonasa_intake WHERE token_hash=?",(digest,)).fetchone()
     if not row or not row["token_expiry"] or row["token_expiry"]<int(time.time()):
         return None
-    if row["state"] not in ("link_issued","appointment_requested"):return None
+    if row["state"] not in ("link_issued","appointment_requested","calendar_pending","calendar_confirmed"):return None
     return row
 
 @bp.get("/api/fonasa/book/<token>")
@@ -459,6 +518,7 @@ def booking_info(token):
     return jsonify(name=row["patient_name"],state=row["state"],
                    booked_date=row["requested_date"],booked_time=row["requested_time"],
                    service="Psicoterapia individual online",duration=45,
+                   meet_url=row["meet_url"] if row["state"]=="calendar_confirmed" else None,
                    timezone="America/Santiago")
 
 class AvailabilityUnavailable(RuntimeError):
@@ -494,7 +554,7 @@ def _slots(con,row,days=20,with_schedule=False):
             raise AvailabilityUnavailable("booking_bridge_unavailable") from None
     # Pending requests in this module block the same period.
     others=con.execute("""SELECT requested_date,requested_time
-         FROM fonasa_intake WHERE state='appointment_requested'
+         FROM fonasa_intake WHERE state IN ('appointment_requested','calendar_pending','calendar_confirmed')
          AND requested_date>=? AND requested_date<=?""",
          (today.isoformat(),last.isoformat())).fetchall()
     from datetime import datetime as DT
@@ -543,7 +603,7 @@ def booking_availability(token):
     with billing.db() as con:
         _schema(con);row=_by_token(con,token)
         if not row:return jsonify(error="Enlace inválido o vencido."),404
-        if row["state"]=="appointment_requested":
+        if row["state"] in ("appointment_requested","calendar_pending","calendar_confirmed"):
             return jsonify(available={},already_requested=True)
         try:
             view=_slots(con,row,with_schedule=True)
@@ -594,13 +654,18 @@ def request_booking(token):
                 return jsonify(error="Ese horario acaba de ocuparse."),409
         if len(existing)>=3:
             return jsonify(error="Ya no hay cupos para esa fecha."),409
-        con.execute("""UPDATE fonasa_intake SET state='appointment_requested',
+        con.execute("""UPDATE fonasa_intake SET state='calendar_pending',
             requested_date=?,requested_time=?,patient_email=?,updated_at=?
             WHERE id=? AND state='link_issued'""",(day,hour,email.strip().lower(),_utc(),row["id"]))
-    notifications=_deliver_pending_notifications(row["id"])
-    return jsonify(ok=True,status="appointment_requested",
-        message="Recibimos tu solicitud de hora. Está pendiente de confirmación en Google Calendar.",
-        date=day,time=hour,notifications=notifications),201
+    outcome=_confirm_fonasa_calendar(row["id"])
+    if outcome.get("state")=="calendar_confirmed":
+        notices=_deliver_pending_notifications(row["id"])
+        return jsonify(ok=True,status="calendar_confirmed",
+           message="Reserva confirmada en Google Calendar.",
+           meet_url=outcome.get("meet_url"),notifications=notices,date=day,time=hour),201
+    return jsonify(ok=True,status="calendar_pending",
+        message="Recibimos tu solicitud. La confirmación en Google Calendar está pendiente.",
+        date=day,time=hour),202
 
 @bp.get("/admin/fonasa")
 @billing.private
