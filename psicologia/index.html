@@ -588,35 +588,35 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 
 
 <div id="appPage" hidden><div class="app-crumb"><a href="#inicio">Inicio</a><span aria-hidden="true">/</span><span id="appBread">Reserva tu hora</span></div>
-<div class="app-head"><div><div class="eyebrow">Agenda de servicios online</div><h1>Elige tu día y horario</h1><p class="sub">Selecciona el servicio y una hora disponible. Esta agenda permite ensayar la reserva y el pago con Transbank, sin cobros reales ni atención a pacientes.</p></div><span class="app-trial">● Vista de prueba — sin pagos reales</span></div>
+<div class="app-head"><div><div class="eyebrow">Agenda de servicios online</div><h1>Elige tu día y horario</h1><p class="sub">Selecciona el servicio y una hora disponible. Reserva tu atención online y confirma tu horario pagando con Transbank.</p></div><span class="app-trial">● Reserva online con pago seguro</span></div>
 <section id="fonasaBookingEntry" class="booking-service-picker" aria-label="Atención con bono Fonasa" hidden><div><h2 style="margin:0 0 8px">¿Tienes un bono Fonasa?</h2><p>Carga tu bono, valídalo y continúa a la agenda cuando esté activado.</p></div><a class="primary" href="fonasa.html" style="display:inline-block;text-decoration:none;text-align:center">Agendar con bono Fonasa →</a></section>
 <section class="booking-service-picker" aria-label="Seleccionar tipo de atención"><div><label for="bookingServiceSelect">¿Qué servicio quieres agendar?</label><p>Elige la prestación para consultar sus horarios y valores.</p></div><div class="service-picker-control"><select id="bookingServiceSelect" name="servicio"><option value="psicoterapia">Psicoterapia breve · 45 min · $30.000</option><option value="empleabilidad">Asesoría en empleabilidad · 90 min · $45.000</option><option value="competencias">Desarrollo de competencias · 45 min · $30.000</option></select></div></section>
 <div class="layout" id="patientView"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note" id="calendarSyncStatus" role="status">Consultando Google Calendar…</p><p class="note" id="durationNotice">Horario permitido: 09:00–20:00, hora de Chile.</p><p class="note">La disponibilidad se consulta en Google Calendar. Una compra de prueba aprobada puede generar un evento identificado como PRUEBA TÉCNICA; no representa una atención real.</p></section>
 <aside class="card"><div class="kicker">Paso 1 de 2 · Seleccionar horario</div><h2 id="summaryTitle" style="margin-top:8px">Tu sesión online</h2><div class="feature"><span class="check">✓</span><span id="summaryDescription">Atención online según el servicio que elijas.</span></div><div class="feature"><span class="check">✓</span><span>Máximo de 3 atenciones confirmadas por día.</span></div><hr class="rule"><div class="detail"><span>Servicio</span><strong id="summaryService">Psicoterapia breve</strong></div><div class="detail"><span>Duración</span><strong id="summaryDuration">45 minutos</strong></div><div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div><div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div><div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div><div class="price"><span>Valor del servicio</span><strong id="priceAmount">$30.000</strong></div><div class="hold" id="hold" hidden></div>
 <div class="card" style="margin:18px 0 12px;padding:16px;border-radius:12px;background:#f7faf7">
- <h3>Pago simulado · Webpay (demostración)</h3><div id="webpayDemoResult" role="status" aria-live="polite" hidden style="padding:14px;border:1px solid #b9d7c4;border-radius:12px;background:#edf6ee;margin:12px 0"></div>
- <p class="small" id="webpayNotice" role="status" style="margin:8px 0 14px">Conexión con Transbank en preparación. No se realizan cargos.</p>
- <form id="webpayForm" autocomplete="on" method="post" action="https://psicologia-carlos-calendar-api.onrender.com/api/webpay-demo/start"><input type="hidden" id="webpayTestService" name="service" value="psicoterapia"><input type="hidden" id="webpayTestDate" name="date"><input type="hidden" id="webpayTestTime" name="time">
+ <h3>Pago seguro · Webpay Plus</h3><div id="webpayDemoResult" role="status" aria-live="polite" hidden style="padding:14px;border:1px solid #b9d7c4;border-radius:12px;background:#edf6ee;margin:12px 0"></div>
+ <p class="small" id="webpayNotice" role="status" style="margin:8px 0 14px">Paga tu sesión con tarjeta de débito, crédito o prepago mediante Transbank.</p>
+ <form id="webpayForm" autocomplete="on" method="post" action="https://psicologia-carlos-calendar-api.onrender.com/api/webpay/start"><input type="hidden" id="webpayTestService" name="service" value="psicoterapia"><input type="hidden" id="webpayTestDate" name="date"><input type="hidden" id="webpayTestTime" name="time">
   <fieldset class="billing-fields" id="billingDetails" tabindex="-1"><legend>Datos para tu boleta</legend>
-  <p class="small">Completa los datos del receptor. Se guardarán con la compra en un historial privado para preparar la boleta. En esta demostración utiliza datos ficticios.</p>
+  <p class="small">Completa los datos del receptor. Se guardarán con la compra en un historial privado para preparar la boleta. Ingresa tus datos reales para la reserva y la boleta.</p>
   <input type="hidden" name="billing_required" value="1">
   <label for="payerName">Nombre completo del receptor</label><input id="payerName" name="billing_name" autocomplete="name" minlength="2" maxlength="120" required placeholder="Nombre y apellido">
   <label for="payerRut">RUT receptor</label><input id="payerRut" name="billing_rut" required maxlength="12" placeholder="12.345.678-9">
   <label for="payerAddress">Dirección del receptor</label><input id="payerAddress" name="billing_address" autocomplete="street-address" minlength="5" maxlength="200" required placeholder="Calle, número, comuna y ciudad">
-  <label for="payerEmail">E-mail del receptor</label><input id="payerEmail" name="billing_email" type="email" autocomplete="email" maxlength="254" required placeholder="cliente@ejemplo.cl" aria-describedby="testEmailHint"><p id="testEmailHint" class="small">Puedes probar con cualquier correo válido al que tengas acceso o permiso para enviar esta confirmación. El correo de prueba del cliente llegará aquí; el aviso profesional llegará al correo del psicólogo.</p><label style="display:block;margin:10px 0;font-weight:normal"><input name="test_email_ownership" value="1" required type="checkbox"> Confirmo que puedo recibir correos en esta dirección o cuento con autorización para utilizarla en esta prueba.</label>
+  <label for="payerEmail">E-mail del receptor</label><input id="payerEmail" name="billing_email" type="email" autocomplete="email" maxlength="254" required placeholder="cliente@ejemplo.cl" aria-describedby="testEmailHint"><p id="testEmailHint" class="small">Enviaremos a esta dirección la confirmación de tu reserva y el enlace de Google Meet.</p><label style="display:block;margin:10px 0;font-weight:normal"><input name="test_email_ownership" value="1" required type="checkbox"> Confirmo que puedo recibir la confirmación de reserva en esta dirección.</label>
   <label for="payerPhone">Teléfono del receptor</label><input id="payerPhone" name="billing_phone" type="tel" autocomplete="tel" minlength="8" maxlength="20" required placeholder="+56 9 1234 5678">
   <label for="billingDetail">Detalle de la prestación</label><input id="billingDetail" readonly value="Sesión de psicoterapia breve online">
   <p class="small">Boleta electrónica no afecta o exenta de IVA de la E.I.R.L. El detalle se completa según el servicio seleccionado.</p>
   </fieldset>
   <p id="billingReadiness" class="small" role="status">Verificando el guardado de datos…</p>
 <label style="display:block;margin:12px 0;line-height:1.55"><input id="bookingPolicyAccepted" name="booking_policy_accepted" value="1" required type="checkbox"> He leído y acepto la <a href="#preguntas" id="bookingPolicyLink">política de reservas y reprogramaciones</a>: no hay cancelaciones voluntarias ordinarias; se permite una única reprogramación solicitada con al menos 24 horas de anticipación, sujeta a disponibilidad. Los cambios solicitados para el mismo día requieren justificativo médico, sin perjuicio de los derechos legales aplicables.</label>
-<label style="display:block;margin:10px 0"><input required type="checkbox"> Entiendo que esta compra es una simulación sin cobro real.</label>
-<button class="primary" id="webpayPay" type="submit">Simular pago con Webpay Plus</button>
+<label style="display:block;margin:10px 0"><input required type="checkbox"> Entiendo que pagaré el valor indicado para confirmar mi sesión online.</label>
+<button class="primary" id="webpayPay" type="submit">Pagar sesión con Webpay Plus</button>
  </form>
- <p class="small" style="margin-top:10px">Al pulsar el botón, irás directamente a Webpay Plus de Transbank para utilizar una tarjeta de prueba. Sin dinero, reservas ni boletas reales.</p>
+ <p class="small" style="margin-top:10px">Al pulsar el botón, irás a Webpay Plus de Transbank para completar el pago real con tu tarjeta.</p>
 </div>
-<button type="button" class="primary" id="confirm" disabled style="display:none">Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">Prueba de integración: el pago aprobado se verifica en el servidor y solo se confirma la hora si se crea el evento de prueba en Google Calendar. Si se rechaza o cancela, se libera. Sin cobros ni boletas reales.</p></aside></div>
-<p class="app-bottom-note">Versión de prueba: agenda, cupos y modificaciones guardados únicamente en este navegador. No ingresar datos de pacientes.</p><button type="button" class="reset" id="clear">Eliminar reservas de prueba</button></div>
+<button type="button" class="primary" id="confirm" disabled style="display:none">Simular reserva (solo pruebas)</button><button type="button" class="reset" id="cancel" hidden>Cancelar selección</button><div class="msg" id="message" hidden role="status"></div><p class="foot">El servidor verifica el pago con Transbank y confirma tu sesión en Google Calendar. Recibirás los detalles por correo. Si el pago se rechaza o se cancela antes de completarlo, la selección temporal se libera.</p></aside></div>
+<p class="app-bottom-note">Tu reserva se confirma cuando Transbank aprueba el pago y el servidor registra la sesión en Google Calendar.</p><button hidden type="button" class="reset" id="clear">Eliminar reservas de prueba</button></div>
 </main>
 
 <footer class="site-footer"><div class="footer-inner"><div><div class="footer-label">Carlos Santibáñez · Psicología</div><p>Atención psicológica online para personas adultas · Prototipo de desarrollo</p></div><nav class="footer-links" aria-label="Enlaces de pie de página"><a href="#inicio">Inicio</a><a href="#agenda">Agendar una hora</a><a href="https://psicologia-carlos-calendar-api.onrender.com/admin">Administración</a></nav></div></footer>
@@ -661,7 +661,7 @@ function paymentStatus(text){const el=document.getElementById('webpayNotice');if
 function checkWebpayConfig(){
  // Solo se usa el ambiente de integración del proveedor: no hay cobros ni reservas reales.
  realPaymentsEnabled=false;
- paymentStatus('WEBPAY PLUS · Ambiente oficial de integración. Solo tarjetas de prueba; sin cobros reales.');
+ paymentStatus('WEBPAY PLUS · Pago real y seguro con tarjeta de débito o crédito.');
  const b=document.getElementById('webpayPay');if(b)b.disabled=!hold||paymentBusy||cannotCheck();
 }
 let calendarState='loading',calendarBlocked={},calendarBlockedShort={},calendarSeq=0,calendarRetry=null;
@@ -784,7 +784,7 @@ function render(){
  $('webpayPay').disabled=!hold||paymentBusy||cannotCheck();
  $('cancel').hidden=!hold;tick();
 }
-function tick(){if(!hold){$('hold').hidden=true;return}const remaining=hold.expires-Date.now();if(remaining<=0){hold=null;render();message('La selección de prueba expiró. Elige otra hora.');return}const m=Math.floor(remaining/60000),s=Math.floor(remaining%60000/1000);$('hold').hidden=false;$('hold').textContent='Selección temporal: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' restantes. Solo en este navegador.'}
+function tick(){if(!hold){$('hold').hidden=true;return}const remaining=hold.expires-Date.now();if(remaining<=0){hold=null;render();message('La selección temporal expiró. Elige otra hora.');return}const m=Math.floor(remaining/60000),s=Math.floor(remaining%60000/1000);$('hold').hidden=false;$('hold').textContent='Selección temporal: '+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' restantes. Completa el pago para confirmar tu reserva.'}
 function renderAdmin(){}
 $('prev').onclick=()=>{if(start>monday(todayISO())){start=plus(start,-7);chosen=start<todayISO()?todayISO():start;hold=null;clearMessage();loadCalendar()}};
 $('next').onclick=()=>{start=plus(start,7);chosen=start;hold=null;clearMessage();loadCalendar()};
@@ -894,8 +894,9 @@ $('webpayForm').addEventListener('submit',async (ev)=>{
  $('webpayTestTime').value=hold.time;
  sessionStorage.setItem(DEMO_PENDING_KEY,JSON.stringify({service:selectedService,date:hold.date,time:hold.time,until:Date.now()+3600000}));
  paymentBusy=true;
- paymentStatus('Conectando al formulario oficial de Webpay Plus (ambiente de integración)…');
+ paymentStatus('Conectando al formulario seguro de Transbank…');
  $('webpayPay').disabled=true;
+ let paymentId=$('webpayForm').querySelector('[name=payment_request_id]');if(!paymentId){paymentId=document.createElement('input');paymentId.type='hidden';paymentId.name='payment_request_id';paymentId.value=crypto.randomUUID();$('webpayForm').append(paymentId)}
  $('webpayForm').submit();
 });
 setInterval(()=>{if(hold)tick()},1000);

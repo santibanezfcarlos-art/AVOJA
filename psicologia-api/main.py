@@ -183,7 +183,7 @@ def health():
     from billing import configured as billing_ready
     return jsonify(status="ok", calendar_configured=bool(url), calendar_url_format_valid=valid_calendar_url(url),
                    webpay_demo_bridge_ready=checkout_bridge_ready(), billing_storage_ready=billing_ready(),
-                   payments_simulated_only=True)
+                   payments_simulated_only=not __import__('production_checkout').enabled())
 
 
 @app.get("/api/availability")
@@ -234,6 +234,11 @@ def availability():
             return jsonify(status="refreshing",
                 error="Verificando las reservas recientes. Reintenta en unos segundos."),503
 
+    from production_checkout import busy_intervals as production_busy
+    from billing import configured as production_storage_ready
+    if production_storage_ready():
+        try:intervals=list(intervals)+production_busy(first,last)
+        except Exception:return jsonify(error='No se pudo verificar la agenda de reservas.'),503
     blocked = {}
     day = first
     while day <= last:
@@ -260,6 +265,8 @@ from webpay_demo import webpay_demo_bp
 app.register_blueprint(webpay_demo_bp)
 from webpay_validation import bp as webpay_validation_bp
 app.register_blueprint(webpay_validation_bp)
+from production_checkout import bp as production_checkout_bp
+app.register_blueprint(production_checkout_bp)
 from billing import billing_bp
 app.register_blueprint(billing_bp)
 from sii_jobs import bp as sii_jobs_bp
