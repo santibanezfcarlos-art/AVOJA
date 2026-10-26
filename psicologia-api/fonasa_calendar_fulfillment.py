@@ -141,22 +141,19 @@ def send_fonasa_confirmation():
     if (os.environ.get("PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED")!="true"
        or len(api_key)<24):
         return jsonify(state="MAIL_NOT_CONFIGURED"),503
-    brand,_,contact,website=_brand()
-    pretty=start.strftime("%d/%m/%Y a las %H:%M")
-    subject=("Nueva atención confirmada · Fonasa" if role=="professional"
-             else "Confirmación de tu atención | PSC Santibáñez")
-    content=(("Se confirmó una reserva Fonasa para "+patient+"." if role=="professional"
-              else "Hola, "+patient+". Tu hora está confirmada.")
-              +"\nFecha y hora: "+pretty+" (Chile)\nDuración: "+str(minutes)+" minutos\n"
-              +"Modalidad: Online\n")
-    if role=="professional":
-        content+="Correo de contacto del paciente: "+body.get("patient_email","")+"\n"
+    from demo_notifications import template as booking_template
     meet=writer.get_meet_link(hold_id)
-    if meet:
-        content+="Google Meet: "+meet+"\n"
-    content+="\n"+brand+"\n"+contact+"\n"+website
-    from_name="PSC Santibáñez <contacto@pscsantibanez.cl>"
-    payload={"from":from_name,"to":[recipient],"subject":subject,"text":content}
+    subject,html=booking_template(role,source,"psicoterapia",start,end,
+        patient_name=patient,meet_url=meet,demonstration=False)
+    plain=("Reserva de psicoterapia online CONFIRMADA.\\nPaciente: "+patient+
+           "\\nFecha: "+start.strftime("%d/%m/%Y")+"\\nHora Chile: "+
+           start.strftime("%H:%M")+"\\nDuración: "+str(minutes)+" minutos"+
+           ("\\nGoogle Meet: "+meet if meet else "")+
+           "\\nContacto: contacto@pscsantibanez.cl")
+    if role=="professional":
+        plain+="\\nCorreo de contacto del paciente: "+str(body.get("patient_email",""))
+    from_name="Ps. Carlos Santibáñez F. <contacto@pscsantibanez.cl>"
+    payload={"from":from_name,"to":[recipient],"subject":subject,"html":html,"text":plain}
     req=Request("https://api.resend.com/emails",method="POST",
         data=json.dumps(payload,ensure_ascii=False).encode("utf-8"),
         headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json",
