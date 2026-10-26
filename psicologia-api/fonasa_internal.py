@@ -292,8 +292,9 @@ def request_booking(token):
        or body.get("email_is_mine") is not True):
         return jsonify(error="Selecciona una hora e indica un correo propio válido."),400
     with billing.db() as con:
+        _schema(con)
         con.execute("BEGIN IMMEDIATE")
-        _schema(con);row=_by_token(con,token)
+        row=_by_token(con,token)
         if row is None:return jsonify(error="Enlace inválido o vencido."),404
         if row["state"]!="link_issued":
             return jsonify(error="Este bono ya tiene una solicitud registrada."),409
@@ -319,3 +320,11 @@ def admin_page():
 def admin_js():
     from flask import send_file
     return send_file(Path(__file__).parent/"fonasa_admin.js")
+
+@bp.after_request
+def private_cache_headers(response):
+    response.headers["Cache-Control"]="no-store, private"
+    response.headers["Referrer-Policy"]="no-referrer"
+    response.headers["X-Frame-Options"]="DENY"
+    response.headers["X-Content-Type-Options"]="nosniff"
+    return response
