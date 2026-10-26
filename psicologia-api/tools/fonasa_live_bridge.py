@@ -119,10 +119,10 @@ def _verify_activated_view(page,rut,folio):
             return diagnosis
         submenu.first.click(timeout=6500)
         diagnosis['verification_view']='deactivation_search'
-        for selector in ('#RutBeneficiario','#FolioBono','#btnBuscar'):
+        for selector in ('#BusqRutBeneficiario','#BusqFolioBono','#btnBuscar'):
             page.locator(selector).wait_for(state='visible',timeout=8000)
-        page.locator('#RutBeneficiario').fill(rut)
-        page.locator('#FolioBono').fill(folio)
+        page.locator('#BusqRutBeneficiario').fill(rut)
+        page.locator('#BusqFolioBono').fill(folio)
         page.locator('#btnBuscar').click(timeout=8000)
         limit=time.monotonic()+25
         while time.monotonic()<limit:
