@@ -33,6 +33,8 @@ def _rut(value):
 
 def _work(job_id,rut,folio):
     result={"state":"error","activate_available":False,"activated":False}
+    stage="configuration"
+    started_at=time.monotonic()
     try:
         os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
         required=("DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER",
@@ -40,6 +42,7 @@ def _work(job_id,rut,folio):
         if any(not os.environ.get(k) for k in required):
             result["state"]="configuration_missing"
             return
+        stage="start_chromium"
         with sync_playwright() as p:
             browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=11000,
                 proxy={"server":"http://"+os.environ["DECODO_PROXY_HOST"]+":"+
@@ -53,44 +56,65 @@ def _work(job_id,rut,folio):
                     route.request.resource_type in ("image","media","font") else route.continue_())
                 page=context.new_page()
                 try:
+                    stage="open_login"
                     page.goto("https://bonowebptd.fonasa.cl/login.php?v=18-06-2019_1.80",
                               wait_until="domcontentloaded",timeout=18000)
                     if urlparse(page.url).hostname!=_HOST:
                         result["state"]="origin_error";return
+                    stage="fill_login"
                     page.locator("#CodUsuario").fill(os.environ["FONASA_MLE_USER"])
                     page.locator("#Password").fill(os.environ["FONASA_MLE_PASSWORD"])
-                    page.locator('button[onclick="validafrmLogin()"]').click(timeout=6000)
+                    stage="send_login"
+                    page.locator('button[onclick="validafrmLogin()"]').click(timeout=6500)
                     menu=page.get_by_text(re.compile("Activaci[oó]n y desactivar Cuenta M[eé]dica",re.I))
-                    menu.first.wait_for(state="visible",timeout=20000)
+                    stage="wait_authenticated_menu"
+                    menu.first.wait_for(state="visible",timeout=24000)
                     if urlparse(page.url).hostname!=_HOST:
                         result["state"]="origin_error";return
-                    menu.first.click(timeout=6000)
+                    stage="open_menu"
+                    menu.first.click(timeout=6500)
                     submenu=page.get_by_text(re.compile("Activaci[oó]n Cuenta M[eé]dica",re.I))
-                    submenu.first.click(timeout=6000)
+                    stage="open_submenu"
+                    submenu.first.wait_for(state="visible",timeout=8000)
+                    submenu.first.click(timeout=6500)
+                    stage="wait_search_form"
                     for name in ("#RutBeneficiario","#FolioBono","#btnBuscar"):
                         page.locator(name).wait_for(state="visible",timeout=10000)
+                    stage="fill_search"
                     page.locator("#RutBeneficiario").fill(rut)
                     page.locator("#FolioBono").fill(folio)
+                    stage="send_search"
                     page.locator("#btnBuscar").click(timeout=8000)
+                    stage="wait_search_results"
                     result["state"]="not_found"
-                    # A table row is necessary; no result data is returned.
-                    limit=time.monotonic()+13
+                    result["stage"]=stage
+                    result["table_row_seen"]=False
+                    result["folio_row_seen"]=False
+                    result["rut_row_matched"]=False
+                    # An empty/slow page is NOT evidence of an invalid voucher.
+                    limit=time.monotonic()+25
                     while time.monotonic()<limit:
                         for row in page.locator("table:visible tr").all():
                             cells=row.locator("td").all_inner_texts()
-                            if len(cells)<2 or cells[0].strip()!=folio:
-                                continue
-                            if _rut(cells[1].strip().lstrip("0"))!=rut:
-                                continue
+                            if len(cells)<2:continue
+                            result["table_row_seen"]=True
+                            if cells[0].strip()!=folio:continue
+                            result["folio_row_seen"]=True
+                            if _rut(cells[1].strip().lstrip("0"))!=rut:continue
+                            result["rut_row_matched"]=True
                             button=row.get_by_role("button",name=re.compile(r"^\s*Activar\s*$",re.I))
                             if button.count()==1 and button.is_visible() and button.is_enabled():
                                 result={"state":"ready_to_activate","activate_available":True,
-                                        "activated":False}
+                                        "activated":False,"stage":"matched_result_row"}
                             else:
                                 result={"state":"found_without_activation_action",
-                                        "activate_available":False,"activated":False}
+                                        "activate_available":False,"activated":False,"stage":"matched_result_row"}
                             return
-                        page.wait_for_timeout(500)
+                        page.wait_for_timeout(650)
+                    if not result["folio_row_seen"]:
+                        result["state"]="result_not_confirmed"
+                    elif not result["rut_row_matched"]:
+                        result["state"]="beneficiary_mismatch"
                 finally:
                     context.close()
             finally:
@@ -98,9 +122,18 @@ def _work(job_id,rut,folio):
     except Exception as exc:
         result["state"]="lookup_error"
         result["error_class"]=type(exc).__name__
+        result["stage"]=stage
+        message=str(exc)
+        matched=re.search(r"net::ERR_[A-Z_]+",message)
+        if matched:result["network_error"]=matched.group(0)
     finally:
+        result["duration_seconds"]=round(time.monotonic()-started_at,1)
         with _lock:
             _jobs[job_id]={"created":time.monotonic(),"data":result}
+        # Only operational diagnostics: no RUTs, folios, credentials or page text.
+        print("FONASA_BRIDGE_SAFE",{"state":result.get("state"),"stage":result.get("stage",stage),
+            "error_class":result.get("error_class"),"network_error":result.get("network_error"),
+            "seconds":result["duration_seconds"]},flush=True)
 
 @bp.post("/bridge/fonasa/start")
 def start():
