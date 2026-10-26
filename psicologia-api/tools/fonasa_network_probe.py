@@ -1224,8 +1224,8 @@ def _sii_login_screen_once():
                 page=context.new_page()
                 try:
                     resp=page.goto("https://eboleta.sii.cl/emitir/",
-                        wait_until="domcontentloaded",timeout=17000)
-                    page.wait_for_timeout(1200)
+                        wait_until="commit",timeout=22000)
+                    page.wait_for_timeout(500)
                     host=urlparse(page.url).hostname
                     report["http"]=resp.status if resp else None
                     report["expected_origin"]=host in ("eboleta.sii.cl","eboletacert.sii.cl")
