@@ -1,5 +1,6 @@
 """Owner-only, fixed-price Webpay production validation purchase."""
 import hashlib
+import os
 import re
 import secrets
 import sqlite3
@@ -8,11 +9,11 @@ import billing
 from webpay_gateway import Gateway, GatewayError, GatewaySettings, validate_checkout_url
 
 bp = Blueprint('webpay_validation', __name__)
-SITE = 'https://pscsantibanez.cl'
+ADMIN_URL = os.environ.get('PSICOLOGIA_API_PUBLIC_URL', 'https://psicologia-carlos-calendar-api.onrender.com').rstrip('/') + '/admin#transbank'
 
 def _page(title, message, status=200):
     from html import escape
-    return Response('<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(title)+'</title><body style="font:16px system-ui;background:#f4f7f3;color:#173e35;padding:8vh 20px"><main style="max-width:620px;margin:auto;background:white;border-radius:18px;padding:28px"><h1>'+escape(title)+'</h1><p>'+escape(message)+'</p><a href="'+SITE+'/admin#transbank">Volver a administración</a></main></body></html>', status=status, content_type='text/html; charset=utf-8')
+    return Response('<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(title)+'</title><body style="font:16px system-ui;background:#f4f7f3;color:#173e35;padding:8vh 20px"><main style="max-width:620px;margin:auto;background:white;border-radius:18px;padding:28px"><h1>'+escape(title)+'</h1><p>'+escape(message)+'</p><a href="'+escape(ADMIN_URL, quote=True)+'">Volver a administración</a></main></body></html>', status=status, content_type='text/html; charset=utf-8')
 
 @bp.post('/admin/transbank/validation')
 @billing.private
