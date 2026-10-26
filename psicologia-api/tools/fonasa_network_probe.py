@@ -1285,3 +1285,52 @@ def _sii_entry_navigation_once():
 
 import threading as _sii_entry_threading
 _sii_entry_threading.Thread(target=_sii_entry_navigation_once,daemon=True).start()
+
+
+def _sii_proxy_comparison_once():
+    """Read-only country-routed proxy connectivity comparison, no SII login."""
+    import os,json,logging,time,re
+    from urllib.parse import urlparse
+    from playwright.sync_api import sync_playwright
+    time.sleep(11)
+    result={"status":"started","credentials_used":False,"submitted":False,"emitted":False}
+    keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER","DECODO_PROXY_PASSWORD")
+    if any(not os.environ.get(k) for k in keys):
+        result["status"]="proxy_config_missing"
+    else:
+        proxy={"server":"http://"+os.environ["DECODO_PROXY_HOST"].strip()+":"+os.environ["DECODO_PROXY_PORT"].strip(),
+               "username":os.environ["DECODO_PROXY_USER"],
+               "password":os.environ["DECODO_PROXY_PASSWORD"]}
+        try:
+            with sync_playwright() as p:
+                browser=p.chromium.launch(headless=True,args=["--no-sandbox"],proxy=proxy,timeout=14000)
+                try:
+                    context=browser.new_context(ignore_https_errors=False)
+                    for label,url in (("ip_check","https://ipinfo.io/json"),
+                                      ("sii_home","https://www.sii.cl/"),
+                                      ("sii_eboleta","https://eboleta.sii.cl/emitir/"),
+                                      ("sii_auth","https://eboletacert.sii.cl/")):
+                        pg=context.new_page()
+                        try:
+                            response=pg.goto(url,wait_until="commit",timeout=16000)
+                            result[label]={"status":"connected","http":response.status if response else None,
+                                "origin_same":urlparse(pg.url).hostname==urlparse(url).hostname}
+                            if label=="ip_check" and response and response.status==200:
+                                try:
+                                    geo=json.loads(pg.locator("body").inner_text(timeout=3000))
+                                    result[label]["country"]=geo.get("country","unknown")
+                                except Exception:pass
+                        except Exception as exc:
+                            match=re.search(r"net::ERR_[A-Z_]+",str(exc))
+                            result[label]={"status":"failed","error":match.group(0) if match else type(exc).__name__}
+                        finally:pg.close()
+                    context.close()
+                finally:browser.close()
+            result["status"]="completed"
+        except Exception as exc:
+            result["status"]="failed"
+            result["error_type"]=type(exc).__name__
+    logging.getLogger("sii_probe").warning("SII_PROXY_COMPARISON %s",json.dumps(result))
+
+import threading as _sii_proxy_comparison_threading
+_sii_proxy_comparison_threading.Thread(target=_sii_proxy_comparison_once,daemon=True).start()
