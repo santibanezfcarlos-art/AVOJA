@@ -1248,3 +1248,40 @@ def _sii_login_screen_once():
 
 import threading as _sii_login_threading
 _sii_login_threading.Thread(target=_sii_login_screen_once,daemon=True).start()
+
+
+def _sii_entry_navigation_once():
+    """Observe unauthenticated SII entry controls, never use credentials."""
+    import json,logging,time,re
+    from urllib.parse import urlparse
+    from playwright.sync_api import sync_playwright
+    time.sleep(9)
+    report={"status":"started","credentials_used":False,"submitted":False,"emitted":False}
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=12000)
+            try:
+                context=browser.new_context(ignore_https_errors=False,locale="es-CL")
+                page=context.new_page()
+                response=page.goto("https://eboleta.sii.cl/emitir/",wait_until="commit",timeout=18000)
+                page.wait_for_timeout(1900)
+                report["http"]=response.status if response else None
+                report["url_host"]=urlparse(page.url).hostname
+                report["control_labels"]=page.locator('a,button,input[type="submit"]').evaluate_all(
+                  """nodes => nodes.slice(0,70).map(n=>({
+                    kind:n.tagName.toLowerCase(),
+                    label:(n.innerText||n.value||n.getAttribute('aria-label')||'').trim().slice(0,55),
+                    host:(()=>{try{return new URL(n.getAttribute('href')||'',location.href).hostname}catch(e){return ''}})()
+                  })).filter(n=>n.label).slice(0,22)""")
+                report["inputs"]=page.locator('input').evaluate_all(
+                  """nodes => nodes.slice(0,15).map(n=>({type:n.type||'',name:n.name||'',id:n.id||''}))""")
+                report["status"]="inspected"
+                context.close()
+            finally:browser.close()
+    except Exception as exc:
+        report["status"]="failed"
+        report["error_type"]=type(exc).__name__
+    logging.getLogger("sii_probe").warning("SII_ENTRY_NAVIGATION %s",json.dumps(report))
+
+import threading as _sii_entry_threading
+_sii_entry_threading.Thread(target=_sii_entry_navigation_once,daemon=True).start()
