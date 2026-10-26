@@ -365,3 +365,40 @@ def prepare_fonasa_rebooking():
     except Exception:
         print('FONASA_REBOOKING_PREPARATION_FAILED',flush=True)
         return jsonify(state='PREPARATION_UNAVAILABLE'),503
+
+
+@bp.post('/internal/psicologia/fonasa/reset-booking')
+def reset_deleted_fonasa_booking():
+    """Release an own hold only AFTER its Calendar event was removed."""
+    body=_authorize()
+    if not body or not _enabled():
+        return jsonify(state='NOT_AUTHORIZED'),403
+    source=body.get('intake_id','')
+    if not isinstance(source,str) or not re.fullmatch(r'[A-Za-z0-9_-]{15,40}',source):
+        return jsonify(state='INVALID'),400
+    hold_id=uuid.uuid5(FONASA_OWNER,'fonasa:'+source)
+    from google_calendar_writer import CalendarHttpError
+    writer=CalendarWriter()
+    try:
+        event=writer.transport('GET',writer._calendar_path+'/'+event_id_for_hold(hold_id),{},None)
+        if event.get('status')!='cancelled':
+            return jsonify(state='CALENDAR_STILL_EXISTS'),409
+    except CalendarHttpError as exc:
+        if exc.status not in (404,410):
+            return jsonify(state='CALENDAR_UNAVAILABLE'),503
+    except CalendarIntegrationError:
+        return jsonify(state='CALENDAR_UNAVAILABLE'),503
+    from booking_holds import _database_connection
+    from fonasa_rebooking import exists
+    try:
+        with _database_connection() as conn:
+            if exists(conn):
+                registered=conn.execute('SELECT hold_id FROM psychology_fonasa_bookings WHERE source_id=%s FOR UPDATE',(source,)).fetchone()
+                if registered and str(registered['hold_id'])!=str(hold_id):
+                    return jsonify(state='BOOKING_CONFLICT'),409
+                conn.execute('UPDATE psychology_fonasa_bookings SET redeemed_at=COALESCE(redeemed_at,now()) WHERE source_id=%s',(source,))
+            conn.execute("UPDATE psychology_booking_holds SET status='CANCELLED',updated_at=now() WHERE id=%s",(hold_id,))
+        print('FONASA_DELETED_BOOKING_RELEASED',flush=True)
+        return jsonify(state='RESET')
+    except Exception:
+        return jsonify(state='RESET_UNCONFIRMED'),503
