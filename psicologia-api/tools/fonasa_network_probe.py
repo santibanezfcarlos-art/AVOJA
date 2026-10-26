@@ -740,6 +740,25 @@ def fonasa_login_inspect():
                         result["form_inputs"]=[{"type":item.get_attribute("type"),"name":item.get_attribute("name"),
                             "id":item.get_attribute("id")} for item in page.locator("input").all()[:12]]
                         return jsonify(result)
+                    # Record only status codes and resource type for same-origin XHR/fetch.
+                    network_events=[]
+                    def record_login_response(response):
+                        try:
+                            kind=response.request.resource_type
+                            if kind in ("xhr","fetch","document") and urlparse(response.url).hostname==host:
+                                network_events.append({"kind":kind,"status":response.status})
+                        except Exception:
+                            pass
+                    page.on("response",record_login_response)
+                    result["login_function"] = page.evaluate("""() => {
+                       const src = typeof validafrmLogin === 'function' ? String(validafrmLogin) : '';
+                       return {
+                         function_found: src.length > 0,
+                         mentions_grecaptcha: /grecaptcha|recaptcha/i.test(src),
+                         mentions_ajax: /ajax|XMLHttpRequest|fetch\\(/i.test(src),
+                         mentions_loading: /loading|spinner|wait|espera|cargando/i.test(src)
+                       };
+                    }""")
                     username.fill(os.environ["FONASA_MLE_USER"])
                     password.fill(os.environ["FONASA_MLE_PASSWORD"])
                     if urlparse(page.url).hostname!=host:
@@ -749,8 +768,13 @@ def fonasa_login_inspect():
                     result["login_submit"]="clicked"
                     try:page.wait_for_load_state("domcontentloaded",timeout=8000)
                     except Exception:pass
-                    page.wait_for_timeout(2200)
-                    result["captcha_visible_after_click"]=page.locator('iframe[src*="recaptcha"], .g-recaptcha').count()>0
+                    page.wait_for_timeout(8000)
+                    result["server_response_statuses"]=network_events[:15]
+                    challenge=page.locator('iframe[src*="recaptcha"], .g-recaptcha')
+                    result["captcha_elements_present"]=challenge.count()
+                    result["captcha_actually_visible"]=any(el.is_visible() for el in challenge.all())
+                    result["loading_indicator_visible"]=page.locator(
+                        ".spinner:visible, .loading:visible, [class*='loading']:visible, [id*='loading']:visible").count()>0
                     try:
                         raw_text=page.locator("body").inner_text(timeout=2000).lower()
                         result["possible_auth_error"]=any(word in raw_text for word in (
