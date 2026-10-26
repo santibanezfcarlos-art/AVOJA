@@ -38,7 +38,44 @@ CREATE TABLE IF NOT EXISTS fonasa_intake (
 CREATE INDEX IF NOT EXISTS fonasa_intake_state ON fonasa_intake(state);
 """
 
-def _schema(con):con.executescript(SCHEMA)
+def _schema(con):
+    con.executescript(SCHEMA)
+    columns={row["name"] for row in con.execute("PRAGMA table_info(fonasa_intake)").fetchall()}
+    if "check_detail" not in columns:
+        con.execute("ALTER TABLE fonasa_intake ADD COLUMN check_detail TEXT")
+
+def _lookup_reason(remote):
+    state=remote.get("state","")
+    stage=remote.get("stage","")
+    if state=="configuration_missing":
+        return "Faltan credenciales o configuración del proxy en el servidor."
+    if state=="lookup_error":
+        label={
+            "start_chromium":"No pudo iniciarse el navegador remoto.",
+            "open_login":"No se pudo abrir el portal de Fonasa.",
+            "fill_login":"No se pudieron completar las credenciales.",
+            "send_login":"El ingreso al portal no respondió.",
+            "wait_authenticated_menu":"No apareció el menú después del inicio de sesión.",
+            "open_menu":"No pudo abrirse el menú de Fonasa.",
+            "open_submenu":"No apareció el submenú de activación.",
+            "wait_search_form":"No cargó el formulario de búsqueda.",
+            "fill_search":"No pudieron completarse el RUT y el folio.",
+            "send_search":"El botón Buscar no respondió.",
+            "wait_search_results":"No terminó de cargar el resultado de búsqueda."
+        }.get(stage,"Fonasa no completó la consulta.")
+        return label+" ("+str(remote.get("error_class","error"))[:35]+")"
+    if state=="result_not_confirmed":
+        return "Fonasa no mostró una fila coincidente antes de agotarse el tiempo de espera."
+    if state=="beneficiary_mismatch":
+        return "El folio apareció, pero el RUT mostrado no coincidió con el beneficiario."
+    if state=="found_without_activation_action":
+        return "El bono apareció, pero el botón Activar no estaba disponible."
+    if state=="not_found":
+        return "No se encontró el bono en la respuesta de Fonasa."
+    if state=="origin_error":
+        return "Fonasa redirigió a un sitio inesperado."
+    return "La consulta no pudo confirmarse; el PDF sigue registrado."
+
 def _utc():return datetime.now(TZ).isoformat(timespec="seconds")
 def _record(con,id):
     _schema(con)
@@ -125,7 +162,7 @@ def _admin_item(row):
             "patient_name":row["patient_name"],"emitted":row["emitted"],
             "state":row["state"],"date":row["requested_date"],
             "time":row["requested_time"],"email":row["patient_email"],
-            "created_at":row["created_at"]}
+            "created_at":row["created_at"],"check_detail":row["check_detail"]}
 
 @bp.post("/admin/fonasa/upload")
 @billing.private
@@ -169,7 +206,7 @@ def start_lookup(id):
         except RuntimeError as exc:return jsonify(error=str(exc)),503
         if result.get("state")!="running" or not isinstance(result.get("job_id"),str):
             return jsonify(error="El servicio de consulta no aceptó el trabajo."),503
-        con.execute("UPDATE fonasa_intake SET state='checking',worker_job=?,updated_at=? WHERE id=?",
+        con.execute("UPDATE fonasa_intake SET state='checking',worker_job=?,check_detail=NULL,updated_at=? WHERE id=?",
                     (result["job_id"],_utc(),id))
     return jsonify(state="checking",id=id),202
 
@@ -180,18 +217,29 @@ def lookup_status(id):
         row=_record(con,id)
         if not row:return jsonify(error="Bono no encontrado."),404
         state=row["state"]
+        detail=row["check_detail"]
         if state=="checking":
             try:remote=_call_worker("/bridge/fonasa/status/"+row["worker_job"])
-            except RuntimeError as exc:return jsonify(error=str(exc),state="checking"),503
-            if remote.get("state")=="ready_to_activate" and remote.get("activate_available") is True:
-                state="ready_to_activate"
-            elif remote.get("state")!="running":
+            except RuntimeError as exc:
+                # A cold restart can discard jobs kept only in worker memory.
+                # After a bounded time, unlock a safe manual retry.
+                age=(datetime.now(TZ)-datetime.fromisoformat(row["updated_at"])).total_seconds()
+                if age<150:
+                    return jsonify(error=str(exc),state="checking"),503
                 state="check_failed"
+                detail="La consulta expiró o se reinició el servicio. Puedes volver a intentarla."
+            else:
+                if remote.get("state")=="ready_to_activate" and remote.get("activate_available") is True:
+                    state="ready_to_activate"
+                    detail=None
+                elif remote.get("state")!="running":
+                    state="check_failed"
+                    detail=_lookup_reason(remote)
             if state!=row["state"]:
-                con.execute("UPDATE fonasa_intake SET state=?,updated_at=? WHERE id=?",
-                           (state,_utc(),id))
+                con.execute("UPDATE fonasa_intake SET state=?,check_detail=?,updated_at=? WHERE id=?",
+                           (state,detail,_utc(),id))
     return jsonify(id=id,state=state,activate_available=state=="ready_to_activate",
-                   activated=False)
+                   activated=False,reason=detail)
 
 @bp.post("/admin/fonasa/link/<id>")
 @billing.private
