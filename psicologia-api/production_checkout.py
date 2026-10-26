@@ -70,7 +70,10 @@ def claim(c,start,end,exclude='',busy=()):
     if len(daily)>=3 or any(start<datetime.fromisoformat(r['ends_at']) and datetime.fromisoformat(r['starts_at'])<end for r in rows):raise ValueError('El horario acaba de ocuparse. Elige otro.')
 
 @bp.get('/api/webpay/config')
-def config():return jsonify(production=True,sales_enabled=enabled())
+def config():
+    try:ready=remote('health',{}).get('state')=='READY'
+    except Exception:ready=False
+    return jsonify(production=True,sales_enabled=enabled() and ready,fulfillment_ready=ready)
 
 @bp.post('/api/webpay/start')
 def start():
