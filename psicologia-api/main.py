@@ -313,7 +313,7 @@ def _recover_one_existing_fonasa_booking():
             _schema(conn)
             rows=conn.execute("""SELECT id FROM fonasa_intake
                 WHERE requested_date=? AND requested_time=?
-                AND state IN ('appointment_requested','calendar_pending')""",
+                AND state IN ('appointment_requested','calendar_pending','calendar_confirmed')""",
                 ("2026-10-30","09:00")).fetchall()
         if len(rows)!=1:
             logger.warning("FONASA_RECOVERY state=skipped match_count=%d",len(rows))
