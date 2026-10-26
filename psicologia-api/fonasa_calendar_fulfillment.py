@@ -219,6 +219,8 @@ def invite_to_verified_fonasa_booking():
         trusted={"contacto@pscsantibanez.cl"}
         professional=os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","").strip().lower()
         if professional:trusted.add(professional)
+        fonasa_pro=os.environ.get("PSICOLOGIA_FONASA_PRO_EMAIL","").strip().lower()
+        if fonasa_pro:trusted.add(fonasa_pro)
         if recipient.lower() not in trusted:
             return jsonify(state="NOT_COORDINATOR"),403
     hold_id=uuid.uuid5(FONASA_OWNER,"fonasa:"+source)
