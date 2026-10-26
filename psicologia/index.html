@@ -443,6 +443,26 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 #prestaciones .offer-card.offer-tone-forest .psc-compact-price .offer-cta:focus-visible,
 #prestaciones .offer-card.offer-tone-forest .psc-compact-price .offer-cta:active{background:#2d7150;color:#fff;border-color:#2d7150}
 #prestaciones .psc-compact-fonasa:hover,#prestaciones .psc-compact-fonasa:focus-visible{color:#194b39;text-decoration:underline;text-underline-offset:3px}
+
+/* Align corresponding service content without enlarging every card. */
+@media(min-width:981px){
+ #prestaciones .offer-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #prestaciones .offer-card{display:grid;grid-row:span 5;grid-template-rows:subgrid;row-gap:0;min-width:0}
+ #prestaciones .offer-card-top{margin-bottom:25px}
+ #prestaciones .offer-card>h3{align-self:start}
+ #prestaciones .offer-copy{flex:none;align-self:start}
+ #prestaciones .offer-facts{align-self:start}
+ #prestaciones .offer-bottom{margin-top:0}
+}
+#prestaciones .offer-bottom{display:grid;grid-template-rows:18px 48px 50px 26px 22px;row-gap:4px}
+#prestaciones .offer-bottom>.offer-caption{grid-row:1}
+#prestaciones .offer-bottom>.offer-values{grid-row:2;margin:0;align-self:center}
+#prestaciones .offer-bottom>.offer-cta{grid-row:3;align-self:stretch;box-sizing:border-box}
+#prestaciones .offer-bottom>.offer-more{grid-row:5;margin:0;align-self:end;text-align:center}
+#prestaciones .offer-bottom>.psc-compact-price{grid-row:1 / 5;display:grid;grid-template-rows:58px 50px 26px;row-gap:4px;padding:8px 12px}
+#prestaciones .offer-bottom>.psc-compact-price .offer-values{margin:0;align-self:center}
+#prestaciones .offer-bottom>.psc-compact-price .offer-cta{box-sizing:border-box;align-self:stretch}
+#prestaciones .offer-bottom>.psc-compact-price .psc-compact-fonasa{margin:0;align-self:center}
 </style>
 </head><body>
 
