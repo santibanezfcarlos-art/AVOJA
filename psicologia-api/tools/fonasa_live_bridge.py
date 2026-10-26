@@ -1,4 +1,4 @@
-"""Private asynchronous BonoWeb eligibility lookup. Never clicks Activar."""
+"""Private BonoWeb lookup and operator-requested activation of a matched voucher."""
 import hmac
 import os
 import re
@@ -31,7 +31,58 @@ def _rut(value):
     r=11-total%11
     return value if dv==("0" if r==11 else "K" if r==10 else str(r)) else None
 
-def _work(job_id,rut,folio):
+def _row_status(row):
+    """Only explicit state on the matched voucher row confirms activation."""
+    reverse=row.get_by_role("button",name=re.compile(r"^\s*Desactivar\s*$",re.I))
+    if reverse.count()==1 and reverse.is_visible() and reverse.is_enabled():return True
+    cells=[re.sub(r"\s+"," ",x).strip().casefold() for x in row.locator("td").all_inner_texts()]
+    return any(x in {"activado","activada","cuenta médica activada","bono activado"} for x in cells)
+
+
+def _activate_matched(page,row,rut,folio):
+    """A click is a request, never proof of completion."""
+    control=row.get_by_role("button",name=re.compile(r"^\s*Activar\s*$",re.I))
+    dialog_unknown=[]
+    def dialog_handler(dialog):
+        if dialog.type=="confirm" and re.search(r"\bactivar\b|\bactivaci[oó]n\b",dialog.message,re.I):
+            dialog.accept()
+        elif dialog.type=="alert" and re.search(r"activad[oa]|activaci[oó]n",dialog.message,re.I):
+            dialog.dismiss()
+        else:
+            dialog_unknown.append(True)
+            dialog.dismiss()
+    page.on("dialog",dialog_handler)
+    # Mark as dispatched before clicking: a timeout can occur after server receipt.
+    result={"state":"activation_unconfirmed","activated":False,"activation_requested":True,
+            "activate_available":False,"stage":"activation_submitted"}
+    try:
+        control.click(timeout=8000)
+        limit=time.monotonic()+12
+        while time.monotonic()<limit:
+            if dialog_unknown:return result
+            for candidate in page.locator("table:visible tr").all():
+                cells=candidate.locator("td").all_inner_texts()
+                if len(cells)<2 or cells[0].strip()!=folio or _rut(cells[1].strip().lstrip("0"))!=rut:continue
+                if _row_status(candidate):
+                    return {**result,"state":"activated","activated":True,"stage":"activation_verified"}
+            page.wait_for_timeout(500)
+        # Re-query the same voucher once; absence of Activar alone is never proof.
+        search=page.locator("#btnBuscar")
+        if search.count()==1 and search.is_visible() and search.is_enabled():
+            search.click(timeout=8000)
+            limit=time.monotonic()+15
+            while time.monotonic()<limit:
+                for candidate in page.locator("table:visible tr").all():
+                    cells=candidate.locator("td").all_inner_texts()
+                    if len(cells)>=2 and cells[0].strip()==folio and _rut(cells[1].strip().lstrip("0"))==rut and _row_status(candidate):
+                        return {**result,"state":"activated","activated":True,"stage":"activation_verified"}
+                page.wait_for_timeout(650)
+        return result
+    except Exception:
+        return result
+
+
+def _work(job_id,rut,folio,activate=False):
     result={"state":"error","activate_available":False,"activated":False}
     stage="configuration"
     started_at=time.monotonic()
@@ -103,9 +154,16 @@ def _work(job_id,rut,folio):
                             if _rut(cells[1].strip().lstrip("0"))!=rut:continue
                             result["rut_row_matched"]=True
                             button=row.get_by_role("button",name=re.compile(r"^\s*Activar\s*$",re.I))
-                            if button.count()==1 and button.is_visible() and button.is_enabled():
-                                result={"state":"ready_to_activate","activate_available":True,
-                                        "activated":False,"stage":"matched_result_row"}
+                            if _row_status(row):
+                                result={"state":"activated","activated":True,"activate_available":False,
+                                        "stage":"matched_result_row"}
+                            elif button.count()==1 and button.is_visible() and button.is_enabled():
+                                if activate:
+                                    stage="activation_submitted"
+                                    result=_activate_matched(page,row,rut,folio)
+                                else:
+                                    result={"state":"ready_to_activate","activate_available":True,
+                                            "activated":False,"stage":"matched_result_row"}
                             else:
                                 result={"state":"found_without_activation_action",
                                         "activate_available":False,"activated":False,"stage":"matched_result_row"}
@@ -137,6 +195,18 @@ def _work(job_id,rut,folio):
 
 @bp.post("/bridge/fonasa/start")
 def start():
+    return _start_job(False)
+
+
+@bp.post("/bridge/fonasa/activate")
+def activate_voucher():
+    if not _auth():return jsonify(error="unauthorized"),403
+    if os.environ.get("PSC_FONASA_ACTIVATION_ENABLED")!="true":
+        return jsonify(error="activation_disabled"),503
+    return _start_job(True)
+
+
+def _start_job(activate):
     global _last_start
     if not _auth(): return jsonify(error="unauthorized"),403
     body=request.get_json(silent=True) or {}
@@ -154,7 +224,7 @@ def start():
         _last_start=now
         job=secrets.token_urlsafe(22)
         _jobs[job]={"created":now,"data":{"state":"running","activate_available":False}}
-    threading.Thread(target=_work,args=(job,rut,folio),daemon=True).start()
+    threading.Thread(target=_work,args=(job,rut,folio,activate),daemon=True).start()
     return jsonify(job_id=job,state="running"),202
 
 @bp.get("/bridge/fonasa/status/<job>")
