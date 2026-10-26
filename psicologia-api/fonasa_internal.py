@@ -186,10 +186,9 @@ def _notification_sender():
             os.environ.get("RESEND_API_KEY") or "").strip()
     if len(resend)>=24:
         return "resend",resend
-    username=os.environ.get("PSICOLOGIA_FONASA_SMTP_USER","").strip()
-    password=os.environ.get("PSICOLOGIA_FONASA_SMTP_PASSWORD","")
-    if username and password:
-        return "smtp",(username,password)
+    # Do not use a personal Gmail SMTP identity: all outgoing emails must
+    # originate from the PSC corporate address, never a patient's or owner's
+    # personal mailbox. The signed Webpay mail bridge is preferred below.
     return None,None
 
 
@@ -249,8 +248,7 @@ def _send_notification(role,recipient,row):
                  "Te enviaremos cualquier actualización por este medio.\n"
                  "PSC Santibáñez · contacto@pscsantibanez.cl")
     if sender=="resend":
-        payload={"from":os.environ.get("PSICOLOGIA_FONASA_MAIL_FROM",
-                     "PSC Santibáñez <contacto@pscsantibanez.cl>"),
+        payload={"from":"Ps. Carlos Santibáñez F. <contacto@pscsantibanez.cl>",
                  "to":[recipient],"subject":subject,"text":message}
         req=Request("https://api.resend.com/emails",
             data=json.dumps(payload,ensure_ascii=False).encode(),
