@@ -72,7 +72,7 @@ def busy_intervals(first,last):
        headers={"Content-Type":"application/json","X-Psc-Timestamp":stamp,
                 "X-Psc-Signature":signature})
     try:
-        with urlopen(req,timeout=10) as response:
+        with urlopen(req,timeout=35) as response:
             payload=json.loads(response.read(30000).decode())
     except (HTTPError,URLError,TimeoutError,OSError,ValueError):
         raise BridgeError("BUSY_UNAVAILABLE") from None
