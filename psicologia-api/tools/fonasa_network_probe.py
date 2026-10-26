@@ -1205,3 +1205,46 @@ def _sii_direct_comparison_once():
 
 import threading as _sii_compare_threading
 _sii_compare_threading.Thread(target=_sii_direct_comparison_once,daemon=True).start()
+
+
+def _sii_login_screen_once():
+    """Inspect public SII login screen, never typing or submitting credentials."""
+    import json
+    import logging
+    import time
+    from urllib.parse import urlparse
+    from playwright.sync_api import sync_playwright
+    time.sleep(7)
+    report={"status":"started","credentials_used":False,"form_submitted":False,"emitted":False}
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=12000)
+            try:
+                context=browser.new_context(ignore_https_errors=False)
+                page=context.new_page()
+                try:
+                    resp=page.goto("https://eboleta.sii.cl/emitir/",
+                        wait_until="domcontentloaded",timeout=17000)
+                    page.wait_for_timeout(1200)
+                    host=urlparse(page.url).hostname
+                    report["http"]=resp.status if resp else None
+                    report["expected_origin"]=host in ("eboleta.sii.cl","eboletacert.sii.cl")
+                    report["authentication_screen"]=page.locator('input[type="password"]').count()>0
+                    report["rut_input_present"]=page.locator('input').count()>1
+                    report["final_host_class"]="sii" if host and host.endswith(".sii.cl") else "other"
+                    report["status"]="screen_inspected"
+                finally:
+                    page.close()
+                    context.close()
+            finally:browser.close()
+    except Exception as exc:
+        import re
+        report["status"]="failed"
+        report["error_type"]=type(exc).__name__
+        match=re.search(r"net::ERR_[A-Z_]+",str(exc))
+        if match:report["network_error"]=match.group(0)
+    logging.getLogger("sii_probe").warning("SII_LOGIN_SCREEN %s",json.dumps(report))
+
+
+import threading as _sii_login_threading
+_sii_login_threading.Thread(target=_sii_login_screen_once,daemon=True).start()
