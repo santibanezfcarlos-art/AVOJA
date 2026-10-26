@@ -90,3 +90,37 @@ def busy_intervals(first,last,include_calendar=False):
             raise BridgeError("BUSY_UNAVAILABLE")
         intervals.append((start,end))
     return intervals
+
+def confirm_fonasa_booking(*,intake_id,day,hour,patient_name,minutes):
+    """Signed Google confirmation; no Transbank payment is fabricated."""
+    if not enabled():
+        raise BridgeError("BRIDGE_DISABLED")
+    data={"intake_id":intake_id,"date":day,"time":hour,
+          "patient_name":patient_name,"minutes":minutes}
+    raw=json.dumps(data,separators=(",",":"),ensure_ascii=True,sort_keys=True).encode()
+    stamp=str(int(time.time()))
+    signature=hmac.new(os.environ[KEY_NAME].encode(),
+                       stamp.encode()+b"."+raw,hashlib.sha256).hexdigest()
+    req=Request(URL+"/internal/psicologia/fonasa/confirm",data=raw,method="POST",
+        headers={"Content-Type":"application/json","X-Psc-Timestamp":stamp,
+                 "X-Psc-Signature":signature})
+    try:
+        with urlopen(req,timeout=50) as response:
+            body=json.loads(response.read(4000).decode())
+    except HTTPError as exc:
+        try:
+            body=json.loads(exc.read(2000).decode())
+        except (ValueError,OSError):
+            raise BridgeError("CALENDAR_UNAVAILABLE") from None
+    except (URLError,TimeoutError,OSError,ValueError):
+        raise BridgeError("CALENDAR_UNAVAILABLE") from None
+    state=body.get("state")
+    if state!="CONFIRMED":
+        raise BridgeError(state if isinstance(state,str) else "CALENDAR_UNAVAILABLE")
+    event=body.get("event_id")
+    meet=body.get("meet_url")
+    if not isinstance(event,str) or len(event)>110:
+        raise BridgeError("UNVERIFIED_EVENT")
+    if meet is not None and (not isinstance(meet,str) or not meet.startswith("https://meet.google.com/")):
+        meet=None
+    return {"event_id":event,"meet_url":meet}
