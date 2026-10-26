@@ -207,7 +207,7 @@ def public_communications():
 def transbank():
     import os
     import webpay_demo as webpay
-    from webpay_gateway import Gateway, GatewayError
+    from webpay_gateway import Gateway, GatewayError, GatewaySettings, validate_checkout_url
     if request.method=='POST':
         body=request.get_json(silent=True)
         if not isinstance(body,dict) or type(body.get('paused')) is not bool:
@@ -220,7 +220,7 @@ def transbank():
     production_code=''
     validation_paid=False
     try:
-        gateway=Gateway(mode='production')
+        gateway=Gateway(GatewaySettings.from_environment(mode='production'))
         production_ready=True
         production_code=gateway.config.commerce_code
         with billing.db() as con:
