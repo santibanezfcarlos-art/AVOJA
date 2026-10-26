@@ -220,6 +220,8 @@ def rebook(token):
         start_at,end_at,_=interval(r['service'],request.form.get('date',''),request.form.get('time',''),duration=duration)
         import webpay_demo_bridge as b
         busy=b.busy_intervals(start_at.date(),start_at.date(),include_calendar=True)
+        old_end=datetime.fromisoformat(r['ends_at'])
+        busy=[(x,y) for x,y in busy if not (x==original and y==old_end)]
         if any(start_at<y and x<end_at for x,y in busy):raise ValueError('El horario está ocupado.')
         with billing.db() as c:
             c.execute('BEGIN IMMEDIATE');current=c.execute('SELECT * FROM production_payments WHERE order_id=?',(r['order_id'],)).fetchone()
