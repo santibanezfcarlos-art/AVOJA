@@ -463,6 +463,21 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 #prestaciones .offer-bottom>.psc-compact-price .offer-values{margin:0;align-self:center;transform:none}
 #prestaciones .offer-bottom>.psc-compact-price .offer-cta{box-sizing:border-box;align-self:stretch}
 #prestaciones .offer-bottom>.psc-compact-price .psc-compact-fonasa{margin:0;align-self:center}
+
+/* Center the complete group; override earlier grid and spacing rules. */
+#prestaciones .offer-card.offer-tone-forest .offer-bottom>.psc-compact-price{
+ display:flex;flex-direction:column;justify-content:center;align-items:stretch;
+ gap:10px;padding:14px 12px;min-height:0;
+}
+#prestaciones .offer-card.offer-tone-forest .offer-bottom>.psc-compact-price .offer-values{
+ flex:0 0 auto;margin:0;transform:none;align-self:stretch;
+}
+#prestaciones .offer-card.offer-tone-forest .offer-bottom>.psc-compact-price .offer-cta{
+ flex:0 0 50px;min-height:50px;margin:0;align-self:stretch;
+}
+#prestaciones .offer-card.offer-tone-forest .offer-bottom>.psc-compact-price .psc-compact-fonasa{
+ flex:0 0 auto;margin:0;align-self:stretch;
+}
 </style>
 </head><body>
 
