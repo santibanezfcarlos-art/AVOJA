@@ -69,7 +69,7 @@ async function poll(){
   }
   current.state=r.state;
   if(r.state==="ready_to_activate"){
-   note("checkStatus","Bono reconocido: Fonasa mostró el botón Activar. No se ha activado.");
+   note("checkStatus",r.activated?"Fonasa confirmó que el bono ya está activado. Ya puedes generar el enlace.":"Bono reconocido. Pulsa Activar bono en el historial antes de generar el enlace.");
    $("linkCard").hidden=!r.activated;
   }else{
    note("checkStatus","No se pudo confirmar la opción Activar. Revisa el resultado antes de generar el enlace.",true);
