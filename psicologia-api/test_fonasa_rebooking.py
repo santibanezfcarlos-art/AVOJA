@@ -61,3 +61,14 @@ class FonasaTests(unittest.TestCase):
   redeem.assert_called_once();notify.assert_called_once()
   self.assertFalse(any('INSERT INTO psychology_demo_payments' in q for q in conn.queries))
   writer.return_value.reschedule_own_appointment.assert_called_once()
+
+class PreparationTests(unittest.TestCase):
+ def test_prepare_does_not_send(self):
+  import fonasa_calendar_fulfillment as f
+  body={'intake_id':'a'*20,'role':'patient','email':'test@example.org','patient_name':'NADIA ARAVENA','date':'2026-10-30','time':'09:00','minutes':45,'prepare_only':True,'refresh_presentation':True}
+  app=Flask(__name__);app.register_blueprint(f.bp)
+  @contextmanager
+  def database():yield object()
+  with patch.dict(os.environ,{'PSICOLOGIA_PILOT_RESEND_API_KEY':'x'*40,'PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED':'true'}),patch.object(f,'_authorize',return_value=body),patch.object(f,'_enabled',return_value=True),patch.object(f,'_owns',return_value=True),patch.object(f,'CalendarWriter'),patch('booking_holds._database_connection',database),patch('fonasa_rebooking.register',return_value='a'*64),patch('fonasa_mail.send') as send:
+   response=app.test_client().post('/internal/psicologia/fonasa/rebooking-prepare',json=body)
+  self.assertEqual(response.status_code,200,response.get_json());self.assertEqual(response.get_json()['state'],'PREPARED');send.assert_not_called()

@@ -327,3 +327,12 @@ def sync_fonasa_intake(booking,event,start):
         print("FONASA_REBOOKING_INTAKE_SYNCED",flush=True)
     except Exception:
         print("FONASA_REBOOKING_INTAKE_SYNC_PENDING",flush=True)
+
+
+@bp.post('/internal/psicologia/fonasa/rebooking-prepare')
+def prepare_fonasa_rebooking():
+    """Non-sending preparation is exposed separately from mail delivery."""
+    body=_authorize()
+    if not body or body.get('prepare_only') is not True:
+        return jsonify(state='NOT_AUTHORIZED'),403
+    return send_fonasa_confirmation()
