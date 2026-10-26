@@ -176,6 +176,15 @@ def send_fonasa_confirmation():
             code=detail.get("name") or detail.get("code")
             if isinstance(code,str) and re.fullmatch(r"[a-z_]{1,50}",code):
                 provider_code=code
+            description=str(detail.get("message","")).lower()
+            if any(term in description for term in ("testing emails","can only send","only send testing","only send emails")):
+                provider_code="testing_recipient_restricted"
+            elif "verify" in description and ("domain" in description or "sender" in description):
+                provider_code="sender_domain_unverified"
+            elif "permission" in description or "not authorized" in description:
+                provider_code="permission_denied"
+            elif "quota" in description or "limit" in description:
+                provider_code="quota_restricted"
         except (ValueError,TypeError,OSError):
             pass
         print("FONASA_MAIL_PROVIDER_FAILURE status="+str(status)+" code="+provider_code,flush=True)
