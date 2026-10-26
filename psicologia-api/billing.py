@@ -30,6 +30,14 @@ SCHEMA = '''CREATE TABLE IF NOT EXISTS billing_orders (
  payment_status TEXT NOT NULL DEFAULT 'initiated',
  invoice_status TEXT NOT NULL DEFAULT 'not_applicable',
  folio TEXT, issued_date TEXT, marked_at TEXT);
+ CREATE TABLE IF NOT EXISTS webpay_validation (
+ id INTEGER PRIMARY KEY CHECK(id=1), commerce_code TEXT NOT NULL,
+ order_id TEXT UNIQUE NOT NULL, session_id TEXT NOT NULL, token_hash TEXT,
+ state TEXT NOT NULL DEFAULT 'pending', amount INTEGER NOT NULL DEFAULT 50,
+ created_at TEXT NOT NULL, paid_at TEXT);
+ CREATE TABLE IF NOT EXISTS webpay_live_settings (
+ id INTEGER PRIMARY KEY CHECK(id=1), commerce_code TEXT NOT NULL,
+ sales_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
  CREATE UNIQUE INDEX IF NOT EXISTS unique_invoice_folio
  ON billing_orders(folio) WHERE folio IS NOT NULL;
  CREATE TABLE IF NOT EXISTS billing_audit (
