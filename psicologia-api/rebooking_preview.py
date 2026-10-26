@@ -10,6 +10,15 @@ from flask import Blueprint, jsonify, request, Response
 from booking_holds import _database_connection, slot_window, _calendar_free, CATALOG, _active_windows, can_hold, TZ, HoldProblem
 from rebooking_tokens import check
 
+def _booking(conn, row, *, lock=False):
+    if row.get("source")=="fonasa":
+        from fonasa_rebooking import booking
+        return booking(conn,row["order_id"],lock=lock)
+    suffix=" FOR UPDATE OF p,h" if lock else ""
+    return conn.execute("""SELECT p.order_id,p.state,p.service,p.hold_id,p.test_recipient,p.patient_name,
+        h.slot_date,h.starts_at,h.ends_at FROM psychology_demo_payments p
+        JOIN psychology_booking_holds h ON h.id=p.hold_id WHERE p.order_id=%s"""+suffix,(row["order_id"],)).fetchone()
+
 rebooking_bp = Blueprint("rebooking_preview", __name__)
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
 
@@ -178,8 +187,7 @@ def available_hours(token):
         day_text=request.args.get("date","")
         day=date_type.fromisoformat(day_text)
         with _database_connection() as conn:
-            payment=conn.execute("SELECT service,hold_id FROM psychology_demo_payments WHERE order_id=%s",
-                                 (row["order_id"],)).fetchone()
+            payment=_booking(conn,row)
             if not payment:
                 return jsonify(message="Reserva no encontrada"),404
             rows=conn.execute("""SELECT starts_at,ends_at FROM psychology_booking_holds
@@ -211,8 +219,7 @@ def availability(token):
         if state != "eligible":
             return jsonify(message="Este enlace ya no es válido"),410
         with _database_connection() as conn:
-            payment=conn.execute("SELECT service FROM psychology_demo_payments WHERE order_id=%s",
-                                 (row["order_id"],)).fetchone()
+            payment=_booking(conn,row)
         day,start,end=slot_window(payment["service"],request.args.get("date"),request.args.get("time"))
         allowed,maximum=configured_slots(day.isoformat())
         if request.args.get("time") not in allowed:
@@ -243,12 +250,11 @@ def confirm(token):
             link=conn.execute("SELECT order_id FROM psychology_reschedule_links WHERE token_sha256=%s FOR UPDATE",
                               (digest(token),)).fetchone()
             if not link:
+                from fonasa_rebooking import lookup
+                link=lookup(conn,token,lock=True)
+            if not link:
                 return jsonify(message="Enlace inválido"),404
-            payment=conn.execute("""SELECT p.order_id,p.state,p.service,p.hold_id,
-                               h.slot_date,h.starts_at,h.ends_at
-                               FROM psychology_demo_payments p JOIN psychology_booking_holds h ON h.id=p.hold_id
-                               WHERE p.order_id=%s FOR UPDATE OF p,h""",
-                               (link["order_id"],)).fetchone()
+            payment=_booking(conn,link,lock=True)
             checked,state=check(conn,token)
             if state!="eligible" or payment["state"]!="CONFIRMED":
                 return jsonify(message="La reprogramación no está disponible."),409
@@ -284,11 +290,15 @@ def confirm(token):
                 conn.execute("""UPDATE psychology_booking_holds SET starts_at=%s,
                              ends_at=%s,slot_date=%s,updated_at=now() WHERE id=%s""",
                              (start,end,day,payment["hold_id"]))
-                conn.execute("""INSERT INTO psychology_reschedule_audit
-                             (order_id,old_starts_at,new_starts_at) VALUES (%s,%s,%s)""",
-                             (payment["order_id"],old_start,start))
-                conn.execute("UPDATE psychology_reschedule_links SET redeemed_at=now() WHERE order_id=%s",
-                             (payment["order_id"],))
+                if payment.get("source")=="fonasa":
+                    from fonasa_rebooking import redeem
+                    redeem(conn,payment["order_id"],old_start,start)
+                else:
+                    conn.execute("""INSERT INTO psychology_reschedule_audit
+                                 (order_id,old_starts_at,new_starts_at) VALUES (%s,%s,%s)""",
+                                 (payment["order_id"],old_start,start))
+                    conn.execute("UPDATE psychology_reschedule_links SET redeemed_at=now() WHERE order_id=%s",
+                                 (payment["order_id"],))
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -301,6 +311,11 @@ def confirm(token):
                     # No success or automatic second attempt is advertised.
                     raise RuntimeError("REBOOKING_RECONCILIATION_REQUIRED") from None
                 raise RuntimeError("REBOOKING_ROLLED_BACK") from None
+        if payment.get("source")=="fonasa":
+            from fonasa_calendar_fulfillment import notify_rebooked_fonasa
+            notify_rebooked_fonasa(payment,start,end)
+            return jsonify(ok=True,message="Tu nueva hora quedó confirmada.",date=day.isoformat(),
+                           time=start.strftime("%H:%M"))
         # Los correos se envían después de confirmar la transacción, nunca antes.
         try:
             from demo_notifications import send as mail_send, configured as mail_ready

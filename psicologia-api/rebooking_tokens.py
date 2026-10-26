@@ -8,6 +8,7 @@ with the booking update.
 import hashlib
 import hmac
 import os
+import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -49,7 +50,7 @@ def issue(conn, order_id):
     return token
 
 def check(conn, token, *, now=None):
-    if not isinstance(token, str) or len(token) > 128:
+    if not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token):
         return None, "invalid"
     row = conn.execute("""SELECT p.order_id,p.state,h.starts_at,l.redeemed_at,l.revoked_at,
                                   (SELECT COUNT(*) FROM psychology_reschedule_audit a
@@ -59,7 +60,8 @@ def check(conn, token, *, now=None):
                            JOIN psychology_booking_holds h ON h.id=p.hold_id
                            WHERE l.token_sha256=%s""", (digest(token),)).fetchone()
     if not row:
-        return None, "invalid"
+        from fonasa_rebooking import lookup, eligible
+        return eligible(lookup(conn,token),now=now)
     if row["state"] != "CONFIRMED" or row["revoked_at"] or row["redeemed_at"] or row["changes"]:
         return None, "used"
     now = now or datetime.now(TZ)

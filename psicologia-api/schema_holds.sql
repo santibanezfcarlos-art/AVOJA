@@ -88,3 +88,16 @@ COMMIT;
 ALTER TABLE psychology_demo_payments ADD COLUMN IF NOT EXISTS patient_name varchar(120);
 
 CREATE TABLE IF NOT EXISTS psychology_google_oauth (key text PRIMARY KEY,encrypted_refresh_token text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+
+-- Real Fonasa bookings reuse shared holds and rescheduling; no payment row.
+CREATE TABLE IF NOT EXISTS psychology_fonasa_bookings (
+ source_id varchar(40) PRIMARY KEY,
+ hold_id uuid NOT NULL UNIQUE REFERENCES psychology_booking_holds(id),
+ patient_name varchar(120) NOT NULL,
+ patient_email varchar(254) NOT NULL,
+ token_sha256 char(64) NOT NULL UNIQUE,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ redeemed_at timestamptz,
+ old_starts_at timestamptz,
+ new_starts_at timestamptz
+);

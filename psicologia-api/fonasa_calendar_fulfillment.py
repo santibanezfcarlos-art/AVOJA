@@ -7,6 +7,7 @@ import re
 import uuid
 import os
 from datetime import datetime, timedelta
+from patient_names import display_name
 from zoneinfo import ZoneInfo
 from flask import Blueprint, jsonify
 from public_demo_bridge import _authorize, _enabled
@@ -24,7 +25,7 @@ def confirm_fonasa_booking():
     source_id=body.get("intake_id","")
     date=body.get("date","")
     hour=body.get("time","")
-    patient=body.get("patient_name","")
+    patient=display_name(body.get("patient_name",""))
     if not (isinstance(source_id,str) and re.fullmatch(r"[A-Za-z0-9_-]{15,40}",source_id)
             and isinstance(date,str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}",date)
             and isinstance(hour,str) and re.fullmatch(r"(?:09|1[0-9]):(?:00|15|30|45)",hour)
@@ -61,7 +62,7 @@ def confirm_fonasa_booking():
         body={"id":event_id,
               "summary":"Atención Fonasa · "+patient,
               "visibility":"private","transparency":"opaque",
-              "description":"Reserva de psicoterapia online con bono Fonasa. Sin cobro Transbank.",
+              "description":"Reserva de psicoterapia online con bono Fonasa.",
               "start":{"dateTime":start.isoformat(),"timeZone":"America/Santiago"},
               "end":{"dateTime":end.isoformat(),"timeZone":"America/Santiago"},
               "extendedProperties":{"private":{
@@ -101,7 +102,7 @@ def send_fonasa_confirmation():
     source=body.get("intake_id","")
     role=body.get("role","")
     recipient=body.get("email","")
-    patient=body.get("patient_name","")
+    patient=display_name(body.get("patient_name",""))
     date=body.get("date","")
     hour=body.get("time","")
     minutes=body.get("minutes",45)
@@ -137,26 +138,34 @@ def send_fonasa_confirmation():
     if (os.environ.get("PSICOLOGIA_PILOT_NOTIFICATIONS_ENABLED")!="true"
        or len(api_key)<24):
         return jsonify(state="MAIL_NOT_CONFIGURED"),503
-    from demo_notifications import template as booking_template
-    meet=writer.get_meet_link(hold_id)
-    subject,html=booking_template(role,source,"psicoterapia",start,end,
-        patient_name=patient,meet_url=meet,demonstration=False)
-    plain=("Reserva de psicoterapia online CONFIRMADA.\nPaciente: "+patient+
-           "\nFecha: "+start.strftime("%d/%m/%Y")+"\nHora Chile: "+
-           start.strftime("%H:%M")+"\nDuración: "+str(minutes)+" minutos"+
-           ("\nGoogle Meet: "+meet if meet else "")+
-           "\nContacto: contacto@pscsantibanez.cl")
-    if role=="professional":
-        plain+="\nCorreo de contacto del paciente: "+str(body.get("patient_email",""))
-    from_name="Ps. Carlos Santibáñez F. <contacto@pscsantibanez.cl>"
-    payload={"from":from_name,"to":[recipient],"subject":subject,"html":html,"text":plain}
-    from demo_notifications import send_payload, NotificationError, safe_error_label
+    from demo_notifications import NotificationError, safe_error_label
+    from fonasa_mail import send as corporate_send
+    from booking_holds import _database_connection
+    from fonasa_rebooking import register
+    patient_email=recipient if role=="patient" else body.get("patient_email","")
+    if not isinstance(patient_email,str) or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",patient_email):
+        return jsonify(state="INVALID_PATIENT_EMAIL"),400
     try:
-        send_payload(payload,"psc-fonasa-"+source+"-"+role+"-confirmed-v1")
+        with _database_connection() as conn:
+            token=register(conn,source,hold_id,patient,patient_email,start,end)
+        link="https://psicologia-retenciones-piloto.onrender.com/reagendar?t="+token if role=="patient" else None
+        if body.get("prepare_only") is True:
+            if body.get("refresh_presentation") is True:
+                updated=writer.transport("PATCH",writer._calendar_path+"/"+event_id_for_hold(hold_id),
+                    {"sendUpdates":"none"},{"summary":"Atención Fonasa · "+patient,
+                     "description":"Reserva de psicoterapia online con bono Fonasa."})
+                if not _owns(updated,hold_id,start=start,end=end,service="psicoterapia"):
+                    return jsonify(state="EVENT_UNVERIFIED"),503
+            return jsonify(state="PREPARED",rebooking_url=link)
+        meet=writer.get_meet_link(hold_id)
+        corporate_send(role,source,recipient,patient,start,end,event,meet=meet,rebooking_url=link)
     except NotificationError as exc:
         print("FONASA_MAIL_PROVIDER_FAILURE "+safe_error_label(exc),flush=True)
         status=exc.http_status
         return jsonify(state="MAIL_HTTP_"+str(status) if status else "MAIL_NETWORK_UNAVAILABLE"),503
+    except Exception:
+        print("FONASA_MAIL_PREPARATION_FAILURE",flush=True)
+        return jsonify(state="MAIL_PREPARATION_UNAVAILABLE"),503
     print("FONASA_MAIL_PROVIDER_ACCEPTED role="+role,flush=True)
     return jsonify(state="SENT")
 
@@ -280,3 +289,41 @@ def mail_diagnostic():
             metadata[resource+'_unavailable']=True
     print('FONASA_MAIL_DIAGNOSTIC '+json.dumps({'probes':probes,'metadata':metadata}),flush=True)
     return jsonify(state='DIAGNOSTIC_COMPLETE',probes=probes,metadata=metadata)
+
+
+def notify_rebooked_fonasa(booking, start, end):
+    """Same shared engine, real Fonasa wording and corporate calendar copy."""
+    from fonasa_mail import send
+    try:
+        writer=CalendarWriter()
+        event=writer.transport("GET",writer._calendar_path+"/"+event_id_for_hold(booking["hold_id"]),{},None)
+        meet=writer.get_meet_link(booking["hold_id"])
+    except Exception:
+        print("FONASA_REBOOKING_MAIL_PENDING reason=calendar_read",flush=True)
+        return
+    sync_fonasa_intake(booking,event,start)
+    for role in ("patient","professional"):
+        recipient=booking["test_recipient"] if role=="patient" else "santibanezf.carlos@gmail.com"
+        try:
+            send(role,booking["order_id"],recipient,booking["patient_name"],start,end,event,meet=meet,rescheduled=True)
+            print("FONASA_REBOOKING_MAIL_ACCEPTED role="+role,flush=True)
+        except Exception:
+            print("FONASA_REBOOKING_MAIL_PENDING role="+role,flush=True)
+
+
+def sync_fonasa_intake(booking,event,start):
+    import hashlib,hmac,json,time
+    from urllib.request import Request,urlopen
+    raw=json.dumps({"intake_id":booking["order_id"],"old_start":booking["starts_at"].isoformat(),
+                    "new_start":start.isoformat(),"event_id":event["id"]},separators=(",",":")).encode()
+    stamp=str(int(time.time()))
+    signature=hmac.new(os.environ["PSICOLOGIA_DEMO_BRIDGE_KEY"].encode(),stamp.encode()+b"."+raw,hashlib.sha256).hexdigest()
+    req=Request("https://psicologia-carlos-calendar-api.onrender.com/internal/fonasa/rescheduled",data=raw,method="POST",
+                headers={"Content-Type":"application/json","X-Psc-Timestamp":stamp,"X-Psc-Signature":signature,
+                         "User-Agent":"pscsantibanez-reservas/1.0"})
+    try:
+        with urlopen(req,timeout=12) as response:
+            assert json.loads(response.read(1000)).get("state")=="SYNCED"
+        print("FONASA_REBOOKING_INTAKE_SYNCED",flush=True)
+    except Exception:
+        print("FONASA_REBOOKING_INTAKE_SYNC_PENDING",flush=True)

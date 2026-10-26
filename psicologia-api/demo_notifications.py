@@ -284,7 +284,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         "<span style='font-size:12px;color:#71867a'>"
         + ("Reserva realizada en ambiente de demostración: el pago es simulado y no se ha emitido boleta." if demonstration else "Atención confirmada con bono Fonasa.") + "</span>"
         "</p><p style='margin:14px 0 0'>"
-        + ("Adjuntamos una invitación de calendario para que puedas incorporar el horario a tu agenda." if demonstration else "La invitación de Google Calendar se envía por separado como complemento de esta confirmación.") + "</p>"
+        + ("Adjuntamos una invitación de calendario para que puedas incorporar el horario a tu agenda." if demonstration else ("La atención ya figura en tu calendario." if is_pro else "Puedes guardar tu atención usando el archivo de calendario adjunto.")) + "</p>"
         "</td></tr>"
         + rebooking_button +
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
