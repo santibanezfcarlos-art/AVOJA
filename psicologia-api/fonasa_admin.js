@@ -106,22 +106,44 @@ async function refresh(){
   container.replaceChildren();
   if(current){const updated=result.items.find(x=>x.id===current.id);if(updated){current={...current,...updated};$("linkCard").hidden=current.activation_status!=="activated"||!["ready_to_activate","link_issued"].includes(current.state)}}
   if(!result.items.length){const p=document.createElement("p");p.textContent="Aún no hay bonos cargados.";container.append(p);return}
-  const table=document.createElement("table"),tr=document.createElement("tr");
-  ["Fecha","Beneficiario","Folio","Estado","Hora solicitada","Acción"].forEach(n=>{
-   const th=document.createElement("th");th.textContent=n;tr.append(th)});
-  table.append(tr);
+  const table=document.createElement("div");table.className="history-list";
   for(const item of result.items){
-   const row=document.createElement("tr");
-   const cells=[(item.created_at||"").slice(0,10),item.patient_name,item.folio,
-      (item.activation_status==="needs_review"?"Activación por verificar":item.activation_status==="running"?"Consultando activación":item.activation_status==="activated"&&["ready_to_activate","link_issued"].includes(item.state)?"Bono activado · listo para agendar":states[item.state]||item.state),(item.date||"")+(item.time?" "+item.time:"")];
-   cells.forEach(text=>{const td=document.createElement("td");td.textContent=text||"—";row.append(td)});
-   const td=document.createElement("td"),button=document.createElement("button");
+   const row=document.createElement("article");row.className="history-item";
+   const header=document.createElement("div");header.className="history-heading";
+   const name=document.createElement("h3");name.textContent=item.patient_name;
+   const meta=document.createElement("p");meta.className="muted";
+   meta.textContent="Folio "+item.folio+" · Ingreso "+(item.created_at||"").slice(0,10);
+   header.append(name,meta);row.append(header);
+   const stages=document.createElement("ol");stages.className="bono-stages";
+   const activation=item.activation_status||"not_requested";
+   const activationLabel={activated:"Activado",running:"Verificando…",needs_review:"Por verificar",not_requested:"Pendiente"}[activation]||"Pendiente";
+   const delivery=item.link_delivery_method==="patient_screen"?"Mostrado al paciente":item.link_delivered_at?"Envío confirmado":item.link_generated?"Generado · sin envío registrado":"Pendiente";
+   const booked=item.state==="calendar_confirmed";
+   const pending=["appointment_requested","calendar_pending"].includes(item.state);
+   const steps=[
+    ["Bono leído","Leído",true,false],
+    ["Activación Fonasa",activationLabel,activation==="activated",activation==="needs_review"],
+    ["Enlace de agenda",delivery,Boolean(item.link_delivered_at),false],
+    ["Agendamiento",booked?"Cita confirmada":pending?"Confirmación pendiente":"Aún no agenda",booked,pending]
+   ];
+   for(const [label,value,done,warning] of steps){
+    const step=document.createElement("li");step.className=done?"done":warning?"attention":"pending";
+    const title=document.createElement("span");title.textContent=label;
+    const status=document.createElement("strong");status.textContent=value;
+    step.append(title,status);stages.append(step);
+   }
+   row.append(stages);
+   if(item.date){const date=document.createElement("p");date.className="appointment-detail";date.textContent="Hora "+(booked?"confirmada: ":"solicitada: ")+item.date.split("-").reverse().join("/")+" · "+(item.time||"")+" (Chile)";row.append(date)}
+   if(item.state==="checking"||item.state==="check_failed"){
+    const status=document.createElement("p");status.className="muted";status.textContent=item.check_detail||states[item.state];row.append(status);
+   }
+   const td=document.createElement("div"),button=document.createElement("button");
    button.type="button";button.className="secondary";button.textContent="Ver";
    button.onclick=()=>{choose({...item,emitted:item.emitted||""});$("detailCard").scrollIntoView({behavior:"smooth",block:"start"})};
-   td.append(button);
+   td.className="history-actions";td.append(button);
    if(["appointment_requested","calendar_pending","calendar_confirmed"].includes(item.state)){
      const calendar=document.createElement("button");
-     calendar.type="button";calendar.className="secondary";calendar.style.marginLeft="8px";
+     calendar.type="button";calendar.className="secondary";
      calendar.textContent=item.state==="calendar_confirmed"?"Calendario OK":"Confirmar en Google";
      calendar.disabled=item.state==="calendar_confirmed";
      calendar.onclick=async()=>{
@@ -136,7 +158,7 @@ async function refresh(){
      td.append(calendar);
      const notify=document.createElement("button");
      notify.type="button";notify.className="secondary";notify.textContent="Enviar avisos";
-     notify.style.marginLeft="8px";
+     
      notify.disabled=item.state!=="calendar_confirmed";
      notify.onclick=async()=>{
        notify.disabled=true;notify.textContent="Enviando…";
@@ -156,7 +178,7 @@ async function refresh(){
      if(["ready_to_activate","link_issued"].includes(item.state)){
        const activate=document.createElement("button");
        const labels={not_requested:"Activar bono",running:"Consultando activación…",activated:"Bono activado",needs_review:"Revisar activación"};
-       activate.type="button";activate.className="secondary";activate.style.marginLeft="8px";
+       activate.type="button";activate.className="secondary";
        const status=item.activation_status||"not_requested";
        activate.textContent=labels[status]||"Revisar activación";
        activate.disabled=status==="activated"||status==="running";
@@ -171,6 +193,15 @@ async function refresh(){
        td.append(activate);
        if(status==="running")pollActivation(item.id,0);
      }
+   if(item.link_generated&&!item.link_delivered_at){
+    const sent=document.createElement("button");sent.type="button";sent.className="secondary";sent.textContent="Confirmar envío del enlace";
+    sent.onclick=async()=>{
+     if(!confirm("¿Ya enviaste el enlace de agenda al paciente? Esto solo registra el envío que realizaste; no envía un correo."))return;
+     sent.disabled=true;
+     try{await api("/admin/fonasa/link-delivery/"+encodeURIComponent(item.id),{method:"POST",body:{}});await refresh()}
+     catch(err){alert(err.message);sent.disabled=false}
+    };td.append(sent);
+   }
    row.append(td);table.append(row);
   }
   container.append(table);
@@ -192,3 +223,4 @@ function pollActivation(id,attempt){
 }
 
 refresh();
+

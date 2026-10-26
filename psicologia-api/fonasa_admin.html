@@ -15,8 +15,9 @@ button:disabled{opacity:.55;cursor:not-allowed}.secondary{background:#e4f0e8;col
 .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
 small,.muted{color:#5d786b;font-size:13px}.notice{border-radius:9px;background:#eaf5ed;border:1px solid #c6e0cc;padding:12px 14px;margin-top:14px;white-space:pre-wrap;line-height:1.5}
 .warn{background:#fff4e7;border-color:#e5d0af;color:#704b1c}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid #e1eae4}th{color:#547063}.table-wrap{overflow:auto}
+.history-list{display:grid;gap:16px}.history-item{border:1px solid #d7e6dc;border-radius:14px;padding:18px;min-width:0}.history-heading h3{margin:0;font-size:17px;overflow-wrap:anywhere}.history-heading p{margin:6px 0 16px}.bono-stages{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.bono-stages li{border-radius:10px;padding:12px;background:#f3f6f4;border:1px solid #e1eae4;min-width:0}.bono-stages span{display:block;font-size:12px;color:#5d786b;margin-bottom:7px}.bono-stages strong{display:block;font-size:13px;line-height:1.45;overflow-wrap:anywhere}.bono-stages .done{background:#e4f3ea;border-color:#b9d9c5}.bono-stages .done strong{color:#14664f}.bono-stages .attention{background:#fff4e7;border-color:#e5d0af}.history-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}.history-actions button{padding:10px 14px;font-size:13px}.appointment-detail{font-size:14px;font-weight:700;margin:14px 0 0}.table-wrap{overflow:visible}
 #linkOutput{min-width:0;word-break:break-all;display:block;margin-top:10px}
-@media(max-width:650px){.grid{grid-template-columns:1fr}.card{padding:18px}header{flex-wrap:wrap}}
+@media(max-width:650px){.bono-stages{grid-template-columns:repeat(2,minmax(0,1fr))}.history-item{padding:14px}.history-actions button{flex:1 1 130px}.grid{grid-template-columns:1fr}.card{padding:18px}header{flex-wrap:wrap}}
 </style><script defer src="/admin/fonasa-ui.js"></script></head><body>
 <header><strong>CS · Psicología aplicada</strong><a href="/admin">← Volver al panel de administración</a></header>
 <main>
@@ -44,14 +45,14 @@ small,.muted{color:#5d786b;font-size:13px}.notice{border-radius:9px;background:#
 </section>
 <section class="card" id="linkCard" hidden>
 <h2>3. Enlace para agendamiento</h2>
-<p>Fonasa encontró el bono y mostró <b>Activar</b>. El enlace permite que la persona seleccione fecha y hora disponible e ingrese su propio correo.</p>
+<p>Fonasa confirmó que el bono está <b>activado</b>. El enlace permite que la persona seleccione fecha y hora disponible e ingrese su propio correo.</p>
 <p class="warn notice">Orden del proceso: verificar el bono → activar en Fonasa → generar el enlace → seleccionar horario → confirmar la cita en Google Calendar y enviar los correos PSC. Si una respuesta queda pendiente, usa «Revisar activación» para consultar el resultado.</p>
 <div class="actions"><button id="linkBtn" type="button">Generar enlace privado (7 días)</button><button type="button" class="secondary" id="copyBtn" hidden>Copiar enlace</button></div>
 <a id="linkOutput" target="_blank" rel="noopener noreferrer"></a>
 </section>
 <section class="card">
-<h2>Historial de consultas y solicitudes</h2>
-<p class="muted">Registros guardados únicamente en el servidor privado. No se publican en la página de pacientes.</p>
+<h2>Seguimiento de bonos Fonasa</h2>
+<p class="muted">Revisa cada etapa: lectura, activación, entrega del enlace y agendamiento. Los registros se mantienen privados. Generar un enlace no confirma su envío.</p>
 <div id="history" class="table-wrap"><p class="muted">Cargando historial…</p></div>
 <div class="actions"><button type="button" class="secondary" id="refreshBtn">Actualizar historial</button></div>
 </section>

@@ -270,6 +270,8 @@ from reschedules import reschedules_bp
 app.register_blueprint(reschedules_bp)
 from fonasa_internal import bp as fonasa_private_bp
 app.register_blueprint(fonasa_private_bp)
+from fonasa_public import bp as fonasa_patient_bp
+app.register_blueprint(fonasa_patient_bp)
 
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
@@ -335,5 +337,6 @@ if os.environ.get("FONASA_REPAIR_EXISTING_ON_START")=="yes":
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
 

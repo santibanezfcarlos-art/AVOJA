@@ -1,6 +1,6 @@
 """PSC Fonasa: private intake and patient booking-link pilot.
 
-Upload is ADMIN ONLY. PDF is parsed in-memory and never retained.
+Upload supports private administration and consented patient self-service. PDF is parsed in-memory and never retained.
 Fonasa verification runs in the isolated signed Frankfurt service.
 A booking request is not a confirmed Google Calendar event.
 """
@@ -53,6 +53,10 @@ def _schema(con):
                            ("activation_job","TEXT"),("activation_updated_at","TEXT")):
         if key not in columns:
             con.execute("ALTER TABLE fonasa_intake ADD COLUMN "+key+" "+definition)
+    for key in ("link_generated_at", "link_delivered_at", "link_delivery_method",
+                "public_access_hash", "public_access_expiry", "public_polled_at"):
+        if key not in columns:
+            con.execute("ALTER TABLE fonasa_intake ADD COLUMN "+key+" TEXT")
     if "check_detail" not in columns:
         con.execute("ALTER TABLE fonasa_intake ADD COLUMN check_detail TEXT")
     if "calendar_event_id" not in columns:
@@ -183,7 +187,11 @@ def _admin_item(row):
             "created_at":row["created_at"],"check_detail":row["check_detail"],
             "calendar_event_id":row["calendar_event_id"],"meet_url":row["meet_url"],
             "calendar_error":row["calendar_error"],
-            "activation_status":row["activation_status"]}
+            "activation_status":row["activation_status"],
+            "link_generated":bool(row["token_hash"]),
+            "link_generated_at":row["link_generated_at"],
+            "link_delivered_at":row["link_delivered_at"],
+            "link_delivery_method":row["link_delivery_method"]}
 
 
 def _notification_sender():
@@ -374,6 +382,9 @@ def notify_saved_request(id):
 @bp.post("/admin/fonasa/upload")
 @billing.private
 def upload():
+    return _upload()
+
+def _upload():
     uploaded=request.files.get("bono")
     if not uploaded:return jsonify(error="Selecciona un archivo PDF."),400
     if not uploaded.filename.lower().endswith(".pdf"):return jsonify(error="Solo PDF."),400
@@ -409,22 +420,36 @@ def items():
 @bp.post("/admin/fonasa/check/<id>")
 @billing.private
 def start_lookup(id):
+    return _start_lookup(id)
+
+def _start_lookup(id):
     with billing.db() as con:
         row=_record(con,id)
         if not row:return jsonify(error="Bono no encontrado."),404
         if row["state"] not in ("pdf_read","check_failed"):
             return jsonify(error="La consulta ya fue iniciada o completada."),409
-        try:result=_call_worker("/bridge/fonasa/start",{"rut":row["rut"],"folio":row["folio"]})
-        except RuntimeError as exc:return jsonify(error=str(exc)),503
+        con.execute("BEGIN IMMEDIATE")
+        claim=con.execute("UPDATE fonasa_intake SET state='checking',worker_job=NULL,updated_at=? WHERE id=? AND state IN ('pdf_read','check_failed')",(_utc(),id))
+        if claim.rowcount!=1:return jsonify(state="checking",id=id),202
+    try:
+        result=_call_worker("/bridge/fonasa/start",{"rut":row["rut"],"folio":row["folio"]})
         if result.get("state")!="running" or not isinstance(result.get("job_id"),str):
-            return jsonify(error="El servicio de consulta no aceptó el trabajo."),503
-        con.execute("UPDATE fonasa_intake SET state='checking',worker_job=?,check_detail=NULL,updated_at=? WHERE id=?",
+            raise RuntimeError("El servicio de consulta no aceptó el trabajo.")
+    except RuntimeError as exc:
+        with billing.db() as con:
+            con.execute("UPDATE fonasa_intake SET state='check_failed',check_detail=?,updated_at=? WHERE id=? AND state='checking'",(str(exc),_utc(),id))
+        return jsonify(error=str(exc)),503
+    with billing.db() as con:
+        con.execute("UPDATE fonasa_intake SET worker_job=?,check_detail=NULL,updated_at=? WHERE id=? AND state='checking'",
                     (result["job_id"],_utc(),id))
     return jsonify(state="checking",id=id),202
 
 @bp.get("/admin/fonasa/status/<id>")
 @billing.private
 def lookup_status(id):
+    return _lookup_status(id)
+
+def _lookup_status(id):
     with billing.db() as con:
         row=_record(con,id)
         if not row:return jsonify(error="Bono no encontrado."),404
@@ -432,6 +457,11 @@ def lookup_status(id):
         activated=row["activation_status"]=="activated"
         detail=row["check_detail"]
         if state=="checking":
+            if not row["worker_job"]:
+                age=(datetime.now(TZ)-datetime.fromisoformat(row["updated_at"])).total_seconds()
+                if age<150:return jsonify(id=id,state="checking")
+                con.execute("UPDATE fonasa_intake SET state='check_failed',check_detail=? WHERE id=?",("La consulta no pudo iniciarse. Puedes volver a intentarla.",id))
+                return jsonify(id=id,state="check_failed")
             try:remote=_call_worker("/bridge/fonasa/status/"+row["worker_job"])
             except RuntimeError as exc:
                 # A cold restart can discard jobs kept only in worker memory.
@@ -462,6 +492,9 @@ def lookup_status(id):
 @bp.post("/admin/fonasa/link/<id>")
 @billing.private
 def issue_booking_link(id):
+    return _issue_booking_link(id)
+
+def _issue_booking_link(id, token=None):
     with billing.db() as con:
         row=_record(con,id)
         if not row:return jsonify(error="Bono no encontrado."),404
@@ -469,12 +502,13 @@ def issue_booking_link(id):
             return jsonify(error="Primero debe aparecer Activar en Fonasa."),409
         if row["activation_status"]!="activated":
             return jsonify(error="Primero activa el bono y espera la confirmación de Fonasa."),409
-        token=secrets.token_urlsafe(32)
+        token=token or secrets.token_urlsafe(32)
         token_hash=hashlib.sha256(token.encode()).hexdigest()
         expiry=int(time.time())+7*86400
         con.execute("""UPDATE fonasa_intake SET token_hash=?,token_expiry=?,
-                       state='link_issued',updated_at=? WHERE id=?""",
-                    (token_hash,expiry,_utc(),id))
+                       state='link_issued',link_generated_at=?,link_delivered_at=NULL,
+                       link_delivery_method=NULL,updated_at=? WHERE id=?""",
+                    (token_hash,expiry,_utc(),_utc(),id))
     return jsonify(link=SITE+"/fonasa-reserva.html#"+token,expires_in_days=7)
 
 def _by_token(con,token):
@@ -706,6 +740,9 @@ def sync_rescheduled_booking():
 @bp.post("/admin/fonasa/activate/<id>")
 @billing.private
 def request_bono_activation(id):
+    return _request_bono_activation(id)
+
+def _request_bono_activation(id):
     """The operator selects the voucher; existing bookings are never bulk activated."""
     with billing.db() as con:
         row=_record(con,id)
@@ -738,16 +775,23 @@ def request_bono_activation(id):
 @bp.get("/admin/fonasa/activation/<id>")
 @billing.private
 def bono_activation_status(id):
+    return _bono_activation_status(id)
+
+def _bono_activation_status(id):
     with billing.db() as con:
         row=_record(con,id)
         if not row:return jsonify(error="Bono no encontrado."),404
         state=row["activation_status"]
         if state!="running":return jsonify(activation_status=state)
-        if not row["activation_job"]:return jsonify(activation_status="running")
+        age=(datetime.now(TZ)-datetime.fromisoformat(row["activation_updated_at"])).total_seconds() if row["activation_updated_at"] else 0
+        if not row["activation_job"]:
+            if age<150:return jsonify(activation_status="running")
+            con.execute("UPDATE fonasa_intake SET activation_status='needs_review' WHERE id=?",(id,))
+            return jsonify(activation_status="needs_review")
         try:remote=_call_worker("/bridge/fonasa/status/"+row["activation_job"])
         except RuntimeError:
             remote={"state":"unavailable"}
-        if remote.get("state")=="running":return jsonify(activation_status="running")
+        if remote.get("state")=="running" and age<180:return jsonify(activation_status="running")
         if remote.get("state")=="activated" and remote.get("activated") is True:
             state="activated"
         elif remote.get("state")=="ready_to_activate" and remote.get("activated") is False:
@@ -756,3 +800,16 @@ def bono_activation_status(id):
             state="needs_review"
         con.execute("UPDATE fonasa_intake SET activation_status=?,activation_updated_at=? WHERE id=?",(state,_utc(),id))
     return jsonify(activation_status=state)
+
+
+
+@bp.post("/admin/fonasa/link-delivery/<id>")
+@billing.private
+def record_link_delivery(id):
+    """Operator attests actual sending; generating/copying never implies delivery."""
+    with billing.db() as con:
+        row=_record(con,id)
+        if not row or not row["token_hash"]:
+            return jsonify(error="Primero genera el enlace privado."),409
+        con.execute("UPDATE fonasa_intake SET link_delivered_at=?,link_delivery_method='manual' WHERE id=?",(_utc(),id))
+    return jsonify(ok=True)
