@@ -300,6 +300,39 @@ if os.environ.get("FONASA_SLOTS_DIAG_ON_START")=="yes":
     threading.Thread(target=_diagnose_fonasa_slots_once,daemon=True).start()
 
 
+def _recover_one_existing_fonasa_booking():
+    """One-shot operator-enabled recovery. No user identifiers are logged."""
+    import time as _time
+    import logging as _logging
+    _time.sleep(8)
+    logger=_logging.getLogger("fonasa_fulfillment")
+    try:
+        import billing
+        from fonasa_internal import _schema, _confirm_fonasa_calendar, _deliver_pending_notifications
+        with billing.db() as conn:
+            _schema(conn)
+            rows=conn.execute("""SELECT id FROM fonasa_intake
+                WHERE requested_date=? AND requested_time=?
+                AND state IN ('appointment_requested','calendar_pending')""",
+                ("2026-10-30","09:00")).fetchall()
+        if len(rows)!=1:
+            logger.warning("FONASA_RECOVERY state=skipped match_count=%d",len(rows))
+            return
+        outcome=_confirm_fonasa_calendar(rows[0]["id"])
+        if outcome.get("state")=="calendar_confirmed":
+            notices=_deliver_pending_notifications(rows[0]["id"])
+            logger.warning("FONASA_RECOVERY state=calendar_confirmed patient_mail=%s coordinator_mail=%s",
+                notices.get("patient","unknown"),notices.get("professional","unknown"))
+        else:
+            logger.warning("FONASA_RECOVERY state=%s reason=%s",
+                outcome.get("state","unknown"),outcome.get("reason","unspecified"))
+    except Exception as exc:
+        logger.warning("FONASA_RECOVERY state=failed error_type=%s",type(exc).__name__)
+
+if os.environ.get("FONASA_REPAIR_EXISTING_ON_START")=="yes":
+    threading.Thread(target=_recover_one_existing_fonasa_booking,daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
