@@ -258,6 +258,8 @@ def availability():
 # Prueba separada de Webpay Plus: sin cargos ni reservas reales.
 from webpay_demo import webpay_demo_bp
 app.register_blueprint(webpay_demo_bp)
+from webpay_validation import bp as webpay_validation_bp
+app.register_blueprint(webpay_validation_bp)
 from billing import billing_bp
 app.register_blueprint(billing_bp)
 from sii_jobs import bp as sii_jobs_bp
