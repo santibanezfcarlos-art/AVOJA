@@ -282,9 +282,9 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         "line-height:1.7;color:#4b665a'>"
         + esc(notes) + "<p style='margin:15px 0 0'>"
         "<span style='font-size:12px;color:#71867a'>"
-        + ("Reserva realizada en ambiente de demostración: el pago es simulado y no se ha emitido boleta." if demonstration else "Atención confirmada con bono Fonasa. No se realizó cobro mediante Transbank.") + "</span>"
-        "</p><p style='margin:14px 0 0'>Adjuntamos una invitación de calendario "
-        "para que puedas incorporar el horario a tu agenda.</p>"
+        + ("Reserva realizada en ambiente de demostración: el pago es simulado y no se ha emitido boleta." if demonstration else "Atención confirmada con bono Fonasa.") + "</span>"
+        "</p><p style='margin:14px 0 0'>"
+        + ("Adjuntamos una invitación de calendario para que puedas incorporar el horario a tu agenda." if demonstration else "La invitación de Google Calendar se envía por separado como complemento de esta confirmación.") + "</p>"
         "</td></tr>"
         + rebooking_button +
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
@@ -335,6 +335,13 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
              + "Contacto: " + contact + "\n" + website)
     payload = {"from": FROM, "to": [email], "subject": subject,
                "html": body, "text": plain, "attachments": [attachment]}
+    return send_payload(payload, "psc-demo-" + order + "-" + role
+                        + ("-tz-correction-v1" if correction else "")
+                        + ("-rescheduled-v1" if rescheduled else ""), transport=transport)
+
+
+def send_payload(payload, idempotency_key, *, transport=None):
+    """Shared corporate Resend transport; never logs request data or credentials."""
     if transport is not None:
         result = transport(payload)
     else:
@@ -345,9 +352,7 @@ def send(role, order, hold_id, recipient, service, start, end, *, transport=None
                      "Content-Type": "application/json",
                      "Accept": "application/json",
                      "User-Agent": "pscsantibanez-reservas/1.0",
-                     "Idempotency-Key": "psc-demo-" + order + "-" + role
-                         + ("-tz-correction-v1" if correction else "")
-                         + ("-rescheduled-v1" if rescheduled else "")})
+                     "Idempotency-Key": idempotency_key})
         try:
             with urlopen(request, timeout=12) as response:
                 result = json.loads(response.read(10000).decode("utf-8"))

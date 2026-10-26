@@ -98,11 +98,6 @@ def send_fonasa_confirmation():
     body=_authorize()
     if not body or not _enabled():
         return jsonify(state="NOT_AUTHORIZED"),403
-    import json
-    from html import escape
-    from urllib.request import Request, urlopen
-    from urllib.error import HTTPError, URLError
-    from demo_notifications import _brand
     source=body.get("intake_id","")
     role=body.get("role","")
     recipient=body.get("email","")
@@ -120,8 +115,9 @@ def send_fonasa_confirmation():
        or type(minutes)!=int or minutes not in (45,60,90)):
         return jsonify(state="INVALID"),400
     if role=="professional":
-        expected=os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","").lower()
-        trusted={"contacto@pscsantibanez.cl"}
+        expected=os.environ.get("PSICOLOGIA_FONASA_PRO_EMAIL",
+                                os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL", "santibanezf.carlos@gmail.com")).strip().lower()
+        trusted={"santibanezf.carlos@gmail.com"}
         if expected:
             trusted.add(expected)
         if recipient.lower() not in trusted:
@@ -145,50 +141,23 @@ def send_fonasa_confirmation():
     meet=writer.get_meet_link(hold_id)
     subject,html=booking_template(role,source,"psicoterapia",start,end,
         patient_name=patient,meet_url=meet,demonstration=False)
-    plain=("Reserva de psicoterapia online CONFIRMADA.\\nPaciente: "+patient+
-           "\\nFecha: "+start.strftime("%d/%m/%Y")+"\\nHora Chile: "+
-           start.strftime("%H:%M")+"\\nDuración: "+str(minutes)+" minutos"+
-           ("\\nGoogle Meet: "+meet if meet else "")+
-           "\\nContacto: contacto@pscsantibanez.cl")
+    plain=("Reserva de psicoterapia online CONFIRMADA.\nPaciente: "+patient+
+           "\nFecha: "+start.strftime("%d/%m/%Y")+"\nHora Chile: "+
+           start.strftime("%H:%M")+"\nDuración: "+str(minutes)+" minutos"+
+           ("\nGoogle Meet: "+meet if meet else "")+
+           "\nContacto: contacto@pscsantibanez.cl")
     if role=="professional":
-        plain+="\\nCorreo de contacto del paciente: "+str(body.get("patient_email",""))
+        plain+="\nCorreo de contacto del paciente: "+str(body.get("patient_email",""))
     from_name="Ps. Carlos Santibáñez F. <contacto@pscsantibanez.cl>"
     payload={"from":from_name,"to":[recipient],"subject":subject,"html":html,"text":plain}
-    req=Request("https://api.resend.com/emails",method="POST",
-        data=json.dumps(payload,ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json",
-                 "Idempotency-Key":"psc-fonasa-"+source+"-"+role+"-confirmed-v1"})
+    from demo_notifications import send_payload, NotificationError, safe_error_label
     try:
-        with urlopen(req,timeout=14) as response:
-            parsed=json.loads(response.read(3000))
-        if not isinstance(parsed.get("id"),str):
-            return jsonify(state="MAIL_UNCONFIRMED"),503
-    except HTTPError as exc:
-        # Only the HTTP status and provider error code are logged, never addresses,
-        # patient data, request bodies or secret keys.
-        status=exc.code
-        provider_code="unspecified"
-        try:
-            detail=json.loads(exc.read(1600))
-            code=detail.get("name") or detail.get("code")
-            if isinstance(code,str) and re.fullmatch(r"[a-z_]{1,50}",code):
-                provider_code=code
-            description=str(detail.get("message","")).lower()
-            if any(term in description for term in ("testing emails","can only send","only send testing","only send emails")):
-                provider_code="testing_recipient_restricted"
-            elif "verify" in description and ("domain" in description or "sender" in description):
-                provider_code="sender_domain_unverified"
-            elif "permission" in description or "not authorized" in description:
-                provider_code="permission_denied"
-            elif "quota" in description or "limit" in description:
-                provider_code="quota_restricted"
-        except (ValueError,TypeError,OSError):
-            pass
-        print("FONASA_MAIL_PROVIDER_FAILURE status="+str(status)+" code="+provider_code,flush=True)
-        return jsonify(state="MAIL_HTTP_"+str(status)),503
-    except (URLError,OSError,ValueError):
-        print("FONASA_MAIL_PROVIDER_FAILURE status=network",flush=True)
-        return jsonify(state="MAIL_NETWORK_UNAVAILABLE"),503
+        send_payload(payload,"psc-fonasa-"+source+"-"+role+"-confirmed-v1")
+    except NotificationError as exc:
+        print("FONASA_MAIL_PROVIDER_FAILURE "+safe_error_label(exc),flush=True)
+        status=exc.http_status
+        return jsonify(state="MAIL_HTTP_"+str(status) if status else "MAIL_NETWORK_UNAVAILABLE"),503
+    print("FONASA_MAIL_PROVIDER_ACCEPTED role="+role,flush=True)
     return jsonify(state="SENT")
 
 
@@ -250,3 +219,64 @@ def invite_to_verified_fonasa_booking():
         return jsonify(state="INVITE_ACCEPTED")
     except (CalendarIntegrationError,TypeError,ValueError,OSError):
         return jsonify(state="CALENDAR_UNAVAILABLE"),503
+
+
+@bp.post('/internal/psicologia/fonasa/mail-diagnostic')
+def mail_diagnostic():
+    """Signed, non-sending probes. Empty payloads cannot deliver any email.
+
+    Compare the legacy client with the shared client, without disclosing keys,
+    recipients, provider bodies, account identifiers or clinical information.
+    """
+    if not _authorize() or not _enabled():
+        return jsonify(state='NOT_AUTHORIZED'),403
+    import json
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    key=os.environ.get('PSICOLOGIA_PILOT_RESEND_API_KEY','')
+    probes={}
+    for client in ('legacy','shared'):
+        headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'}
+        if client=='shared':
+            headers.update({'Accept':'application/json','User-Agent':'pscsantibanez-reservas/1.0'})
+        req=Request('https://api.resend.com/emails',method='POST',data=b'{}',headers=headers)
+        try:
+            with urlopen(req,timeout=6) as response:
+                probes[client]={'status':response.status,'category':'unexpected_ack'}
+        except HTTPError as exc:
+            raw=exc.read(2000)
+            category='non_json_response'
+            try:
+                doc=json.loads(raw)
+                code=doc.get('name') or doc.get('code')
+                if isinstance(code,str) and re.fullmatch(r'[a-z_]{1,48}',code):
+                    category=code
+            except (ValueError,AttributeError):
+                if b'1010' in raw:
+                    category='upstream_1010'
+                elif 'html' in exc.headers.get('Content-Type','').lower():
+                    category='upstream_html_block'
+            probes[client]={'status':exc.code,'category':category}
+        except (URLError,OSError):
+            probes[client]={'category':'network_unavailable'}
+    # List metadata only when this key allows it; sending-only keys may deny it.
+    metadata={}
+    for resource in ('domains','api-keys'):
+        req=Request('https://api.resend.com/'+resource,headers={
+            'Authorization':'Bearer '+key,'User-Agent':'pscsantibanez-reservas/1.0','Accept':'application/json'})
+        try:
+            with urlopen(req,timeout=6) as response:
+                doc=json.loads(response.read(30000))
+            items=doc.get('data',[])
+            if resource=='domains':
+                metadata['psc_domain_status']=[x.get('status') for x in items if x.get('name')=='pscsantibanez.cl']
+            else:
+                # A key cannot be matched to its name unless the provider exposes
+                # that identity; do not infer account ownership from other keys.
+                metadata['key_metadata_accessible']=isinstance(items,list)
+        except HTTPError as exc:
+            metadata[resource+'_http_status']=exc.code
+        except (URLError,OSError,ValueError,AttributeError):
+            metadata[resource+'_unavailable']=True
+    print('FONASA_MAIL_DIAGNOSTIC '+json.dumps({'probes':probes,'metadata':metadata}),flush=True)
+    return jsonify(state='DIAGNOSTIC_COMPLETE',probes=probes,metadata=metadata)
