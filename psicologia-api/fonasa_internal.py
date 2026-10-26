@@ -670,14 +670,17 @@ def request_booking(token):
         if not row or row["state"]!="link_issued":
             return jsonify(error="La solicitud ya cambió de estado."),409
         existing=con.execute("""SELECT requested_time FROM fonasa_intake
-            WHERE state='appointment_requested' AND requested_date=?""",(day,)).fetchall()
+            WHERE state IN ('appointment_requested','calendar_pending','calendar_confirmed')
+            AND requested_date=?""",(day,)).fetchall()
         chosen_mins=int(hour[:2])*60+int(hour[3:])
         for record in existing:
             other=record["requested_time"]
             minute=int(other[:2])*60+int(other[3:])
             if chosen_mins<minute+45 and minute<chosen_mins+45:
                 return jsonify(error="Ese horario acaba de ocuparse."),409
-        if len(existing)>=3:
+        from admin import settings
+        config,_=settings()
+        if len(existing)>=config["maxPerDay"]:
             return jsonify(error="Ya no hay cupos para esa fecha."),409
         con.execute("""UPDATE fonasa_intake SET state='calendar_pending',
             requested_date=?,requested_time=?,patient_email=?,updated_at=?
