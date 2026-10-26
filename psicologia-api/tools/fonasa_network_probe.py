@@ -802,6 +802,30 @@ def fonasa_login_inspect():
                                 rut=page.get_by_text(re.compile(r"Rut Beneficiario",re.I))
                                 folio=page.get_by_text(re.compile(r"Folio Bono",re.I))
                                 result["activation_form"]="observed" if rut.count()>0 and folio.count()>0 else "not_observed"
+                                # Controls only: never capture input values, records, or personal data.
+                                if result["activation_form"]=="observed":
+                                    result["activation_fields"] = {
+                                        "rut_label_matches": rut.count(),
+                                        "folio_label_matches": folio.count()
+                                    }
+                                    result["form_controls"] = page.locator("input, button").evaluate_all("""els => els.slice(0,90)
+                                        .filter(el => el.getClientRects().length > 0)
+                                        .map(el => ({
+                                           tag:el.tagName.toLowerCase(),
+                                           id:el.id||"", name:el.name||"",
+                                           type:el.type||"",
+                                           button_text:el.tagName.toLowerCase()==="button"
+                                             ? (el.textContent||"").trim().slice(0,45) : "",
+                                           button_value:(el.type==="button" || el.type==="submit")
+                                             ? (el.value||"").slice(0,45) : "",
+                                           onclick:(el.getAttribute("onclick")||"").slice(0,100)
+                                        }))
+                                        .filter(el => el.id || el.name || el.button_text || el.button_value)
+                                        .slice(-35)""")
+                                    result["buscar_button_count"]=page.get_by_role(
+                                        "button",name=re.compile(r"^Buscar$",re.I)).count()
+                                    result["buscar_text_count"]=page.get_by_text(
+                                        re.compile(r"^Buscar$",re.I)).count()
                             else:result["activation_form"]="submenu_not_found"
                         except Exception as exc:
                             result["menu_inspection_error"]=type(exc).__name__
