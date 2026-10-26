@@ -1160,3 +1160,48 @@ def _sii_reachability_startup_once():
 
 import threading as _sii_probe_threading
 _sii_probe_threading.Thread(target=_sii_reachability_startup_once,daemon=True).start()
+
+
+def _sii_direct_comparison_once():
+    """One startup diagnostic: compare direct HTTPS access to public SII pages.
+
+    Uses no proxy and no user credentials. No HTML, cookies or secrets logged.
+    """
+    import json
+    import logging
+    import time
+    from urllib.parse import urlparse
+    from playwright.sync_api import sync_playwright
+    time.sleep(5)
+    result={"status":"started","credentials_used":False,"submitted":False,"emitted":False}
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=12000)
+            try:
+                context=browser.new_context(ignore_https_errors=False)
+                for name,url,host in (
+                    ("sii_home","https://www.sii.cl/","www.sii.cl"),
+                    ("eboleta","https://eboleta.sii.cl/emitir/","eboleta.sii.cl")):
+                    page=context.new_page()
+                    try:
+                        response=page.goto(url,wait_until="commit",timeout=12000)
+                        result[name]={"http":response.status if response else None,
+                                      "origin_matches":urlparse(page.url).hostname==host,
+                                      "status":"connected"}
+                    except Exception as exc:
+                        import re
+                        match=re.search(r"net::ERR_[A-Z_]+",str(exc))
+                        result[name]={"status":"failed","error_type":type(exc).__name__,
+                                      "network_error":match.group(0) if match else "none"}
+                    finally:page.close()
+                context.close()
+            finally:browser.close()
+        result["status"]="completed"
+    except Exception as exc:
+        result["status"]="browser_error"
+        result["error_type"]=type(exc).__name__
+    logging.getLogger("sii_probe").warning("SII_DIRECT_COMPARISON %s",json.dumps(result))
+
+
+import threading as _sii_compare_threading
+_sii_compare_threading.Thread(target=_sii_direct_comparison_once,daemon=True).start()
