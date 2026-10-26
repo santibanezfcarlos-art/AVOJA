@@ -277,6 +277,12 @@ def booking_info(token):
                    service="Psicoterapia individual online",duration=45,
                    timezone="America/Santiago")
 
+class AvailabilityUnavailable(RuntimeError):
+    def __init__(self,code):
+        self.code=code
+        super().__init__(code)
+
+
 def _slots(con,row,days=15):
     """Fail closed against calendar, bridge and own pending reservations."""
     from main import _load_busy_intervals, CalendarRefreshingError, CalendarConfigurationError
@@ -284,9 +290,24 @@ def _slots(con,row,days=15):
     from webpay_demo_bridge import enabled, busy_intervals, BridgeError
     today=datetime.now(TZ).date()
     last=today+timedelta(days=days)
-    config,_=settings()
-    busy=list(_load_busy_intervals()) # raises if stale
-    if enabled():busy+=busy_intervals(today,last)
+    try:
+        config,_=settings()
+    except (sqlite3.Error,RuntimeError,ValueError,KeyError):
+        raise AvailabilityUnavailable("settings_unavailable") from None
+    try:
+        calendar_intervals=_load_busy_intervals()
+    except (CalendarRefreshingError,CalendarConfigurationError):
+        raise AvailabilityUnavailable("calendar_refreshing") from None
+    except (OSError,ValueError,TypeError,RuntimeError):
+        raise AvailabilityUnavailable("calendar_error") from None
+    if calendar_intervals is None:
+        raise AvailabilityUnavailable("calendar_missing")
+    busy=list(calendar_intervals)
+    if enabled():
+        try:
+            busy+=busy_intervals(today,last)
+        except (BridgeError,ValueError,TypeError,RuntimeError):
+            raise AvailabilityUnavailable("booking_bridge_unavailable") from None
     # Pending requests in this module block the same period.
     others=con.execute("""SELECT requested_date,requested_time
          FROM fonasa_intake WHERE state='appointment_requested'
@@ -322,9 +343,16 @@ def booking_availability(token):
         if not row:return jsonify(error="Enlace inválido o vencido."),404
         if row["state"]=="appointment_requested":
             return jsonify(available={},already_requested=True)
-        try:available=_slots(con,row)
-        except Exception:
-            return jsonify(error="No se pudo confirmar disponibilidad. Intenta nuevamente."),503
+        try:
+            available=_slots(con,row)
+        except AvailabilityUnavailable as exc:
+            import logging
+            logging.getLogger("fonasa_availability").warning("FONASA_AVAILABILITY_DIAGNOSTIC stage=%s",exc.code)
+            return jsonify(error="No se pudo confirmar disponibilidad. Intenta nuevamente.",reason=exc.code),503
+        except Exception as exc:
+            import logging
+            logging.getLogger("fonasa_availability").warning("FONASA_AVAILABILITY_DIAGNOSTIC stage=unexpected kind=%s",type(exc).__name__)
+            return jsonify(error="No se pudo confirmar disponibilidad. Intenta nuevamente.",reason="unexpected"),503
     return jsonify(available=available,timezone="America/Santiago")
 
 @bp.post("/api/fonasa/book/<token>")
