@@ -36,6 +36,13 @@ CREATE TABLE IF NOT EXISTS fonasa_intake (
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS fonasa_intake_state ON fonasa_intake(state);
+CREATE TABLE IF NOT EXISTS fonasa_notifications (
+  intake_id TEXT NOT NULL, role TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL, last_error TEXT,
+  PRIMARY KEY(intake_id,role),
+  FOREIGN KEY(intake_id) REFERENCES fonasa_intake(id)
+);
 """
 
 def _schema(con):
@@ -163,6 +170,128 @@ def _admin_item(row):
             "state":row["state"],"date":row["requested_date"],
             "time":row["requested_time"],"email":row["patient_email"],
             "created_at":row["created_at"],"check_detail":row["check_detail"]}
+
+
+def _notification_sender():
+    """Only use explicitly configured server-side mail credentials."""
+    resend=(os.environ.get("PSICOLOGIA_FONASA_RESEND_API_KEY") or
+            os.environ.get("RESEND_API_KEY") or "").strip()
+    if len(resend)>=24:
+        return "resend",resend
+    username=os.environ.get("PSICOLOGIA_FONASA_SMTP_USER","").strip()
+    password=os.environ.get("PSICOLOGIA_FONASA_SMTP_PASSWORD","")
+    if username and password:
+        return "smtp",(username,password)
+    return None,None
+
+
+def _send_notification(role,recipient,row):
+    from email.message import EmailMessage
+    from html import escape
+    import smtplib
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    sender,credential=_notification_sender()
+    if sender is None:
+        raise RuntimeError("mail_not_configured")
+    name=row["patient_name"]
+    when=datetime.fromisoformat(row["requested_date"]+"T"+row["requested_time"]).replace(tzinfo=TZ)
+    friendly=when.strftime("%d/%m/%Y a las %H:%M")
+    professional=role=="professional"
+    subject=("Nueva solicitud de atención Fonasa" if professional
+             else "Recibimos tu solicitud de hora | PSC Santibáñez")
+    if professional:
+        message=("Se registró una solicitud de atención con bono Fonasa.\n"
+                 "Paciente: "+name+"\nFecha y hora: "+friendly+" (Chile)\n"
+                 "Correo para coordinación: "+row["patient_email"]+"\n"
+                 "Estado: PENDIENTE de confirmación en Google Calendar.\n"
+                 "Accede al panel privado de PSC para revisar el caso.")
+    else:
+        message=("Hola, "+name+".\nRecibimos tu solicitud de atención online para "
+                 +friendly+" (Chile).\n"
+                 "Tu horario está PENDIENTE de confirmación. Esta notificación "
+                 "no significa que la cita ya esté registrada en Google Calendar.\n"
+                 "Nos comunicaremos contigo para confirmar la atención.\n"
+                 "PSC Santibáñez · contacto@pscsantibanez.cl")
+    if sender=="resend":
+        payload={"from":os.environ.get("PSICOLOGIA_FONASA_MAIL_FROM",
+                     "PSC Santibáñez <contacto@pscsantibanez.cl>"),
+                 "to":[recipient],"subject":subject,"text":message}
+        req=Request("https://api.resend.com/emails",
+            data=json.dumps(payload,ensure_ascii=False).encode(),
+            headers={"Authorization":"Bearer "+credential,
+                     "Content-Type":"application/json",
+                     "Idempotency-Key":"psc-fonasa-"+row["id"]+"-"+role+"-request-v1"},
+            method="POST")
+        try:
+            with urlopen(req,timeout=15) as response:
+                data=json.loads(response.read(2000))
+                if not data.get("id"):
+                    raise RuntimeError("mail_provider_no_ack")
+        except (HTTPError,URLError,OSError,ValueError) as exc:
+            raise RuntimeError("mail_delivery_failed_"+type(exc).__name__) from None
+    else:
+        username,password=credential
+        email=EmailMessage()
+        email["From"]=username;email["To"]=recipient;email["Subject"]=subject
+        email.set_content(message)
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com",465,timeout=15) as smtp:
+                smtp.login(username,password)
+                smtp.send_message(email)
+        except (smtplib.SMTPException,OSError) as exc:
+            raise RuntimeError("mail_delivery_failed_"+type(exc).__name__) from None
+
+
+def _deliver_pending_notifications(intake_id):
+    """Try both recipients independently; persist status so admin can retry failures."""
+    outcome={}
+    for role in ("professional","patient"):
+        with billing.db() as con:
+            _schema(con)
+            row=_record(con,intake_id)
+            if not row or row["state"]!="appointment_requested" or not row["patient_email"]:
+                return {"state":"not_eligible"}
+            email=(os.environ.get("PSICOLOGIA_FONASA_COORDINATION_EMAIL") or
+                   "contacto@pscsantibanez.cl") if role=="professional" else row["patient_email"]
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",email):
+                outcome[role]="invalid_recipient";continue
+            con.execute("""INSERT OR IGNORE INTO fonasa_notifications
+                        (intake_id,role,status,updated_at) VALUES(?,?,'pending',?)""",
+                        (intake_id,role,_utc()))
+            previous=con.execute("""SELECT status,attempts FROM fonasa_notifications
+                                   WHERE intake_id=? AND role=?""",(intake_id,role)).fetchone()
+            if previous["status"]=="sent":
+                outcome[role]="sent";continue
+            if previous["status"]=="sending":
+                outcome[role]="in_progress";continue
+            if previous["attempts"]>=3:
+                outcome[role]="needs_manual_review";continue
+            con.execute("""UPDATE fonasa_notifications SET status='sending',attempts=attempts+1,
+                           updated_at=? WHERE intake_id=? AND role=?""",(_utc(),intake_id,role))
+        try:
+            _send_notification(role,email,row)
+            state="sent";error=None
+        except RuntimeError as exc:
+            state="failed";error=str(exc)[:85]
+        with billing.db() as con:
+            con.execute("""UPDATE fonasa_notifications SET status=?,last_error=?,updated_at=?
+                           WHERE intake_id=? AND role=?""",
+                        (state,error,_utc(),intake_id,role))
+        outcome[role]=state
+    return outcome
+
+
+@bp.post("/admin/fonasa/notify/<id>")
+@billing.private
+def notify_saved_request(id):
+    with billing.db() as con:
+        row=_record(con,id)
+        if not row:return jsonify(error="Solicitud no encontrada."),404
+        if row["state"]!="appointment_requested":
+            return jsonify(error="Todavía no hay solicitud de hora."),409
+    return jsonify(notifications=_deliver_pending_notifications(id))
+
 
 @bp.post("/admin/fonasa/upload")
 @billing.private
@@ -413,9 +542,10 @@ def request_booking(token):
         con.execute("""UPDATE fonasa_intake SET state='appointment_requested',
             requested_date=?,requested_time=?,patient_email=?,updated_at=?
             WHERE id=? AND state='link_issued'""",(day,hour,email.strip().lower(),_utc(),row["id"]))
+    notifications=_deliver_pending_notifications(row["id"])
     return jsonify(ok=True,status="appointment_requested",
         message="Recibimos tu solicitud de hora. Está pendiente de confirmación en Google Calendar.",
-        date=day,time=hour),201
+        date=day,time=hour,notifications=notifications),201
 
 @bp.get("/admin/fonasa")
 @billing.private
