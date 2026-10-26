@@ -201,7 +201,21 @@ def _send_notification(role,recipient,row):
     from urllib.error import HTTPError, URLError
     sender,credential=_notification_sender()
     if sender is None:
-        raise RuntimeError("mail_not_configured")
+        from webpay_demo_bridge import fonasa_confirmation_email, BridgeError
+        try:
+            from admin import settings
+            cfg,_=settings()
+            minutes=cfg["services"]["psicoterapia"]["minutes"]
+            state=fonasa_confirmation_email(
+                intake_id=row["id"],role=role,email=recipient,
+                patient_name=row["patient_name"],day=row["requested_date"],
+                hour=row["requested_time"],minutes=minutes,
+                patient_email=row["patient_email"])
+            if state=="SENT":
+                return
+            raise RuntimeError("mail_status_"+state[:48])
+        except BridgeError as exc:
+            raise RuntimeError("mail_delivery_"+exc.state[:48]) from None
     name=row["patient_name"]
     when=datetime.fromisoformat(row["requested_date"]+"T"+row["requested_time"]).replace(tzinfo=TZ)
     friendly=when.strftime("%d/%m/%Y a las %H:%M")
@@ -252,8 +266,6 @@ def _send_notification(role,recipient,row):
 
 def _deliver_pending_notifications(intake_id):
     """Try both recipients independently; persist status so admin can retry failures."""
-    if _notification_sender()[0] is None:
-        return {"professional":"mail_not_configured","patient":"mail_not_configured"}
     outcome={}
     for role in ("professional","patient"):
         with billing.db() as con:
