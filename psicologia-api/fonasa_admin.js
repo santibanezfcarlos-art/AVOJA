@@ -148,24 +148,7 @@ async function refresh(){
        finally{notify.disabled=false;notify.textContent="Revisar avisos"}
      };
      td.append(notify);
-     for(const role of ["professional","patient"]){
-       const compose=document.createElement("button");
-       compose.type="button";compose.className="secondary";
-       compose.textContent=role==="professional"?"Correo coordinación":"Correo paciente";
-       compose.style.marginLeft="8px";
-       compose.onclick=async()=>{
-         compose.disabled=true;
-         try{
-           const result=await api("/admin/fonasa/mail-drafts/"+encodeURIComponent(item.id));
-           const draft=result[role];
-           if(!draft||!draft.to)throw Error("Borrador no disponible.");
-           const url="mailto:"+encodeURIComponent(draft.to)+"?subject="+encodeURIComponent(draft.subject)+"&body="+encodeURIComponent(draft.body);
-           window.location.assign(url);
-         }catch(err){alert(err.message)}
-         finally{compose.disabled=false}
-       };
-       td.append(compose);
-     }
+
    }
    row.append(td);table.append(row);
   }
