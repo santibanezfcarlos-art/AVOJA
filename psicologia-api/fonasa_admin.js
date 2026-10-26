@@ -114,17 +114,21 @@ async function refresh(){
    const meta=document.createElement("p");meta.className="muted";
    meta.textContent="Folio "+item.folio+" · Ingreso "+(item.created_at||"").slice(0,10);
    header.append(name,meta);row.append(header);
+   const tracking=document.createElement("span");tracking.className="history-status";
+   tracking.textContent=item.manual_completed_at?"Atención completada":item.state==="checking"?"Verificando con Fonasa":item.state==="check_failed"||item.activation_status==="needs_review"?"Requiere revisión":"En seguimiento";
+   if(item.state==="check_failed"||item.activation_status==="needs_review")tracking.classList.add("needs-review");
+   row.append(tracking);
    const stages=document.createElement("ol");stages.className="bono-stages";
    const activation=item.activation_status||"not_requested";
-   const activationLabel={activated:"Activado",running:"Verificando…",needs_review:"Por verificar",not_requested:"Pendiente"}[activation]||"Pendiente";
-   const delivery=item.link_delivery_method==="patient_screen"?"Mostrado al paciente":item.link_delivered_at?"Envío confirmado":item.link_generated?"Generado · sin envío registrado":"Pendiente";
+   const activationLabel={activated:"Activado",running:"Verificando…",needs_review:"Requiere revisión",not_requested:"Por activar"}[activation]||"Por activar";
+   const delivery=item.link_delivery_method==="patient_screen"?"Mostrado al paciente":item.link_delivered_at?"Enlace enviado":item.link_generated?"Por enviar":"Aún no generado";
    const booked=item.state==="calendar_confirmed";
    const pending=["appointment_requested","calendar_pending"].includes(item.state);
    const steps=[
     ["Bono leído","Leído",true,false],
     ["Activación Fonasa",activationLabel,activation==="activated",activation==="needs_review"],
     ["Enlace de agenda",delivery,Boolean(item.link_delivered_at),false],
-    ["Agendamiento",booked?"Cita confirmada":pending?"Confirmación pendiente":"Aún no agenda",booked,pending]
+    ["Agendamiento",booked?"Cita confirmada":pending?"Confirmación en curso":"Sin hora todavía",booked,false]
    ];
    for(let [label,value,done,warning] of steps){
     if(item.manual_completed_at){value="Completado";done=true;warning=false}
