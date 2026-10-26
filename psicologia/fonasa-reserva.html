@@ -1,0 +1,90 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
+<title>Agendar con Fonasa | PSC Santibáñez</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f7f4;color:#193e33}
+*{box-sizing:border-box}body{margin:0}header{background:#173f35;color:white;padding:21px 5vw}
+header a{color:white;text-decoration:none}main{max-width:620px;padding:0 15px;margin:38px auto 70px}
+.card{background:white;border:1px solid #d7e7dc;border-radius:18px;padding:26px;box-shadow:0 7px 28px #11372110}
+h1{font-size:clamp(25px,5vw,34px);margin:4px 0 12px}p{line-height:1.6}
+.muted{font-size:14px;color:#587165}.pill{color:#216347;background:#e3f3e9;padding:6px 10px;border-radius:30px;font-size:12px;font-weight:750}
+label{display:block;font-weight:700;font-size:13px;margin:18px 0 6px}
+input:not([type=checkbox]),select{display:block;width:100%;padding:13px;border:1px solid #b4d0bf;border-radius:10px;background:#fff;font:inherit;color:#1c4439}
+button{border:0;border-radius:10px;padding:14px 18px;background:#17694f;color:#fff;font:inherit;font-weight:700;cursor:pointer;width:100%;margin-top:21px}
+button:disabled{opacity:.55;cursor:not-allowed}.note{padding:12px 15px;border-radius:9px;background:#edf5ee;border:1px solid #d0e3d3;white-space:pre-wrap;font-size:14px}
+.warn{background:#fff5e8;border-color:#eddbb6}.check{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.5;margin-top:18px}
+.check input{margin-top:5px}.footer{margin-top:18px;font-size:12px;color:#5b776b;text-align:center}
+</style></head><body><header><a href="https://pscsantibanez.cl/"><strong>CS</strong> · Psicología aplicada al bienestar</a></header>
+<main><div class="card"><span class="pill">Atención por Bono Fonasa</span>
+<h1>Elige tu fecha y horario</h1>
+<p class="muted">Tu bono fue reconocido en Bono Web. Selecciona una de las horas que figuran disponibles y confirma tu dirección de correo. No necesitas volver a escribir tu nombre ni RUT.</p>
+<div id="load" class="note" role="status">Comprobando el enlace privado…</div>
+<form id="form" hidden>
+<label>Paciente</label><input id="name" readonly>
+<label>Fecha disponible</label><select id="day" required><option value="">Selecciona una fecha</option></select>
+<label>Hora (Chile continental)</label><select id="hour" required disabled><option value="">Selecciona primero la fecha</option></select>
+<label for="email">Tu correo electrónico personal</label>
+<input id="email" type="email" autocomplete="email" required maxlength="254" placeholder="tu.correo@ejemplo.cl">
+<label class="check"><input id="myEmail" type="checkbox" required> Confirmo que este correo es mío y que puedo recibir mensajes en él.</label>
+<p class="note warn">Esta es una prueba interna de agendamiento Fonasa. La selección se registrará como <b>solicitud pendiente de confirmación</b>; no se considerará una cita confirmada hasta que el horario quede registrado en Google Calendar.</p>
+<button type="submit" id="book">Registrar solicitud de hora</button>
+</form>
+<div id="finish" class="note" hidden role="status"></div>
+</div><p class="footer">El enlace es personal y vence a los siete días. Si no te corresponde, no ingreses datos y comunícate con el profesional.</p></main>
+<script>
+(()=>{"use strict";
+const $=id=>document.getElementById(id),API="https://psicologia-carlos-calendar-api.onrender.com";
+const token=(location.hash||"").slice(1);
+history.replaceState(null,"",location.pathname);
+let slots={},done=false;
+function report(message,bad=false){const n=$("load");n.textContent=message;n.classList.toggle("warn",bad)}
+async function api(path,options={}){const response=await fetch(API+path,{...options,cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"});
+const data=await response.json().catch(()=>({error:"Respuesta no disponible."}));
+if(!response.ok)throw Error(data.error||"El servidor no respondió.");return data}
+function dateLabel(iso){return new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",weekday:"long",day:"numeric",month:"long"}).format(new Date(iso+"T12:00:00Z"))}
+function loadHours(){
+ const day=$("day").value,hour=$("hour");hour.replaceChildren();
+ const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Selecciona una hora";hour.append(placeholder);
+ for(const v of slots[day]||[]){const o=document.createElement("option");o.value=v;o.textContent=v+" hrs";hour.append(o)}
+ hour.disabled=!(slots[day]||[]).length;
+}
+$("day").onchange=loadHours;
+async function init(){
+ if(!/^[A-Za-z0-9_-]{40,80}$/.test(token)){report("Enlace inválido. Solicita uno nuevo al profesional.",true);return}
+ try{
+  const data=await api("/api/fonasa/book/"+encodeURIComponent(token));
+  $("name").value=data.name;
+  if(data.state==="appointment_requested"){
+   report("Ya existe una solicitud para este bono.");return
+  }
+  const avail=await api("/api/fonasa/book/"+encodeURIComponent(token)+"/availability");
+  slots=avail.available||{};
+  for(const day of Object.keys(slots).sort()){
+   const option=document.createElement("option");option.value=day;option.textContent=dateLabel(day);
+   $("day").append(option)
+  }
+  if(!Object.keys(slots).length){report("No hay horarios verificables en este momento. Vuelve a consultar más adelante.",true);return}
+  $("form").hidden=false;
+  report("Enlace verificado. Selecciona una fecha y hora disponible.");
+ }catch(err){report(err.message,true)}
+}
+$("form").onsubmit=async ev=>{
+ ev.preventDefault();if(done)return;
+ const date=$("day").value,time=$("hour").value,email=$("email").value.trim();
+ if(!date||!(slots[date]||[]).includes(time)||!$("myEmail").checked){report("Revisa los datos de la solicitud.",true);return}
+ $("book").disabled=true;
+ try{
+  const result=await api("/api/fonasa/book/"+encodeURIComponent(token),{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({date,time,email,email_is_mine:true})
+  });
+  done=true;$("form").hidden=true;$("load").hidden=true;
+  $("finish").hidden=false;
+  $("finish").textContent="Solicitud recibida: "+result.date+" a las "+result.time+
+   " (hora de Chile). Tu horario quedó registrado como solicitud pendiente de confirmación.";
+ }catch(err){report(err.message,true);$("book").disabled=false}
+};
+init();
+})();
+</script></body></html>
