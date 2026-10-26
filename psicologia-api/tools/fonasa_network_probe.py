@@ -731,22 +731,9 @@ def fonasa_login_inspect():
                         result["status"]="stopped_unexpected_login_origin"
                         return jsonify(result)
                     result["login_page"]="loaded"
-                    result["form_inputs"] = page.locator("input").evaluate_all("""els => els.slice(0,18).map(el => ({id:el.id||"",name:el.name||"",type:el.type||""}))""")
-                    result["clickable_candidates"] = page.locator('button, input[type="submit"], input[type="button"], a, [role="button"]').evaluate_all("""els => els.slice(0,70).map(el => ({tag:el.tagName.toLowerCase(),id:el.id||"",type:el.type||"",value:(el.value||"").slice(0,70),text:(el.textContent||"").trim().slice(0,70),role:el.getAttribute("role")||"",onclick:(el.getAttribute("onclick")||"").slice(0,100)})).filter(e => e.value || e.text || e.id).slice(0,30)""")
-                    result["recaptcha_elements"] = {
-                        "response_inputs": page.locator('input[name="recaptcha_response"], textarea[name="g-recaptcha-response"]').count(),
-                        "iframes": page.locator('iframe[src*="recaptcha"]').count(),
-                        "widgets": page.locator('.g-recaptcha, [data-sitekey]').count()
-                    }
-                    result["status"]="login_form_controls_inspected"
-                    return jsonify(result)
-                    username=page.locator('input[name="usuario"],input[name="user"],input[id="usuario"]')
-                    if username.count()!=1:
-                        username=page.locator('input[type="text"]')
-                    password=page.locator('input[type="password"]')
-                    login=page.get_by_role("button",name=re.compile(r"^Ingresar$",re.I))
-                    if login.count()!=1:
-                        login=page.locator('input[type="submit"][value="Ingresar"]')
+                    username=page.locator("#CodUsuario")
+                    password=page.locator("#Password")
+                    login=page.locator('button[onclick="validafrmLogin()"]')
                     result["field_counts"]={"usuario":username.count(),"clave":password.count(),"ingresar":login.count()}
                     if username.count()!=1 or password.count()!=1 or login.count()!=1:
                         result["status"]="stopped_unrecognized_login_form"
@@ -762,7 +749,16 @@ def fonasa_login_inspect():
                     result["login_submit"]="clicked"
                     try:page.wait_for_load_state("domcontentloaded",timeout=8000)
                     except Exception:pass
-                    page.wait_for_timeout(1700)
+                    page.wait_for_timeout(2200)
+                    result["captcha_visible_after_click"]=page.locator('iframe[src*="recaptcha"], .g-recaptcha').count()>0
+                    try:
+                        raw_text=page.locator("body").inner_text(timeout=2000).lower()
+                        result["possible_auth_error"]=any(word in raw_text for word in (
+                            "contraseña incorrecta","clave incorrecta","usuario incorrecto",
+                            "datos incorrectos","usuario o contraseña","credenciales incorrectas",
+                            "recaptcha","captcha"))
+                    except Exception:
+                        result["possible_auth_error"]=False
                     result["login_form_still_visible"]=page.locator('input[type="password"]').count()>0
                     result["after_login_host"]=urlparse(page.url).hostname
                     if urlparse(page.url).hostname!=host:
