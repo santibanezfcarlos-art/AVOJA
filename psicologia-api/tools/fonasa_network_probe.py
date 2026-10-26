@@ -731,6 +731,15 @@ def fonasa_login_inspect():
                         result["status"]="stopped_unexpected_login_origin"
                         return jsonify(result)
                     result["login_page"]="loaded"
+                    result["form_inputs"] = page.locator("input").evaluate_all("""els => els.slice(0,18).map(el => ({id:el.id||"",name:el.name||"",type:el.type||""}))""")
+                    result["clickable_candidates"] = page.locator('button, input[type="submit"], input[type="button"], a, [role="button"]').evaluate_all("""els => els.slice(0,70).map(el => ({tag:el.tagName.toLowerCase(),id:el.id||"",type:el.type||"",value:(el.value||"").slice(0,70),text:(el.textContent||"").trim().slice(0,70),role:el.getAttribute("role")||"",onclick:(el.getAttribute("onclick")||"").slice(0,100)})).filter(e => e.value || e.text || e.id).slice(0,30)""")
+                    result["recaptcha_elements"] = {
+                        "response_inputs": page.locator('input[name="recaptcha_response"], textarea[name="g-recaptcha-response"]').count(),
+                        "iframes": page.locator('iframe[src*="recaptcha"]').count(),
+                        "widgets": page.locator('.g-recaptcha, [data-sitekey]').count()
+                    }
+                    result["status"]="login_form_controls_inspected"
+                    return jsonify(result)
                     username=page.locator('input[name="usuario"],input[name="user"],input[id="usuario"]')
                     if username.count()!=1:
                         username=page.locator('input[type="text"]')
