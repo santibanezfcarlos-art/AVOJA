@@ -121,7 +121,10 @@ def send_fonasa_confirmation():
         return jsonify(state="INVALID"),400
     if role=="professional":
         expected=os.environ.get("PSICOLOGIA_PILOT_PRO_EMAIL","").lower()
-        if not expected or recipient.lower()!=expected:
+        trusted={"contacto@pscsantibanez.cl"}
+        if expected:
+            trusted.add(expected)
+        if recipient.lower() not in trusted:
             return jsonify(state="COORDINATOR_NOT_CONFIGURED"),503
     # Each notification must be associated with an existing, verified own event.
     hold_id=uuid.uuid5(FONASA_OWNER,"fonasa:"+source)
