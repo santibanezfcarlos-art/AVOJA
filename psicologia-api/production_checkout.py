@@ -39,7 +39,7 @@ def remote(action,data):
     req=Request(b.URL+'/internal/psicologia/production/'+action,data=raw,method='POST',headers={'Content-Type':'application/json','X-Psc-Timestamp':stamp,'X-Psc-Signature':sig})
     with urlopen(req,timeout=45) as res:return json.loads(res.read(12000).decode())
 def page(title,text,status=200):
-    result=Response('<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+html.escape(title)+' | PSC Santibáñez</title><body style="font:16px/1.6 system-ui;background:#f4f7f3;color:#173e35;padding:5vh 20px"><main style="max-width:650px;margin:auto;background:white;border-radius:20px;padding:28px"><h1>'+html.escape(title)+'</h1>'+text+'<p><a href="'+SITE+'/#agenda">Volver a la página</a></p></main></body></html>',status=status,content_type='text/html; charset=utf-8')
+    result=Response('<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+html.escape(title)+' | PSC Santibáñez</title><body style="font:16px/1.6 system-ui;background:#f4f7f3;color:#173e35;padding:5vh 20px"><main style="max-width:650px;margin:auto;background:white;border-radius:20px;padding:28px"><h1>'+html.escape(title)+'</h1>'+text+'<p><a href="'+SITE+'/#agenda">Volver a la página</a></p></main><script defer src="https://pscsantibanez.cl/contacto-whatsapp.js"></script></body></html>',status=status,content_type='text/html; charset=utf-8')
     result.headers.update({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY'})
     return result
 

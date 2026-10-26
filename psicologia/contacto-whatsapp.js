@@ -1,0 +1,10 @@
+(()=>{
+ 'use strict';
+ if(document.getElementById('psc-whatsapp'))return;
+ const style=document.createElement('style');
+ style.textContent=`#psc-whatsapp{position:fixed;right:22px;bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:900;display:flex;align-items:center;gap:11px;padding:13px 21px;border-radius:999px;background:#176d4d;color:#fff;text-decoration:none;box-shadow:0 8px 25px #123b3233;font:14px/1.25 system-ui,-apple-system,Segoe UI,sans-serif;transition:background .15s,transform .15s}#psc-whatsapp:hover{background:#12583e;transform:translateY(-2px)}#psc-whatsapp:focus-visible{outline:3px solid #91cbaa;outline-offset:4px}#psc-whatsapp svg{width:27px;height:27px;flex:none}#psc-whatsapp .psc-wa-text{display:grid;gap:2px}#psc-whatsapp strong{font-size:17px;color:#fff}#psc-whatsapp span{color:#fff}@media(max-width:600px){#psc-whatsapp{right:13px;bottom:calc(13px + env(safe-area-inset-bottom,0px));width:56px;height:56px;padding:0;justify-content:center}#psc-whatsapp .psc-wa-text{display:none}}`;
+ document.head.append(style);
+ const link=document.createElement('a');link.id='psc-whatsapp';link.href='https://wa.me/56997743644?text='+encodeURIComponent('Hola Carlos, quisiera consultar por tus atenciones online.');link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','Hablar por WhatsApp con Carlos Santibáñez, +56 9 9774 3644');
+ link.innerHTML='<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M26.6 5.4A14 14 0 0 0 4.7 22.3L3 29l6.9-1.8A14 14 0 0 0 26.6 5.4Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M12.3 9.3c-.3-.6-.6-.6-.9-.6h-.8c-.3 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.9c.2.2 2.6 4.1 6.3 5.6 3.1 1.2 3.7 1 4.4.9.7-.1 2.2-.9 2.5-1.7.3-.9.3-1.6.2-1.7-.1-.2-.4-.3-.8-.5l-2.5-1.2c-.4-.1-.6-.2-.9.2l-1.1 1.3c-.2.3-.5.3-.9.1-1.2-.5-2.3-1.2-3.2-2.2-.7-.7-1.2-1.5-1.5-2-.2-.4 0-.6.2-.8l.6-.7.4-.7c.1-.2.1-.4 0-.7l-1.2-2.8Z" fill="currentColor"/></svg><span class="psc-wa-text"><span>¿Hablamos?</span><strong>WhatsApp</strong></span>';
+ document.body.append(link);
+})();
