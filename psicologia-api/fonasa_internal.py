@@ -54,7 +54,8 @@ def _schema(con):
         if key not in columns:
             con.execute("ALTER TABLE fonasa_intake ADD COLUMN "+key+" "+definition)
     for key in ("link_generated_at", "link_delivered_at", "link_delivery_method",
-                "public_access_hash", "public_access_expiry", "public_polled_at"):
+                "public_access_hash", "public_access_expiry", "public_polled_at",
+                "manual_completed_at", "manual_completion_note"):
         if key not in columns:
             con.execute("ALTER TABLE fonasa_intake ADD COLUMN "+key+" TEXT")
     if "check_detail" not in columns:
@@ -65,6 +66,22 @@ def _schema(con):
         con.execute("ALTER TABLE fonasa_intake ADD COLUMN meet_url TEXT")
     if "calendar_error" not in columns:
         con.execute("ALTER TABLE fonasa_intake ADD COLUMN calendar_error TEXT")
+
+    # One-time historical regularization explicitly requested by the owner.
+    # Completion is an audited display override, not invented Calendar/mail evidence.
+    con.executescript("""
+        UPDATE fonasa_intake SET
+          manual_completed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+          manual_completion_note='Regularización manual solicitada por el profesional: atención ya realizada; bono usado en pruebas.'
+        WHERE folio IN ('38310910','38272397','38310529')
+          AND manual_completed_at IS NULL
+          AND (SELECT count(*) FROM fonasa_intake
+               WHERE folio IN ('38310910','38272397','38310529'))=3;
+    """)
+    completed=con.execute("SELECT changes()").fetchone()[0]
+    if completed:
+        import logging
+        logging.getLogger("fonasa_history").warning("FONASA_MANUAL_COMPLETION records=%d",completed)
 
 def _lookup_reason(remote):
     state=remote.get("state","")
@@ -188,6 +205,8 @@ def _admin_item(row):
             "calendar_event_id":row["calendar_event_id"],"meet_url":row["meet_url"],
             "calendar_error":row["calendar_error"],
             "activation_status":row["activation_status"],
+            "manual_completed_at":row["manual_completed_at"],
+            "manual_completion_note":row["manual_completion_note"],
             "link_generated":bool(row["token_hash"]),
             "link_generated_at":row["link_generated_at"],
             "link_delivered_at":row["link_delivered_at"],

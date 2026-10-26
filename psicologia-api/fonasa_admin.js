@@ -126,13 +126,15 @@ async function refresh(){
     ["Enlace de agenda",delivery,Boolean(item.link_delivered_at),false],
     ["Agendamiento",booked?"Cita confirmada":pending?"Confirmación pendiente":"Aún no agenda",booked,pending]
    ];
-   for(const [label,value,done,warning] of steps){
+   for(let [label,value,done,warning] of steps){
+    if(item.manual_completed_at){value="Completado";done=true;warning=false}
     const step=document.createElement("li");step.className=done?"done":warning?"attention":"pending";
     const title=document.createElement("span");title.textContent=label;
     const status=document.createElement("strong");status.textContent=value;
     step.append(title,status);stages.append(step);
    }
    row.append(stages);
+   if(item.manual_completed_at){const audit=document.createElement("p");audit.className="muted";audit.textContent="Completado manualmente · Atención ya realizada, regularizada por el profesional.";row.append(audit)}
    if(item.date){const date=document.createElement("p");date.className="appointment-detail";date.textContent="Hora "+(booked?"confirmada: ":"solicitada: ")+item.date.split("-").reverse().join("/")+" · "+(item.time||"")+" (Chile)";row.append(date)}
    if(item.state==="checking"||item.state==="check_failed"){
     const status=document.createElement("p");status.className="muted";status.textContent=item.check_detail||states[item.state];row.append(status);
@@ -141,6 +143,7 @@ async function refresh(){
    button.type="button";button.className="secondary";button.textContent="Ver";
    button.onclick=()=>{choose({...item,emitted:item.emitted||""});$("detailCard").scrollIntoView({behavior:"smooth",block:"start"})};
    td.className="history-actions";td.append(button);
+   if(item.manual_completed_at){row.append(td);table.append(row);continue}
    if(["appointment_requested","calendar_pending","calendar_confirmed"].includes(item.state)){
      const calendar=document.createElement("button");
      calendar.type="button";calendar.className="secondary";
