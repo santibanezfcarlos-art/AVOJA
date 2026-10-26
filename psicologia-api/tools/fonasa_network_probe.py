@@ -1056,3 +1056,7 @@ def _fonasa_lookup_startup_once():
 if __import__("os").environ.get("FONASA_LOOKUP_ON_START")=="yes":
     import threading
     threading.Thread(target=_fonasa_lookup_startup_once,daemon=True).start()
+
+# Internal PSC administration bridge. Credentials and patient data are never returned.
+from fonasa_live_bridge import bp as fonasa_live_bridge_bp
+app.register_blueprint(fonasa_live_bridge_bp)
