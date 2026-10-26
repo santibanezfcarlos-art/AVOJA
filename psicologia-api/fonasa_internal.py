@@ -283,7 +283,7 @@ class AvailabilityUnavailable(RuntimeError):
         super().__init__(code)
 
 
-def _slots(con,row,days=15):
+def _slots(con,row,days=20,with_schedule=False):
     """Fail closed against calendar, bridge and own pending reservations."""
     from main import _load_busy_intervals, CalendarRefreshingError, CalendarConfigurationError
     from admin import settings, allowed_slot
@@ -317,23 +317,41 @@ def _slots(con,row,days=15):
     for item in others:
         start=DT.fromisoformat(item["requested_date"]+"T"+item["requested_time"]).replace(tzinfo=TZ)
         busy.append((start,start+timedelta(minutes=45)))
+    # Use exactly the service configuration that powers the normal PSC agenda.
+    service=config["services"]["psicoterapia"]
+    duration=service["minutes"]
+    if not service["active"]:
+        raise AvailabilityUnavailable("service_unavailable")
     available={}
+    scheduled={}
+    now_local=datetime.now(TZ)
     for delta in range(days+1):
         day=today+timedelta(days=delta)
         date_str=day.isoformat()
         same_day=sum(1 for o in others if o["requested_date"]==date_str)
-        if same_day>=config["maxPerDay"]:continue
         times=[]
-        for mins in range(9*60,20*60-45+1,15):
+        offered=[]
+        for mins in range(9*60,20*60-duration+1,15):
             hour=f"{mins//60:02d}:{mins%60:02d}"
-            if not allowed_slot(config,"psicoterapia",date_str,hour):continue
+            if not allowed_slot(config,"psicoterapia",date_str,hour):
+                continue
             start=DT(day.year,day.month,day.day,mins//60,mins%60,tzinfo=TZ)
-            end=start+timedelta(minutes=45)
-            if start<=datetime.now(TZ):continue
+            end=start+timedelta(minutes=duration)
+            if start<=now_local:
+                continue
+            offered.append(hour)
+            if same_day>=config["maxPerDay"]:
+                continue
             if any(start<other_end and other_start<end for other_start,other_end in busy):
                 continue
             times.append(hour)
-        if times:available[date_str]=times
+        scheduled[date_str]=offered
+        if times:
+            available[date_str]=times
+    if with_schedule:
+        return {"available":available,"scheduled":scheduled,"minutes":duration,
+                "range_start":today.isoformat(),"range_end":last.isoformat(),
+                "maximum_daily":config["maxPerDay"]}
     return available
 
 @bp.get("/api/fonasa/book/<token>/availability")
@@ -344,7 +362,7 @@ def booking_availability(token):
         if row["state"]=="appointment_requested":
             return jsonify(available={},already_requested=True)
         try:
-            available=_slots(con,row)
+            view=_slots(con,row,with_schedule=True)
         except AvailabilityUnavailable as exc:
             import logging
             logging.getLogger("fonasa_availability").warning("FONASA_AVAILABILITY_DIAGNOSTIC stage=%s",exc.code)
@@ -353,7 +371,7 @@ def booking_availability(token):
             import logging
             logging.getLogger("fonasa_availability").warning("FONASA_AVAILABILITY_DIAGNOSTIC stage=unexpected kind=%s",type(exc).__name__)
             return jsonify(error="No se pudo confirmar disponibilidad. Intenta nuevamente.",reason="unexpected"),503
-    return jsonify(available=available,timezone="America/Santiago")
+    return jsonify(**view,timezone="America/Santiago")
 
 @bp.post("/api/fonasa/book/<token>")
 def request_booking(token):
