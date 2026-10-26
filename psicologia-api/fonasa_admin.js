@@ -4,7 +4,7 @@ let current=null,link=null,pollTimer=null,polls=0;
 const states={
   pdf_read:"PDF leído",checking:"Consultando Fonasa",ready_to_activate:"Fonasa: Activar disponible",
   link_issued:"Enlace generado",appointment_requested:"Solicitud recibida",
-  check_failed:"No se comprobó el bono"};
+  check_failed:"No se comprobó el bono",calendar_pending:"Confirmación Google pendiente",calendar_confirmed:"Google Calendar confirmado"};
 function note(id,message,warning=false){const x=$(id);x.hidden=false;x.textContent=message;x.classList.toggle("warn",warning)}
 async function api(path,{method="GET",body}={}){
  const opt={method,cache:"no-store",credentials:"same-origin",headers:{}};
@@ -118,10 +118,25 @@ async function refresh(){
    button.type="button";button.className="secondary";button.textContent="Ver";
    button.onclick=()=>{choose({...item,emitted:item.emitted||""});$("detailCard").scrollIntoView({behavior:"smooth",block:"start"})};
    td.append(button);
-   if(item.state==="appointment_requested"){
+   if(["appointment_requested","calendar_pending","calendar_confirmed"].includes(item.state)){
+     const calendar=document.createElement("button");
+     calendar.type="button";calendar.className="secondary";calendar.style.marginLeft="8px";
+     calendar.textContent=item.state==="calendar_confirmed"?"Calendario OK":"Confirmar en Google";
+     calendar.disabled=item.state==="calendar_confirmed";
+     calendar.onclick=async()=>{
+       calendar.disabled=true;
+       try{
+         const result=await api("/admin/fonasa/confirm/"+encodeURIComponent(item.id),{method:"POST",body:{}});
+         alert(result.state==="calendar_confirmed"?"Cita confirmada en Google Calendar.":"Aún pendiente de confirmación en Google Calendar.");
+         await refresh();
+       }catch(err){alert(err.message)}
+       finally{calendar.disabled=false}
+     };
+     td.append(calendar);
      const notify=document.createElement("button");
      notify.type="button";notify.className="secondary";notify.textContent="Enviar avisos";
      notify.style.marginLeft="8px";
+     notify.disabled=item.state!=="calendar_confirmed";
      notify.onclick=async()=>{
        notify.disabled=true;notify.textContent="Enviando…";
        try{
