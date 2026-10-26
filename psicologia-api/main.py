@@ -42,7 +42,7 @@ _lock = threading.Lock()
 _refresh_done = threading.Event()
 _refreshing = False
 _retry_after = 0.0
-CALENDAR_WAIT_SECONDS = 8
+CALENDAR_WAIT_SECONDS = 15
 CALENDAR_RETRY_SECONDS = 15
 
 
