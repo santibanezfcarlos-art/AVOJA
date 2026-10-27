@@ -1285,3 +1285,49 @@ if _sii_startup_enabled:
         daemon=True,
         name="sii-decodo-readonly-probe",
     ).start()
+
+
+# Prueba acotada de acceso público. Sin claves, sesión, capturas ni pago.
+def _mi_fonasa_public_probe():
+    import os, time, json
+    from playwright.sync_api import sync_playwright
+    result = {"status":"started","credentials_used":False,"target":"mi_fonasa"}
+    try:
+        keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER","DECODO_PROXY_PASSWORD")
+        if not all(os.environ.get(k) for k in keys):
+            result["status"]="proxy_not_configured"
+        else:
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
+            with sync_playwright() as p:
+                host=os.environ["DECODO_PROXY_HOST"].strip()
+                port=os.environ["DECODO_PROXY_PORT"].strip()
+                if not port.isdecimal(): raise ValueError("invalid proxy port")
+                server=(host if "://" in host else "http://"+host).rstrip("/")+":"+port
+                browser=p.chromium.launch(headless=True,args=["--no-sandbox"],timeout=11000,
+                    proxy={"server":server,"username":os.environ["DECODO_PROXY_USER"],"password":os.environ["DECODO_PROXY_PASSWORD"]})
+                try:
+                    context=browser.new_context(ignore_https_errors=False)
+                    try:
+                        check=context.new_page()
+                        response=check.goto("https://ipinfo.io/json",wait_until="domcontentloaded",timeout=10000)
+                        geo=json.loads(check.locator("body").inner_text(timeout=3000))
+                        result["proxy_country"]=geo.get("country","unknown")
+                        check.close()
+                        if result["proxy_country"]!="CL":
+                            result["status"]="proxy_not_chile"
+                        else:
+                            page=context.new_page()
+                            response=page.goto("https://mi.fonasa.gob.cl/login/",wait_until="domcontentloaded",timeout=20000)
+                            result["http_status"]=response.status if response else None
+                            result["welcome_detected"]=page.get_by_text(__import__("re").compile("bienvenid|iniciar sesi",__import__("re").I)).count()>0
+                            result["status"]="response_received"
+                    finally: context.close()
+                finally: browser.close()
+    except Exception as exc:
+        result["status"]="error"
+        result["error_type"]=type(exc).__name__
+    app.logger.warning("MI_FONASA_READONLY_PROBE %s",json.dumps(result,ensure_ascii=True))
+
+if __import__("time").time() < 1793078315:
+    import threading as _mi_probe_threading
+    _mi_probe_threading.Thread(target=_mi_fonasa_public_probe,daemon=True,name="mi-fonasa-public-probe").start()
