@@ -1,6 +1,16 @@
 <!doctype html>
 <html lang="es">
 <head>
+<link rel="preconnect" href="https://psicologia-carlos-calendar-api.onrender.com" crossorigin>
+<script>
+(function(){
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()),p={};parts.forEach(x=>{if(x.type!=='literal')p[x.type]=x.value});
+ const from=p.year+'-'+p.month+'-'+p.day,d=new Date(from+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+20);const to=d.toISOString().slice(0,10);
+ const url='https://psicologia-carlos-calendar-api.onrender.com/api/availability?from='+from+'&to='+to+'&duration=45';
+ const promise=fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(data=>data.duration_minutes===45&&data.configured===true&&data.status==='ok'?{data,at:Date.now()}:null).catch(()=>null);
+ window.__pscCalendarPrefetch={from,to,promise};
+})();
+</script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#173e35"><meta name="robots" content="noindex,nofollow">
 <meta name="description" content="Psicología online para personas adultas. Conoce el enfoque de Carlos Santibáñez y explora horarios de atención en una demostración de agenda.">
 <title>Carlos Santibáñez | Psicología Online</title>
@@ -732,22 +742,45 @@ function updateCalendarMessage(){
  const el=document.getElementById('calendarSyncStatus');if(!el)return;
  el.textContent=({'loading':'Buscando horarios disponibles…','ready':'Horarios actualizados. Elige el que más te acomode.','demo':'Google Calendar todavía no está conectado. Horarios solo de prueba; las reservas no son reales.','error':'No pudimos cargar los horarios. Intenta nuevamente en un momento.'})[calendarState];
 }
+// Reutilizar por poco tiempo las respuestas y consultas en curso del mismo rango.
+// La comprobación en el servidor antes del pago sigue siendo obligatoria.
+const availabilityCache=[],availabilityRequests=new Map(),AVAILABILITY_REUSE_MS=10000;
+async function getAvailability(from,neededUntil,duration){
+ const now=Date.now();
+ const pre=window.__pscCalendarPrefetch;
+ if(duration===45&&pre&&pre.from<=from&&pre.to>=neededUntil){
+  window.__pscCalendarPrefetch=null;
+  const result=await pre.promise;
+  if(result&&Date.now()-result.at<AVAILABILITY_REUSE_MS){availabilityCache.push({from:pre.from,to:pre.to,duration,data:result.data,at:result.at});return result.data}
+ }
+ const cached=availabilityCache.find(e=>e.duration===duration&&e.from<=from&&e.to>=neededUntil&&now-e.at<AVAILABILITY_REUSE_MS);
+ if(cached)return cached.data;
+ const running=[...availabilityRequests.values()].find(e=>e.duration===duration&&e.from<=from&&e.to>=neededUntil);
+ if(running)return running.promise;
+ const to=plus(from,20),key=from+'|'+duration;
+ const promise=(async()=>{
+  const res=await fetch(CAL_API+'?from='+from+'&to='+to+'&duration='+duration,{cache:'no-store'});
+  if(!res.ok)throw Error('Disponibilidad temporalmente no disponible');
+  const data=await res.json();
+  if(data.duration_minutes!==duration)throw Error('Duración inesperada');
+  if(data.configured===true&&data.status==='ok'){
+   availabilityCache.push({from,to,duration,data,at:Date.now()});
+   while(availabilityCache.length>8)availabilityCache.shift();
+  }
+  return data;
+ })();
+ availabilityRequests.set(key,{from,to,duration,promise});
+ try{return await promise}finally{if(availabilityRequests.get(key)?.promise===promise)availabilityRequests.delete(key)}
+}
 async function loadCalendar(){
  const req=++calendarSeq,from=start<todayISO()?todayISO():start;
  clearTimeout(calendarRetry);
  calendarState='loading';calendarBlocked={};calendarBlockedShort={};render();
  try{
-  const base=CAL_API+'?from='+from+'&to='+plus(from,20);
-  const duration=currentService().minutes;
-  // Solicitar ambas duraciones en paralelo para evitar esperas consecutivas.
-  const [res,shortRes]=duration===45
-   ?await fetch(base+'&duration=45',{cache:'no-store'}).then(r=>[r,r])
-   :await Promise.all([fetch(base+'&duration='+duration,{cache:'no-store'}),fetch(base+'&duration=45',{cache:'no-store'})]);
-  if(res.status===503||shortRes.status===503)throw Error('Disponibilidad temporalmente no disponible');
-  if(!res.ok||!shortRes.ok)throw Error('Sin conexión');
-  const data=await res.json();
-  const shortData=duration===45?data:await shortRes.json();
-  if(data.duration_minutes!==duration||shortData.duration_minutes!==45)throw Error('Duración inesperada');
+  const duration=currentService().minutes,neededUntil=plus(start,6);
+  const [data,shortData]=duration===45
+   ?await getAvailability(from,neededUntil,45).then(data=>[data,data])
+   :await Promise.all([getAvailability(from,neededUntil,duration),getAvailability(from,neededUntil,45)]);
   if(req!==calendarSeq)return;
   if(data.configured===true&&data.status==='ok'&&shortData.configured===true&&shortData.status==='ok'){calendarState='ready';calendarBlocked=data.blocked||{};calendarBlockedShort=shortData.blocked||{}}
   else if(data.configured===false){calendarState='demo';calendarBlocked={}}
