@@ -85,7 +85,7 @@ def allowed_slot(config, service, day, hour):
 def headers(response):
     response = billing.private_headers(response)
     if request.path == '/admin':
-        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; frame-src https://mi.fonasa.gob.cl https://accounts.claveunica.gob.cl https://www.google.com; frame-ancestors 'none'; base-uri 'none'"
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; frame-src 'self' https://mi.fonasa.gob.cl https://accounts.claveunica.gob.cl https://www.google.com; frame-ancestors 'none'; base-uri 'none'"
     return response
 
 
