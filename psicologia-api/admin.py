@@ -83,7 +83,10 @@ def allowed_slot(config, service, day, hour):
 
 @admin_bp.after_request
 def headers(response):
-    return billing.private_headers(response)
+    response = billing.private_headers(response)
+    if request.path == '/admin':
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; frame-src https://mi.fonasa.gob.cl; frame-ancestors 'none'; base-uri 'none'"
+    return response
 
 
 @admin_bp.get('/api/booking-config')
