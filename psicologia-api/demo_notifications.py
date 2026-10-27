@@ -130,7 +130,7 @@ def _communication_copy():
     return {}
 
 
-def template(role, order, service, start, end, *, correction=False, rebooking_url=None, rescheduled=False, patient_name=None, meet_url=None, demonstration=True):
+def template(role, order, service, start, end, *, correction=False, rebooking_url=None, rescheduled=False, patient_name=None, meet_url=None, demonstration=True, webpay_amount=None):
     """Email institucional, seguro y adaptable al servicio y al profesional.
 
     Fechas siempre en Chile; sin información clínica ni URLs de sesión inventadas.
@@ -145,16 +145,16 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
     service_name = services[service]
     zone = ZoneInfo("America/Santiago")
     local_start = start.astimezone(zone)
-    local_end = end.astimezone(zone)
+    local_end = end.astimezone(zone) if end is not None else None
     date_label = local_start.strftime("%d/%m/%Y")
     hour_label = local_start.strftime("%H:%M")
-    end_label = local_end.strftime("%H:%M")
+    end_label = local_end.strftime("%H:%M") if local_end else None
     long_date = (f"{local_start.day} de "
                  + ["enero", "febrero", "marzo", "abril", "mayo", "junio",
                     "julio", "agosto", "septiembre", "octubre", "noviembre",
                     "diciembre"][local_start.month - 1]
                  + f" de {local_start.year}")
-    duration = round((end - start).total_seconds() / 60)
+    duration = round((end - start).total_seconds() / 60) if end is not None else None
     name, subtitle, contact, website = _brand()
     is_pro = role == "professional"
     subject = (("Nueva sesión agendada · " if is_pro
@@ -188,7 +188,8 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         notes=copy["professional_notes" if is_pro else "patient_notes"]
         name=copy["signature"]
 
-    summary = hour_label + "–" + end_label
+    summary = hour_label + ("–" + end_label if end_label else "")
+    payment_label = ("Pago Webpay confirmado: $" + format(webpay_amount, ",").replace(",", ".") + " CLP") if webpay_amount is not None else None
     correction_notice = (
         "<tr><td style='padding:15px 25px;background:#fff2e5;"
         "color:#754724;font-size:14px;line-height:1.5'>"
@@ -219,13 +220,16 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         field("Servicio", service_name),
         field("Fecha", long_date),
         field("Hora (Chile)", summary),
-        field("Duración", str(duration) + " minutos"),
+        *([field("Duración", str(duration) + " minutos")] if duration is not None else []),
+        *([field("Pago", payment_label)] if payment_label else []),
         field("Modalidad", "Online"),
     ]) + meet_row
     from urllib.parse import urlsplit
     if rebooking_url is not None:
         parsed = urlsplit(rebooking_url)
-        if role != "patient" or parsed.scheme != "https" or parsed.netloc not in ("pscsantibanez.cl", "psicologia-retenciones-piloto.onrender.com") or parsed.path != "/reagendar" or not parsed.query:
+        legacy_link = (parsed.netloc in ("pscsantibanez.cl", "psicologia-retenciones-piloto.onrender.com") and parsed.path == "/reagendar" and bool(parsed.query))
+        production_link = (webpay_amount is not None and parsed.netloc == "psicologia-carlos-calendar-api.onrender.com" and re.fullmatch(r"/reagendar-produccion/[A-Za-z0-9_-]+", parsed.path) and not parsed.query and not parsed.fragment)
+        if role != "patient" or parsed.scheme != "https" or not (legacy_link or production_link):
             raise NotificationError("Enlace de reagendamiento no permitido")
     rebooking_button = (
         "<tr><td style='padding:8px 30px 22px;text-align:center'>"
@@ -282,9 +286,9 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         "line-height:1.7;color:#4b665a'>"
         + esc(notes) + "<p style='margin:15px 0 0'>"
         "<span style='font-size:12px;color:#71867a'>"
-        + ("Reserva realizada en ambiente de demostración: el pago es simulado y no se ha emitido boleta." if demonstration else "Atención confirmada con bono Fonasa.") + "</span>"
+        + (esc(payment_label) if payment_label else ("Reserva realizada en ambiente de demostración: el pago es simulado y no se ha emitido boleta." if demonstration else "Atención confirmada con bono Fonasa.")) + "</span>"
         "</p><p style='margin:14px 0 0'>"
-        + ("Adjuntamos una invitación de calendario para que puedas incorporar el horario a tu agenda." if demonstration else ("La atención ya figura en tu calendario." if is_pro else "Puedes guardar tu atención usando el archivo de calendario adjunto.")) + "</p>"
+        + (("La atención ya figura en tu calendario." if is_pro else "Conserva este correo para consultar los datos de tu atención.") if payment_label else ("Adjuntamos una invitación de calendario para que puedas incorporar el horario a tu agenda." if demonstration else ("La atención ya figura en tu calendario." if is_pro else "Puedes guardar tu atención usando el archivo de calendario adjunto."))) + "</p>"
         "</td></tr>"
         + rebooking_button +
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
@@ -400,3 +404,4 @@ def send_payload(payload, idempotency_key, *, transport=None):
     if not isinstance(result,dict) or not isinstance(result.get("id"),str):
         raise NotificationError("Respuesta de proveedor de correo inválida")
     return result["id"]
+
