@@ -1328,6 +1328,12 @@ def _mi_fonasa_public_probe():
         result["error_type"]=type(exc).__name__
     app.logger.warning("MI_FONASA_READONLY_PROBE %s",json.dumps(result,ensure_ascii=True))
 
-if __import__("time").time() < 1793078315:
-    import threading as _mi_probe_threading
-    _mi_probe_threading.Thread(target=_mi_fonasa_public_probe,daemon=True,name="mi-fonasa-public-probe").start()
+_mi_probe_launched = False
+@app.before_request
+def _start_mi_fonasa_probe():
+    global _mi_probe_launched
+    if not _mi_probe_launched and __import__("time").time() < 1793078315:
+        _mi_probe_launched = True
+        import threading
+        threading.Thread(target=_mi_fonasa_public_probe,daemon=True,name="mi-fonasa-public-probe").start()
+
