@@ -1347,7 +1347,7 @@ from playwright.sync_api import sync_playwright
 
 bp=Blueprint("browser_demo",__name__,url_prefix="/browser-demo")
 TOKEN_HASH="32013d67a69741a3984debd2132573eb35ea644e1fb581e753a04f51152f3797"
-EXPIRES=1793086127
+EXPIRES=1793199290
 jobs=queue.Queue(maxsize=3)
 worker_started=False
 guard=threading.Lock()
@@ -1362,7 +1362,7 @@ def worker():
             def permit(route):
                 from urllib.parse import urlparse
                 u=urlparse(route.request.url)
-                if u.scheme=="https" and u.hostname in ("mi.fonasa.gob.cl","example.org","www.example.org","valhallaoffice.cl","www.valhallaoffice.cl","google.com","www.google.com") and route.request.method=="GET":
+                if u.scheme=="https" and u.hostname in ("mi.fonasa.gob.cl","example.org","www.example.org","valhallaoffice.cl","www.valhallaoffice.cl","google.com","www.google.com","google.cl","www.google.cl") and route.request.method=="GET":
                     route.continue_()
                 else: route.abort()
             ctx.route("**/*",permit)
@@ -1412,7 +1412,7 @@ def frame():
         if not isinstance(url,str) or len(url)>2048: return jsonify(error="Dirección inválida"),400
         if "://" not in url: url="https://"+url
         u=urlsplit(url)
-        allowed=("mi.fonasa.gob.cl","example.org","www.example.org","valhallaoffice.cl","www.valhallaoffice.cl","google.com","www.google.com")
+        allowed=("mi.fonasa.gob.cl","example.org","www.example.org","valhallaoffice.cl","www.valhallaoffice.cl","google.com","www.google.com","google.cl","www.google.cl")
         if u.scheme!="https" or u.hostname not in allowed or u.username or u.password or u.port not in (None,443): return jsonify(error="Dominio no habilitado para esta prueba"),400
     if click is not None and (not isinstance(click,list) or len(click)!=2 or not all(isinstance(v,(int,float)) for v in click)): return jsonify(error="Clic inválido"),400
     with guard:
