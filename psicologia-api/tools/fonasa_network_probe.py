@@ -1362,12 +1362,12 @@ def worker():
             def permit(route):
                 from urllib.parse import urlparse
                 u=urlparse(route.request.url)
-                if u.scheme=="https" and u.hostname in ("example.org","www.example.org") and route.request.method=="GET":
+                if u.scheme=="https" and u.hostname in ("mi.fonasa.gob.cl",) and route.request.method=="GET":
                     route.continue_()
                 else: route.abort()
             ctx.route("**/*",permit)
             page=ctx.new_page()
-            page.goto("https://example.org/",wait_until="domcontentloaded",timeout=15000)
+            page.goto("https://mi.fonasa.gob.cl/login/",wait_until="domcontentloaded",timeout=15000)
             while time.time()<EXPIRES:
                 try: action,future=jobs.get(timeout=10)
                 except queue.Empty: continue
@@ -1390,7 +1390,7 @@ def worker():
 
 @bp.get("/")
 def index():
-    return Response("""<!doctype html><html lang="es"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prueba navegador</title><style>body{font:16px system-ui;color:#143e34;background:#f2f7f4;max-width:950px;margin:20px auto;padding:12px}img{display:block;width:100%;height:auto;border:1px solid #a9cdbb;border-radius:10px}button{background:#176647;color:white;border:0;padding:12px;border-radius:8px}#status{min-height:2em}</style><h1>Prueba de navegador real</h1><p>El navegador remoto abre example.org. Toca la imagen para hacer clic. Prueba temporal: no ingreses claves ni datos personales.</p><button id="start">Iniciar o actualizar</button><p id="status" role="status"></p><img id="screen" alt="Pantalla del navegador remoto"><script>
+    return Response("""<!doctype html><html lang="es"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prueba navegador</title><style>body{font:16px system-ui;color:#143e34;background:#f2f7f4;max-width:950px;margin:20px auto;padding:12px}img{display:block;width:100%;height:auto;border:1px solid #a9cdbb;border-radius:10px}button{background:#176647;color:white;border:0;padding:12px;border-radius:8px}#status{min-height:2em}</style><h1>Prueba de navegador real</h1><p>El navegador remoto intenta abrir la página pública de Mi Fonasa. Prueba visual: no ingreses claves ni datos personales.</p><button id="start">Iniciar o actualizar</button><p id="status" role="status"></p><img id="screen" alt="Pantalla del navegador remoto"><script>
 const token=location.hash.slice(1), status=document.getElementById('status'),screen=document.getElementById('screen');history.replaceState(null,'',location.pathname);
 async function run(click){status.textContent='Conectando con Chromium…';try{let r=await fetch('/browser-demo/frame',{method:'POST',headers:{'Content-Type':'application/json','X-Demo-Token':token},body:JSON.stringify({click})});let d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cargar');screen.src='data:image/jpeg;base64,'+d.image;status.textContent='Navegador conectado. Puedes tocar la imagen.'}catch(e){status.textContent='No se pudo abrir la prueba: '+e.message}}
 document.getElementById('start').onclick=()=>run(null);screen.onclick=e=>{const r=screen.getBoundingClientRect();run([Math.round((e.clientX-r.left)*900/r.width),Math.round((e.clientY-r.top)*700/r.height)])};
