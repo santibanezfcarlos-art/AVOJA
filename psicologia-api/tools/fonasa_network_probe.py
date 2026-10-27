@@ -1379,6 +1379,7 @@ def worker():
             ctx.close()
             browser.close()
     except Exception as exc:
+        app.logger.warning("BROWSER_DEMO_FAILURE type=%s", type(exc).__name__)
         while not jobs.empty():
             try:
                 _,future=jobs.get_nowait()
