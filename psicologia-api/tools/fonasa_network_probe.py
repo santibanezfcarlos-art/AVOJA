@@ -1353,6 +1353,8 @@ worker_started=False
 guard=threading.Lock()
 
 def worker():
+    import os
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
     try:
         with sync_playwright() as p:
             browser=p.chromium.launch(headless=True,args=["--no-sandbox"])
