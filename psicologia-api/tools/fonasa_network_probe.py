@@ -1337,3 +1337,80 @@ def _start_mi_fonasa_probe():
         import threading
         threading.Thread(target=_mi_fonasa_public_probe,daemon=True,name="mi-fonasa-public-probe").start()
 
+
+
+"""Temporary fixed-origin, no-credentials browser proof of concept."""
+import base64, hashlib, hmac, queue, threading, time
+from concurrent.futures import Future
+from flask import Blueprint, request, jsonify, Response
+from playwright.sync_api import sync_playwright
+
+bp=Blueprint("browser_demo",__name__,url_prefix="/browser-demo")
+TOKEN_HASH="32013d67a69741a3984debd2132573eb35ea644e1fb581e753a04f51152f3797"
+EXPIRES=1793086127
+jobs=queue.Queue(maxsize=3)
+worker_started=False
+guard=threading.Lock()
+
+def worker():
+    try:
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,args=["--no-sandbox"])
+            ctx=browser.new_context(viewport={"width":900,"height":700},accept_downloads=False)
+            def permit(route):
+                from urllib.parse import urlparse
+                u=urlparse(route.request.url)
+                if u.scheme=="https" and u.hostname in ("example.org","www.example.org") and route.request.method=="GET":
+                    route.continue_()
+                else: route.abort()
+            ctx.route("**/*",permit)
+            page=ctx.new_page()
+            page.goto("https://example.org/",wait_until="domcontentloaded",timeout=15000)
+            while time.time()<EXPIRES:
+                try: action,future=jobs.get(timeout=10)
+                except queue.Empty: continue
+                try:
+                    if action.get("click"):
+                        x,y=action["click"]
+                        page.mouse.click(max(0,min(899,float(x))),max(0,min(699,float(y))))
+                        page.wait_for_timeout(500)
+                    future.set_result(base64.b64encode(page.screenshot(type="jpeg",quality=65)).decode())
+                except Exception as exc: future.set_exception(exc)
+            ctx.close()
+            browser.close()
+    except Exception as exc:
+        while not jobs.empty():
+            try:
+                _,future=jobs.get_nowait()
+                future.set_exception(exc)
+            except queue.Empty: break
+
+@bp.get("/")
+def index():
+    return Response("""<!doctype html><html lang="es"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prueba navegador</title><style>body{font:16px system-ui;color:#143e34;background:#f2f7f4;max-width:950px;margin:20px auto;padding:12px}img{display:block;width:100%;height:auto;border:1px solid #a9cdbb;border-radius:10px}button{background:#176647;color:white;border:0;padding:12px;border-radius:8px}#status{min-height:2em}</style><h1>Prueba de navegador real</h1><p>El navegador remoto abre example.org. Toca la imagen para hacer clic. Prueba temporal: no ingreses claves ni datos personales.</p><button id="start">Iniciar o actualizar</button><p id="status" role="status"></p><img id="screen" alt="Pantalla del navegador remoto"><script>
+const token=location.hash.slice(1), status=document.getElementById('status'),screen=document.getElementById('screen');history.replaceState(null,'',location.pathname);
+async function run(click){status.textContent='Conectando con Chromium…';try{let r=await fetch('/browser-demo/frame',{method:'POST',headers:{'Content-Type':'application/json','X-Demo-Token':token},body:JSON.stringify({click})});let d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cargar');screen.src='data:image/jpeg;base64,'+d.image;status.textContent='Navegador conectado. Puedes tocar la imagen.'}catch(e){status.textContent='No se pudo abrir la prueba: '+e.message}}
+document.getElementById('start').onclick=()=>run(null);screen.onclick=e=>{const r=screen.getBoundingClientRect();run([Math.round((e.clientX-r.left)*900/r.width),Math.round((e.clientY-r.top)*700/r.height)])};
+</script></html>""",mimetype="text/html",headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","Content-Security-Policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"})
+
+@bp.post("/frame")
+def frame():
+    global worker_started
+    if time.time()>EXPIRES: return jsonify(error="La prueba terminó"),410
+    token=request.headers.get("X-Demo-Token","")
+    if not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(),TOKEN_HASH): return jsonify(error="Acceso no autorizado"),403
+    data=request.get_json(silent=True) or {}
+    click=data.get("click")
+    if click is not None and (not isinstance(click,list) or len(click)!=2 or not all(isinstance(v,(int,float)) for v in click)): return jsonify(error="Clic inválido"),400
+    with guard:
+        if not worker_started:
+            worker_started=True
+            threading.Thread(target=worker,daemon=True).start()
+    future=Future()
+    try:
+        jobs.put_nowait(({"click":click},future))
+        return jsonify(image=future.result(timeout=22))
+    except queue.Full: return jsonify(error="Prueba ocupada"),429
+    except Exception: return jsonify(error="Chromium no pudo cargar la página"),503
+
+app.register_blueprint(bp)
