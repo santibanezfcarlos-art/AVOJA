@@ -6,7 +6,7 @@ from html import escape
 from flask import Blueprint, jsonify
 from public_demo_bridge import _authorize
 from google_calendar_writer import CalendarWriter
-from demo_notifications import send_payload, FROM
+from demo_notifications import send_payload, template, FROM
 bp=Blueprint('production_fulfillment',__name__)
 TITLES={'psicoterapia':'Psicoterapia breve','empleabilidad':'Asesoría en empleabilidad','competencias':'Potencia tus competencias'}
 
@@ -55,11 +55,17 @@ def mail():
         from zoneinfo import ZoneInfo
         stamp=datetime.fromisoformat(d['start']).astimezone(ZoneInfo('America/Santiago')).strftime('%d/%m/%Y a las %H:%M')
         title=('Tu hora está confirmada' if d['role']=='patient' else 'Nueva sesión confirmada')
-        text=f"{title}\n{TITLES[d['service']]}\n{stamp} (Chile)\nPaciente: {d['name']}\nPago Webpay confirmado: ${d['amount']:,} CLP\n"
+        text=f"{title}\n{TITLES[d['service']]}\n{stamp} (Chile)\nPaciente: {d['name']}\nPago Webpay confirmado: ${format(d['amount'], ',').replace(',', '.')} CLP\n"
         if d.get('meet_url'):text+='Google Meet: '+d['meet_url']+'\n'
         text+='Reagendar: '+d['rebooking_url']+'\nUna reprogramación con al menos 24 horas de anticipación.\nContacto: contacto@pscsantibanez.cl'
-        body='<html><body style="font:16px Arial;color:#173e35"><h2>PSC Santibáñez</h2><h1>'+escape(title)+'</h1><p>'+escape(text).replace('\n','<br>')+'</p></body></html>'
-        send_payload({'from':FROM,'to':[recipient],'subject':title+' · '+stamp,'html':body,'text':text},'psc-production-'+d['order']+'-'+d['role']+'-'+str(d.get('revision',0)))
+        subject,body=template(d['role'],d['order'],d['service'],
+            datetime.fromisoformat(d['start']),
+            datetime.fromisoformat(d['end']) if d.get('end') else None,
+            patient_name=d['name'],meet_url=d.get('meet_url'),
+            rebooking_url=d['rebooking_url'] if d['role']=='patient' else None,
+            demonstration=False,webpay_amount=d['amount'],
+            rescheduled=bool(d.get('revision',0)))
+        send_payload({'from':FROM,'to':[recipient],'subject':subject,'html':body,'text':text},'psc-production-'+d['order']+'-'+d['role']+'-'+str(d.get('revision',0)))
         return jsonify(state='SENT')
     except Exception:return jsonify(state='PENDING'),503
 
@@ -83,3 +89,4 @@ def rebook():
         w.reschedule_own_appointment(hold_id=d['hold_id'],service=d['service'],old_start=datetime.fromisoformat(d['old_start']),old_end=datetime.fromisoformat(d['old_end']),new_start=start,new_end=end)
         return jsonify(state='CONFIRMED')
     except Exception:return jsonify(state='PENDING'),503
+
