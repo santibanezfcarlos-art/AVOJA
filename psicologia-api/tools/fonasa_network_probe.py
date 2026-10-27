@@ -1362,7 +1362,7 @@ def worker():
             def permit(route):
                 from urllib.parse import urlparse
                 u=urlparse(route.request.url)
-                if u.scheme=="https" and u.hostname in ("mi.fonasa.gob.cl",) and route.request.method=="GET":
+                if u.scheme=="https" and u.hostname in ("mi.fonasa.gob.cl","example.org","www.example.org","valhallaoffice.cl","www.valhallaoffice.cl","google.com","www.google.com") and route.request.method=="GET":
                     route.continue_()
                 else: route.abort()
             ctx.route("**/*",permit)
@@ -1372,6 +1372,8 @@ def worker():
                 try: action,future=jobs.get(timeout=10)
                 except queue.Empty: continue
                 try:
+                    if action.get("url"):
+                        page.goto(action["url"],wait_until="domcontentloaded",timeout=15000)
                     if action.get("click"):
                         x,y=action["click"]
                         page.mouse.click(max(0,min(899,float(x))),max(0,min(699,float(y))))
@@ -1390,10 +1392,10 @@ def worker():
 
 @bp.get("/")
 def index():
-    return Response("""<!doctype html><html lang="es"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prueba navegador</title><style>body{font:16px system-ui;color:#143e34;background:#f2f7f4;max-width:950px;margin:20px auto;padding:12px}img{display:block;width:100%;height:auto;border:1px solid #a9cdbb;border-radius:10px}button{background:#176647;color:white;border:0;padding:12px;border-radius:8px}#status{min-height:2em}</style><h1>Prueba de navegador real</h1><p>El navegador remoto intenta abrir la página pública de Mi Fonasa. Prueba visual: no ingreses claves ni datos personales.</p><button id="start">Iniciar o actualizar</button><p id="status" role="status"></p><img id="screen" alt="Pantalla del navegador remoto"><script>
+    return Response("""<!doctype html><html lang="es"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prueba navegador</title><style>body{font:16px system-ui;color:#143e34;background:#f2f7f4;max-width:950px;margin:20px auto;padding:12px}img{display:block;width:100%;height:auto;border:1px solid #a9cdbb;border-radius:10px}button{background:#176647;color:white;border:0;padding:12px;border-radius:8px}#status{min-height:2em}</style><h1>Prueba de navegador real</h1><p>Prueba visual: no ingreses claves ni datos personales. Puedes probar Mi Fonasa, Valhalla Office, Google o example.org.</p><label for="address">Dirección web</label> <input id="address" type="url" placeholder="https://valhallaoffice.cl" style="padding:12px;max-width:90%;width:360px"><button id="go">Abrir dirección</button> <button id="start">Iniciar o actualizar</button><p id="status" role="status"></p><img id="screen" alt="Pantalla del navegador remoto"><script>
 const token=location.hash.slice(1), status=document.getElementById('status'),screen=document.getElementById('screen');history.replaceState(null,'',location.pathname);
-async function run(click){status.textContent='Conectando con Chromium…';try{let r=await fetch('/browser-demo/frame',{method:'POST',headers:{'Content-Type':'application/json','X-Demo-Token':token},body:JSON.stringify({click})});let d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cargar');screen.src='data:image/jpeg;base64,'+d.image;status.textContent='Navegador conectado. Puedes tocar la imagen.'}catch(e){status.textContent='No se pudo abrir la prueba: '+e.message}}
-document.getElementById('start').onclick=()=>run(null);screen.onclick=e=>{const r=screen.getBoundingClientRect();run([Math.round((e.clientX-r.left)*900/r.width),Math.round((e.clientY-r.top)*700/r.height)])};
+async function run(click,url){status.textContent='Conectando con Chromium…';try{let r=await fetch('/browser-demo/frame',{method:'POST',headers:{'Content-Type':'application/json','X-Demo-Token':token},body:JSON.stringify({click,url})});let d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cargar');screen.src='data:image/jpeg;base64,'+d.image;status.textContent='Navegador conectado. Puedes tocar la imagen.'}catch(e){status.textContent='No se pudo abrir la prueba: '+e.message}}
+document.getElementById('start').onclick=()=>run(null,null);document.getElementById('go').onclick=()=>run(null,document.getElementById('address').value.trim());screen.onclick=e=>{const r=screen.getBoundingClientRect();run([Math.round((e.clientX-r.left)*900/r.width),Math.round((e.clientY-r.top)*700/r.height)])};
 </script></html>""",mimetype="text/html",headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","Content-Security-Policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"})
 
 @bp.post("/frame")
@@ -1404,6 +1406,14 @@ def frame():
     if not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(),TOKEN_HASH): return jsonify(error="Acceso no autorizado"),403
     data=request.get_json(silent=True) or {}
     click=data.get("click")
+    url=data.get("url")
+    if url:
+        from urllib.parse import urlsplit
+        if not isinstance(url,str) or len(url)>2048: return jsonify(error="Dirección inválida"),400
+        if "://" not in url: url="https://"+url
+        u=urlsplit(url)
+        allowed=("mi.fonasa.gob.cl","example.org","www.example.org","valhallaoffice.cl","www.valhallaoffice.cl","google.com","www.google.com")
+        if u.scheme!="https" or u.hostname not in allowed or u.username or u.password or u.port not in (None,443): return jsonify(error="Dominio no habilitado para esta prueba"),400
     if click is not None and (not isinstance(click,list) or len(click)!=2 or not all(isinstance(v,(int,float)) for v in click)): return jsonify(error="Clic inválido"),400
     with guard:
         if not worker_started:
@@ -1411,7 +1421,7 @@ def frame():
             threading.Thread(target=worker,daemon=True).start()
     future=Future()
     try:
-        jobs.put_nowait(({"click":click},future))
+        jobs.put_nowait(({"click":click,"url":url},future))
         return jsonify(image=future.result(timeout=22))
     except queue.Full: return jsonify(error="Prueba ocupada"),429
     except Exception: return jsonify(error="Chromium no pudo cargar la página"),503
