@@ -810,7 +810,7 @@ class Store:
                 c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND user_id=? AND status IN ('pending','retry','processing')",(uid,))
             self.log(c, uid, 'profile_updated', uid)
 
-    def parse_slot(self, value, uid=None, connection=None):
+    def parse_slot(self, value, uid=None, connection=None, rescheduling=None):
         owner=False
         if uid is not None:
             if connection is not None:owner=self.can_book_parallel(connection,uid)
@@ -823,14 +823,23 @@ class Store:
             local = parsed.astimezone(CHILE)
             if local.minute or local.second or local.microsecond or not OPENING_HOUR <= local.hour < CLOSING_HOUR:
                 raise ValueError()
-            if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + (timedelta(0) if owner else MIN_BOOKING_NOTICE) or parsed > now() + timedelta(days=90):
+            same_day = rescheduling is not None and self.same_day_reschedule(rescheduling, local.date(), uid)
+            notice = timedelta(0) if owner else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
+            if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + notice or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
         except (ValueError, TypeError):
             if owner:raise Problem('Elige un horario futuro con inicio entre 07:00 y 22:00, dentro de los próximos 90 días.')
             raise Problem('Reserva con al menos 24 horas de anticipación, con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
 
-    def availability(self, date, include_names=False, uid=None):
+    def same_day_reschedule(self, booking, day, uid):
+        # The existing reservation retains access for its original Chilean day.
+        return (booking['user_id'] == uid and booking['status'] == 'confirmed'
+                and booking['modifications'] == 0
+                and datetime.fromisoformat(booking['start']).astimezone(CHILE).date() == day == now().astimezone(CHILE).date()
+                and datetime.fromisoformat(booking['start']) >= now() + timedelta(hours=2))
+
+    def availability(self, date, include_names=False, uid=None, reschedule_id=None):
         try:
             day = datetime.strptime(date, '%Y-%m-%d').date()
         except (ValueError, TypeError):
@@ -840,6 +849,17 @@ class Store:
             raise Problem('Consulta fechas de hoy a los próximos 90 días.')
         with self.connection() as c:
             owner=self.can_book_parallel(c,uid) if uid is not None else False
+            rescheduling = None
+            if reschedule_id is not None:
+                try:
+                    bid = int(reschedule_id)
+                except (ValueError, TypeError):
+                    raise Problem('Reserva inválida.')
+                rescheduling = c.execute('SELECT * FROM bookings WHERE id=? AND user_id=?', (bid, uid)).fetchone()
+                if not rescheduling:
+                    raise Problem('Reserva no encontrada.', 404)
+            same_day = rescheduling is not None and self.same_day_reschedule(rescheduling, day, uid)
+            notice = timedelta(0) if owner else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
             occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
         for hour in range(OPENING_HOUR, CLOSING_HOUR):
@@ -847,7 +867,7 @@ class Store:
             boxes = []
             for box in range(1,4):
                 booking = occupied.get((box, stamp(start)))
-                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= now().astimezone(timezone.utc) + (timedelta(0) if owner else MIN_BOOKING_NOTICE)}
+                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= now().astimezone(timezone.utc) + notice}
                 if include_names and booking:
                     end = start + timedelta(minutes=SESSION_MINUTES)
                     booking['end'] = stamp(end)
@@ -1087,20 +1107,19 @@ class Store:
 
     def modify(self, uid, bid, body):
         if 'rules_acceptance' in body and not validate_acceptance(body['rules_acceptance']):raise Problem('Debes aceptar las normas vigentes antes de reservar.',400)
-        start = self.parse_slot(body.get('start'),uid)
         box = body.get('box')
         if type(box) is not int or box not in (1, 2, 3):
             raise Problem('Box inválido.')
         try:
             with self.connection(True) as c:
                 self.professional(c, uid)
-                self.parse_slot(start,uid,c)
                 booking = c.execute('SELECT * FROM bookings WHERE id=? AND user_id=?', (bid, uid)).fetchone()
                 if not booking:
                     raise Problem('Reserva no encontrada.', 404)
                 owner=self.can_book_parallel(c,uid)
                 if booking['status'] != 'confirmed' or (booking['modifications'] >= 1 and not owner):
                     raise Problem('Esta reserva ya no admite modificaciones.', 409)
+                start = self.parse_slot(body.get('start'), uid, c, rescheduling=booking)
                 cutoff = now() + (timedelta(0) if owner else timedelta(hours=2))
                 if datetime.fromisoformat(booking['start']) < cutoff or datetime.fromisoformat(start) < cutoff:
                     raise Problem('Solo puedes modificar reservas que todavía no hayan comenzado.' if owner else 'El cambio requiere al menos dos horas de anticipación para ambos horarios.', 409)
@@ -1512,7 +1531,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.admin(user,management=True)
                 self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0], include_names=True,uid=user['id']))
             elif route.path == '/api/availability':
-                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0],uid=user['id']))
+                self.respond(self.server.store.availability(parse_qs(route.query).get('date', [''])[0],uid=user['id'],reschedule_id=parse_qs(route.query).get('reschedule_id', [None])[0]))
             elif route.path == '/api/admin':
                 self.admin(user,management=True)
                 data=self.server.store.admin_state(user['id'])
