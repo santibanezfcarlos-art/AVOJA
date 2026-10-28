@@ -7,7 +7,9 @@ let menuScrollLeft=0;
 let liveRefreshBusy=false,liveFormDirty=false,liveRefreshPending=false,liveEditRevision=0,renderGeneration=0;
 for(const eventName of ['input','change'])document.addEventListener(eventName,event=>{if(event.target.closest?.('#content form')){liveFormDirty=true;liveEditRevision++;}});
 let confirmedBookingIds=[],confirmationModified=false;
-let bookingsDeepLink=location.hash==='#mis-reservas';
+let rescheduleDeepLink=/^#reagendar-([1-9][0-9]*)$/.exec(location.hash)?.[1]||null;
+try{if(rescheduleDeepLink)sessionStorage.setItem('valhalla-reschedule-link',rescheduleDeepLink);else rescheduleDeepLink=sessionStorage.getItem('valhalla-reschedule-link');}catch{}
+let bookingsDeepLink=location.hash==='#mis-reservas'||Boolean(rescheduleDeepLink);
 try{if(bookingsDeepLink)sessionStorage.setItem('valhalla-bookings-link','1');else bookingsDeepLink=sessionStorage.getItem('valhalla-bookings-link')==='1';}catch{}
 const chosenSlot=(box,start)=>selectedBookings.some(slot=>slot.box===box&&slot.start===start);
 let contactsDate='',dailyContacts=null;
@@ -244,9 +246,20 @@ function bookingConfirmation(){
   return `<section class="card booking-confirmation" role="region" aria-label="Confirmación de reserva"><span class="eyebrow">Tu espacio está listo</span><h2>${confirmationModified?'Reserva modificada':bookings.length===1?'Reserva confirmada':'Reservas confirmadas'}</h2>${bookings.map(booking=>`<div class="confirmation-reservation"><strong>${rooms[booking.box-1]}</strong><p>${dateText(booking.start)} · ${sessionRange(booking.start)} · Hora de Chile</p><p>Colo Colo 222, oficina 710</p>${bookingLinks(booking)}</div>`).join('')}<p class="confirmation-balance"><strong>Saldo restante: ${pendingBalance()} sesiones</strong></p><p class="data-note">Agregar al calendario abre Google Calendar para que guardes el evento. Si modificas una reserva, actualiza también tu calendario.</p></section>`;
 }
 function applyBookingsDeepLink(){
-  if(!bookingsDeepLink)return;bookingsDeepLink=false;try{sessionStorage.removeItem('valhalla-bookings-link');}catch{}activeProfile='professional';view='bookings';history.replaceState(null,'',location.pathname+location.search);
+  if(!bookingsDeepLink)return;bookingsDeepLink=false;
+  const requested=rescheduleDeepLink;rescheduleDeepLink=null;
+  try{sessionStorage.removeItem('valhalla-reschedule-link');}catch{}
+  try{sessionStorage.removeItem('valhalla-bookings-link');}catch{}activeProfile='professional';view='bookings';history.replaceState(null,'',location.pathname+location.search);
+  if(requested){
+    const booking=state.bookings.find(b=>String(b.id)===requested);
+    if(booking&&canModify(booking)){
+      multiBooking=false;selectedBookings=[];modifying=booking;
+      selectedDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(booking.start));
+      view='availability';
+    }else toast('Esta reserva no está disponible para reagendar. Revisa tus reservas o contacta a administración.');
+  }
 }
-addEventListener('hashchange',()=>{if(location.hash==='#mis-reservas'){bookingsDeepLink=true;try{sessionStorage.setItem('valhalla-bookings-link','1');}catch{}if(state){applyBookingsDeepLink();render().catch(error=>toast(error.message));}}});
+addEventListener('hashchange',()=>{if(location.hash==='#mis-reservas'||/^#reagendar-[1-9][0-9]*$/.test(location.hash)){rescheduleDeepLink=/^#reagendar-([1-9][0-9]*)$/.exec(location.hash)?.[1]||null;try{if(rescheduleDeepLink)sessionStorage.setItem('valhalla-reschedule-link',rescheduleDeepLink);else sessionStorage.removeItem('valhalla-reschedule-link');}catch{}bookingsDeepLink=true;try{sessionStorage.setItem('valhalla-bookings-link','1');}catch{}if(state){applyBookingsDeepLink();render().catch(error=>toast(error.message));}}});
 function bookingItem(b, actions=true) {
   return `<div class="booking-item"><div class="booking-info"><span class="box-avatar">0${b.box}</span><div><strong>${rooms[b.box-1]}</strong><p>${dateText(b.start)} · ${sessionRange(b.start)} · 55 min</p>${pill(b.status)} ${b.modifications?(canBookParallel()?`<span class="pill neutral">${b.modifications} cambios administrativos</span>`:'<span class="pill neutral">Cambio utilizado</span>'):''}${b.status==='confirmed'?bookingLinks(b):''}</div></div>${actions&&canModify(b)?`<button class="btn ghost small" data-modify="${b.id}">Modificar</button>`:''}</div>`;
 }
