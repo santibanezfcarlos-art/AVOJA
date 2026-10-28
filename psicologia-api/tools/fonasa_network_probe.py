@@ -1151,7 +1151,7 @@ def _sii_probe_once():
             report["browser"] = "started"
             stage("chromium_started")
             try:
-                context = browser.new_context(ignore_https_errors=False)
+                context = browser.new_context(locale="es-CL", timezone_id="America/Santiago", ignore_https_errors=False)
                 context.route(
                     "**/*",
                     lambda route: route.abort()
@@ -1313,7 +1313,7 @@ def _sii_probe_once():
                     headless=True, args=["--no-sandbox"], timeout=10000
                 )
                 try:
-                    direct_context = direct_browser.new_context(ignore_https_errors=False)
+                    direct_context = direct_browser.new_context(locale="es-CL", timezone_id="America/Santiago", ignore_https_errors=False)
                     try:
                         direct_page = direct_context.new_page()
                         direct_errors = []
