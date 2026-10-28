@@ -107,7 +107,7 @@ def panel():
 @admin_bp.get('/admin/assets/<asset>')
 @billing.private
 def assets(asset):
-    if asset not in ('admin.js','admin.css','fonasa_panel.css'):
+    if asset not in ('admin.js','admin.css','fonasa_panel.css','admin_site_content.js'):
         return '',404
     return send_file(Path(__file__).parent/asset)
 
@@ -249,3 +249,9 @@ def payments_paused():
         con.execute('CREATE TABLE IF NOT EXISTS payment_controls (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL)')
         row=con.execute('SELECT paused FROM payment_controls WHERE id=1').fetchone()
     return bool(row and row['paused'])
+
+
+
+# Website copy shares the existing private admin and its authentication.
+from site_content import register as register_site_content
+register_site_content(admin_bp)

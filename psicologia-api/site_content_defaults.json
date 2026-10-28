@@ -1,0 +1,1437 @@
+{
+  "sections": {
+    "inicio": "Inicio",
+    "servicios": "Servicios",
+    "enfoque": "Mi enfoque",
+    "formacion": "Formación y experiencia",
+    "preguntas": "Preguntas frecuentes",
+    "agenda": "Agenda",
+    "navegacion": "Navegación"
+  },
+  "fields": {
+    "nav-inicio.t0": {
+      "section": "navegacion",
+      "label": "Texto · Inicio",
+      "node": "nav-inicio",
+      "index": 0,
+      "default": "Inicio",
+      "page": "index"
+    },
+    "nav-prestaciones.t0": {
+      "section": "navegacion",
+      "label": "Texto · Servicios",
+      "node": "nav-prestaciones",
+      "index": 0,
+      "default": "Servicios",
+      "page": "index"
+    },
+    "nav-enfoque.t0": {
+      "section": "navegacion",
+      "label": "Texto · Mi enfoque",
+      "node": "nav-enfoque",
+      "index": 0,
+      "default": "Mi enfoque",
+      "page": "index"
+    },
+    "nav-formacion-experiencia.t0": {
+      "section": "navegacion",
+      "label": "Texto · Formación y experiencia",
+      "node": "nav-formacion-experiencia",
+      "index": 0,
+      "default": "Formación y experiencia",
+      "page": "index"
+    },
+    "nav-preguntas.t0": {
+      "section": "navegacion",
+      "label": "Texto · Preguntas frecuentes",
+      "node": "nav-preguntas",
+      "index": 0,
+      "default": "Preguntas frecuentes",
+      "page": "index"
+    },
+    "nav-agenda.t0": {
+      "section": "navegacion",
+      "label": "Texto · Agendar una hora →",
+      "node": "nav-agenda",
+      "index": 0,
+      "default": "Agendar una hora →",
+      "page": "index"
+    },
+    "inicio-1.t0": {
+      "section": "inicio",
+      "label": "Texto · Psicología aplicada a tu realidad",
+      "node": "inicio-1",
+      "index": 0,
+      "default": "Psicología aplicada a tu realidad",
+      "page": "index"
+    },
+    "inicio-2.t0": {
+      "section": "inicio",
+      "label": "Título · Cada historia merece",
+      "node": "inicio-2",
+      "index": 0,
+      "default": "Cada historia merece ",
+      "page": "index"
+    },
+    "inicio-3.t0": {
+      "section": "inicio",
+      "label": "Texto · ser comprendida.",
+      "node": "inicio-3",
+      "index": 0,
+      "default": "ser comprendida.",
+      "page": "index"
+    },
+    "inicio-4.t0": {
+      "section": "inicio",
+      "label": "Texto · Un espacio de escucha, orientación y evaluación psicológica, donde cada situación se ",
+      "node": "inicio-4",
+      "index": 0,
+      "default": "Un espacio de escucha, orientación y evaluación psicológica, donde cada situación se aborda desde una mirada profesional, ética y respetuosa, tanto en el ámbito clínico como laboral y forense.",
+      "page": "index"
+    },
+    "inicio-5.t0": {
+      "section": "inicio",
+      "label": "Texto · Agendar una Hora",
+      "node": "inicio-5",
+      "index": 0,
+      "default": "Agendar una Hora ",
+      "page": "index"
+    },
+    "inicio-7.t0": {
+      "section": "inicio",
+      "label": "Texto · Conoce cómo puedo ayudarte",
+      "node": "inicio-7",
+      "index": 0,
+      "default": "Conoce cómo puedo ayudarte",
+      "page": "index"
+    },
+    "inicio-8.t0": {
+      "section": "inicio",
+      "label": "Texto · 100% online",
+      "node": "inicio-8",
+      "index": 0,
+      "default": "100% online",
+      "page": "index"
+    },
+    "inicio-9.t0": {
+      "section": "inicio",
+      "label": "Texto · Atención individual a adultos",
+      "node": "inicio-9",
+      "index": 0,
+      "default": "Atención individual a adultos",
+      "page": "index"
+    },
+    "inicio-10.t0": {
+      "section": "inicio",
+      "label": "Texto · Objetivos claros",
+      "node": "inicio-10",
+      "index": 0,
+      "default": "Objetivos claros",
+      "page": "index"
+    },
+    "servicios-1.t0": {
+      "section": "servicios",
+      "label": "Texto · Servicios y valores",
+      "node": "servicios-1",
+      "index": 0,
+      "default": "Servicios y valores",
+      "page": "index"
+    },
+    "servicios-2.t0": {
+      "section": "servicios",
+      "label": "Título · Un espacio para tu bienestar y desarrollo.",
+      "node": "servicios-2",
+      "index": 0,
+      "default": "Un espacio para tu bienestar y desarrollo.",
+      "page": "index"
+    },
+    "servicios-3.t0": {
+      "section": "servicios",
+      "label": "Texto · Además de la psicoterapia, puedes encontrar acompañamiento para tu desarrollo persona",
+      "node": "servicios-3",
+      "index": 0,
+      "default": "Además de la psicoterapia, puedes encontrar acompañamiento para tu desarrollo personal y laboral. Conoce cada servicio, su duración y valor.",
+      "page": "index"
+    },
+    "servicios-4.t0": {
+      "section": "servicios",
+      "label": "Texto · Atención 100% online",
+      "node": "servicios-4",
+      "index": 0,
+      "default": "Atención 100% online",
+      "page": "index"
+    },
+    "servicios-5.t0": {
+      "section": "servicios",
+      "label": "Texto · Valores claros",
+      "node": "servicios-5",
+      "index": 0,
+      "default": "Valores claros",
+      "page": "index"
+    },
+    "servicios-6.t0": {
+      "section": "servicios",
+      "label": "Texto · Atención clínica",
+      "node": "servicios-6",
+      "index": 0,
+      "default": "Atención clínica",
+      "page": "index"
+    },
+    "servicios-7.t0": {
+      "section": "servicios",
+      "label": "Texto · Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y",
+      "node": "servicios-7",
+      "index": 0,
+      "default": "Un espacio para comprender lo que estás viviendo, reconocer tus recursos personales y trabajar objetivos terapéuticos concretos.",
+      "page": "index"
+    },
+    "servicios-8.t0": {
+      "section": "servicios",
+      "label": "Texto · Agendar Sesión",
+      "node": "servicios-8",
+      "index": 0,
+      "default": "Agendar Sesión ",
+      "page": "index"
+    },
+    "servicios-10.t0": {
+      "section": "servicios",
+      "label": "Texto · ¿Tienes bono Fonasa? Ingresa aquí",
+      "node": "servicios-10",
+      "index": 0,
+      "default": "¿Tienes bono Fonasa? Ingresa aquí",
+      "page": "index"
+    },
+    "servicios-11.t0": {
+      "section": "servicios",
+      "label": "Texto · Qué incluye este servicio ↓",
+      "node": "servicios-11",
+      "index": 0,
+      "default": "Qué incluye este servicio ↓",
+      "page": "index"
+    },
+    "servicios-12.t0": {
+      "section": "servicios",
+      "label": "Texto · Orientación laboral",
+      "node": "servicios-12",
+      "index": 0,
+      "default": "Orientación laboral",
+      "page": "index"
+    },
+    "servicios-13.t0": {
+      "section": "servicios",
+      "label": "Texto · Revisa tu perfil laboral, mejora tu currículum, prepara entrevistas y fortalece tu es",
+      "node": "servicios-13",
+      "index": 0,
+      "default": "Revisa tu perfil laboral, mejora tu currículum, prepara entrevistas y fortalece tu estrategia de búsqueda de trabajo.",
+      "page": "index"
+    },
+    "servicios-14.t0": {
+      "section": "servicios",
+      "label": "Texto · Valor de la asesoría",
+      "node": "servicios-14",
+      "index": 0,
+      "default": "Valor de la asesoría",
+      "page": "index"
+    },
+    "servicios-15.t0": {
+      "section": "servicios",
+      "label": "Texto · Ver disponibilidad",
+      "node": "servicios-15",
+      "index": 0,
+      "default": "Ver disponibilidad ",
+      "page": "index"
+    },
+    "servicios-17.t0": {
+      "section": "servicios",
+      "label": "Texto · Qué incluye este servicio ↓",
+      "node": "servicios-17",
+      "index": 0,
+      "default": "Qué incluye este servicio ↓",
+      "page": "index"
+    },
+    "servicios-18.t0": {
+      "section": "servicios",
+      "label": "Texto · Habilidades para el trabajo",
+      "node": "servicios-18",
+      "index": 0,
+      "default": "Habilidades para el trabajo",
+      "page": "index"
+    },
+    "servicios-19.t0": {
+      "section": "servicios",
+      "label": "Texto · Fortalece la comunicación, el autoconocimiento, la organización y las habilidades nec",
+      "node": "servicios-19",
+      "index": 0,
+      "default": "Fortalece la comunicación, el autoconocimiento, la organización y las habilidades necesarias para alcanzar objetivos personales y profesionales.",
+      "page": "index"
+    },
+    "servicios-20.t0": {
+      "section": "servicios",
+      "label": "Texto · Valor por sesión",
+      "node": "servicios-20",
+      "index": 0,
+      "default": "Valor por sesión",
+      "page": "index"
+    },
+    "servicios-21.t0": {
+      "section": "servicios",
+      "label": "Texto · Ver disponibilidad",
+      "node": "servicios-21",
+      "index": 0,
+      "default": "Ver disponibilidad ",
+      "page": "index"
+    },
+    "servicios-23.t0": {
+      "section": "servicios",
+      "label": "Texto · Qué incluye este servicio ↓",
+      "node": "servicios-23",
+      "index": 0,
+      "default": "Qué incluye este servicio ↓",
+      "page": "index"
+    },
+    "servicios-24.t0": {
+      "section": "servicios",
+      "label": "Texto · Conoce los servicios",
+      "node": "servicios-24",
+      "index": 0,
+      "default": "Conoce los servicios",
+      "page": "index"
+    },
+    "servicios-25.t0": {
+      "section": "servicios",
+      "label": "Título · ¿Qué podemos trabajar en cada atención?",
+      "node": "servicios-25",
+      "index": 0,
+      "default": "¿Qué podemos trabajar en cada atención?",
+      "page": "index"
+    },
+    "servicios-26.t0": {
+      "section": "servicios",
+      "label": "Texto · Más que una hora en la agenda, cada servicio propone herramientas y objetivos concret",
+      "node": "servicios-26",
+      "index": 0,
+      "default": "Más que una hora en la agenda, cada servicio propone herramientas y objetivos concretos, ajustados a tus necesidades.",
+      "page": "index"
+    },
+    "servicios-28.t0": {
+      "section": "servicios",
+      "label": "Título · Psicoterapia breve: trabajar con foco y colaboración",
+      "node": "servicios-28",
+      "index": 0,
+      "default": "Psicoterapia breve: trabajar con foco y colaboración",
+      "page": "index"
+    },
+    "servicios-29.t0": {
+      "section": "servicios",
+      "label": "Texto · Un proceso clínico orientado a comprender el motivo de consulta, identificar recursos",
+      "node": "servicios-29",
+      "index": 0,
+      "default": "Un proceso clínico orientado a comprender el motivo de consulta, identificar recursos y construir alternativas. La duración total del proceso se acuerda y revisa de acuerdo con tus necesidades.",
+      "page": "index"
+    },
+    "servicios-30.t0": {
+      "section": "servicios",
+      "label": "Título · Motivos de consulta frecuentes",
+      "node": "servicios-30",
+      "index": 0,
+      "default": "Motivos de consulta frecuentes",
+      "page": "index"
+    },
+    "servicios-31.t0": {
+      "section": "servicios",
+      "label": "Texto · Algunas de las temáticas que podemos abordar en consulta:",
+      "node": "servicios-31",
+      "index": 0,
+      "default": "Algunas de las temáticas que podemos abordar en consulta:",
+      "page": "index"
+    },
+    "servicios-32.t0": {
+      "section": "servicios",
+      "label": "Texto · Cuando la preocupación, la tensión o las exigencias cotidianas afectan tu tranquilida",
+      "node": "servicios-32",
+      "index": 0,
+      "default": "Cuando la preocupación, la tensión o las exigencias cotidianas afectan tu tranquilidad, descanso o bienestar.",
+      "page": "index"
+    },
+    "servicios-33.t0": {
+      "section": "servicios",
+      "label": "Texto · Explora cómo te valoras, reconoces tus necesidades y estableces límites en tus relaci",
+      "node": "servicios-33",
+      "index": 0,
+      "default": "Explora cómo te valoras, reconoces tus necesidades y estableces límites en tus relaciones.",
+      "page": "index"
+    },
+    "servicios-34.t0": {
+      "section": "servicios",
+      "label": "Texto · Comprende tus emociones y las dinámicas que influyen en tus relaciones personales.",
+      "node": "servicios-34",
+      "index": 0,
+      "default": "Comprende tus emociones y las dinámicas que influyen en tus relaciones personales.",
+      "page": "index"
+    },
+    "servicios-35.t0": {
+      "section": "servicios",
+      "label": "Texto · Un espacio para comprender la tristeza, la pérdida de interés o la falta de energía y",
+      "node": "servicios-35",
+      "index": 0,
+      "default": "Un espacio para comprender la tristeza, la pérdida de interés o la falta de energía y explorar recursos de apoyo.",
+      "page": "index"
+    },
+    "servicios-36.t0": {
+      "section": "servicios",
+      "label": "Texto · Acompañamiento para procesar la pérdida de una persona, una relación o una etapa sign",
+      "node": "servicios-36",
+      "index": 0,
+      "default": "Acompañamiento para procesar la pérdida de una persona, una relación o una etapa significativa.",
+      "page": "index"
+    },
+    "servicios-37.t0": {
+      "section": "servicios",
+      "label": "Texto · Un espacio sin juicios para comprender el consumo, su impacto y explorar alternativas",
+      "node": "servicios-37",
+      "index": 0,
+      "default": "Un espacio sin juicios para comprender el consumo, su impacto y explorar alternativas de cambio.",
+      "page": "index"
+    },
+    "servicios-38.t0": {
+      "section": "servicios",
+      "label": "Texto · Definición de objetivos",
+      "node": "servicios-38",
+      "index": 0,
+      "default": "Definición de objetivos",
+      "page": "index"
+    },
+    "servicios-39.t0": {
+      "section": "servicios",
+      "label": "Texto · Identificamos qué te gustaría cambiar y qué avances serían importantes para ti.",
+      "node": "servicios-39",
+      "index": 0,
+      "default": "Identificamos qué te gustaría cambiar y qué avances serían importantes para ti.",
+      "page": "index"
+    },
+    "servicios-40.t0": {
+      "section": "servicios",
+      "label": "Texto · Emociones y pensamientos",
+      "node": "servicios-40",
+      "index": 0,
+      "default": "Emociones y pensamientos",
+      "page": "index"
+    },
+    "servicios-41.t0": {
+      "section": "servicios",
+      "label": "Texto · Trabajamos la ansiedad, el estrés y las respuestas emocionales que generan malestar.",
+      "node": "servicios-41",
+      "index": 0,
+      "default": "Trabajamos la ansiedad, el estrés y las respuestas emocionales que generan malestar.",
+      "page": "index"
+    },
+    "servicios-42.t0": {
+      "section": "servicios",
+      "label": "Texto · Herramientas para el cambio",
+      "node": "servicios-42",
+      "index": 0,
+      "default": "Herramientas para el cambio",
+      "page": "index"
+    },
+    "servicios-43.t0": {
+      "section": "servicios",
+      "label": "Texto · Exploramos recursos personales, soluciones posibles y estrategias aplicables a tu vid",
+      "node": "servicios-43",
+      "index": 0,
+      "default": "Exploramos recursos personales, soluciones posibles y estrategias aplicables a tu vida cotidiana.",
+      "page": "index"
+    },
+    "servicios-45.t0": {
+      "section": "servicios",
+      "label": "Título · Asesoría en empleabilidad: prepararte para nuevas oportunidades",
+      "node": "servicios-45",
+      "index": 0,
+      "default": "Asesoría en empleabilidad: prepararte para nuevas oportunidades",
+      "page": "index"
+    },
+    "servicios-46.t0": {
+      "section": "servicios",
+      "label": "Texto · Revisamos tu perfil y las exigencias de los cargos a los que quieres postular, con or",
+      "node": "servicios-46",
+      "index": 0,
+      "default": "Revisamos tu perfil y las exigencias de los cargos a los que quieres postular, con orientación práctica para comunicar mejor tu experiencia y enfrentar procesos de selección.",
+      "page": "index"
+    },
+    "servicios-47.t0": {
+      "section": "servicios",
+      "label": "Texto · Currículum y perfil profesional",
+      "node": "servicios-47",
+      "index": 0,
+      "default": "Currículum y perfil profesional",
+      "page": "index"
+    },
+    "servicios-48.t0": {
+      "section": "servicios",
+      "label": "Texto · Revisión de estructura, logros, fortalezas y presentación de tu experiencia laboral.",
+      "node": "servicios-48",
+      "index": 0,
+      "default": "Revisión de estructura, logros, fortalezas y presentación de tu experiencia laboral.",
+      "page": "index"
+    },
+    "servicios-49.t0": {
+      "section": "servicios",
+      "label": "Texto · Búsqueda y ofertas de empleo",
+      "node": "servicios-49",
+      "index": 0,
+      "default": "Búsqueda y ofertas de empleo",
+      "page": "index"
+    },
+    "servicios-50.t0": {
+      "section": "servicios",
+      "label": "Texto · Identificación de vacantes pertinentes y lectura de los requisitos de cada cargo.",
+      "node": "servicios-50",
+      "index": 0,
+      "default": "Identificación de vacantes pertinentes y lectura de los requisitos de cada cargo.",
+      "page": "index"
+    },
+    "servicios-51.t0": {
+      "section": "servicios",
+      "label": "Texto · Cartas de presentación",
+      "node": "servicios-51",
+      "index": 0,
+      "default": "Cartas de presentación",
+      "page": "index"
+    },
+    "servicios-52.t0": {
+      "section": "servicios",
+      "label": "Texto · Orientación para redactar postulaciones y explicar con claridad tu motivación y aport",
+      "node": "servicios-52",
+      "index": 0,
+      "default": "Orientación para redactar postulaciones y explicar con claridad tu motivación y aporte.",
+      "page": "index"
+    },
+    "servicios-53.t0": {
+      "section": "servicios",
+      "label": "Texto · Entrevistas por competencias",
+      "node": "servicios-53",
+      "index": 0,
+      "default": "Entrevistas por competencias",
+      "page": "index"
+    },
+    "servicios-54.t0": {
+      "section": "servicios",
+      "label": "Texto · Preparación y práctica de entrevistas utilizando ejemplos conductuales y la metodolog",
+      "node": "servicios-54",
+      "index": 0,
+      "default": "Preparación y práctica de entrevistas utilizando ejemplos conductuales y la metodología STAR.",
+      "page": "index"
+    },
+    "servicios-55.t0": {
+      "section": "servicios",
+      "label": "Texto · Pruebas psicolaborales",
+      "node": "servicios-55",
+      "index": 0,
+      "default": "Pruebas psicolaborales",
+      "page": "index"
+    },
+    "servicios-56.t0": {
+      "section": "servicios",
+      "label": "Texto · Orientación sobre los tipos de evaluaciones y cómo enfrentarlas con tranquilidad y au",
+      "node": "servicios-56",
+      "index": 0,
+      "default": "Orientación sobre los tipos de evaluaciones y cómo enfrentarlas con tranquilidad y autenticidad.",
+      "page": "index"
+    },
+    "servicios-57.t0": {
+      "section": "servicios",
+      "label": "Texto · Plan de postulación",
+      "node": "servicios-57",
+      "index": 0,
+      "default": "Plan de postulación",
+      "page": "index"
+    },
+    "servicios-58.t0": {
+      "section": "servicios",
+      "label": "Texto · Definición de próximos pasos, aspectos por mejorar y estrategias para entrevistas fut",
+      "node": "servicios-58",
+      "index": 0,
+      "default": "Definición de próximos pasos, aspectos por mejorar y estrategias para entrevistas futuras.",
+      "page": "index"
+    },
+    "servicios-60.t0": {
+      "section": "servicios",
+      "label": "Título · Desarrollo de competencias: fortalecer habilidades para tu trabajo",
+      "node": "servicios-60",
+      "index": 0,
+      "default": "Desarrollo de competencias: fortalecer habilidades para tu trabajo",
+      "page": "index"
+    },
+    "servicios-61.t0": {
+      "section": "servicios",
+      "label": "Texto · Las competencias pueden entrenarse mediante reflexión, ejercicios y aplicación a situ",
+      "node": "servicios-61",
+      "index": 0,
+      "default": "Las competencias pueden entrenarse mediante reflexión, ejercicios y aplicación a situaciones reales. Estas son algunas de las más trabajadas en contextos personales y laborales.",
+      "page": "index"
+    },
+    "servicios-62.t0": {
+      "section": "servicios",
+      "label": "Texto · Comunicación efectiva",
+      "node": "servicios-62",
+      "index": 0,
+      "default": "Comunicación efectiva",
+      "page": "index"
+    },
+    "servicios-63.t0": {
+      "section": "servicios",
+      "label": "Texto · Expresar ideas con claridad, escuchar activamente y abordar conversaciones difíciles.",
+      "node": "servicios-63",
+      "index": 0,
+      "default": "Expresar ideas con claridad, escuchar activamente y abordar conversaciones difíciles.",
+      "page": "index"
+    },
+    "servicios-64.t0": {
+      "section": "servicios",
+      "label": "Texto · Trabajo en equipo",
+      "node": "servicios-64",
+      "index": 0,
+      "default": "Trabajo en equipo",
+      "page": "index"
+    },
+    "servicios-65.t0": {
+      "section": "servicios",
+      "label": "Texto · Colaborar, coordinar tareas y construir relaciones de trabajo respetuosas.",
+      "node": "servicios-65",
+      "index": 0,
+      "default": "Colaborar, coordinar tareas y construir relaciones de trabajo respetuosas.",
+      "page": "index"
+    },
+    "servicios-66.t0": {
+      "section": "servicios",
+      "label": "Texto · Liderazgo",
+      "node": "servicios-66",
+      "index": 0,
+      "default": "Liderazgo",
+      "page": "index"
+    },
+    "servicios-67.t0": {
+      "section": "servicios",
+      "label": "Texto · Orientar, tomar decisiones y movilizar a otros hacia objetivos compartidos.",
+      "node": "servicios-67",
+      "index": 0,
+      "default": "Orientar, tomar decisiones y movilizar a otros hacia objetivos compartidos.",
+      "page": "index"
+    },
+    "servicios-68.t0": {
+      "section": "servicios",
+      "label": "Texto · Planificación y organización",
+      "node": "servicios-68",
+      "index": 0,
+      "default": "Planificación y organización",
+      "page": "index"
+    },
+    "servicios-69.t0": {
+      "section": "servicios",
+      "label": "Texto · Definir prioridades, administrar tiempos y dar seguimiento a los compromisos.",
+      "node": "servicios-69",
+      "index": 0,
+      "default": "Definir prioridades, administrar tiempos y dar seguimiento a los compromisos.",
+      "page": "index"
+    },
+    "servicios-70.t0": {
+      "section": "servicios",
+      "label": "Texto · Adaptabilidad",
+      "node": "servicios-70",
+      "index": 0,
+      "default": "Adaptabilidad",
+      "page": "index"
+    },
+    "servicios-71.t0": {
+      "section": "servicios",
+      "label": "Texto · Responder de manera flexible ante cambios, nuevas exigencias o escenarios inciertos.",
+      "node": "servicios-71",
+      "index": 0,
+      "default": "Responder de manera flexible ante cambios, nuevas exigencias o escenarios inciertos.",
+      "page": "index"
+    },
+    "servicios-72.t0": {
+      "section": "servicios",
+      "label": "Texto · Manejo de contingencias",
+      "node": "servicios-72",
+      "index": 0,
+      "default": "Manejo de contingencias",
+      "page": "index"
+    },
+    "servicios-73.t0": {
+      "section": "servicios",
+      "label": "Texto · Analizar imprevistos, resolver problemas y actuar con criterio bajo presión.",
+      "node": "servicios-73",
+      "index": 0,
+      "default": "Analizar imprevistos, resolver problemas y actuar con criterio bajo presión.",
+      "page": "index"
+    },
+    "preguntas-1.t0": {
+      "section": "preguntas",
+      "label": "Texto · Preguntas frecuentes",
+      "node": "preguntas-1",
+      "index": 0,
+      "default": "Preguntas frecuentes",
+      "page": "index"
+    },
+    "preguntas-2.t0": {
+      "section": "preguntas",
+      "label": "Título · Lo que necesitas saber antes de comenzar.",
+      "node": "preguntas-2",
+      "index": 0,
+      "default": "Lo que necesitas saber antes de comenzar.",
+      "page": "index"
+    },
+    "preguntas-3.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Cómo se realizan las atenciones?",
+      "node": "preguntas-3",
+      "index": 0,
+      "default": "¿Cómo se realizan las atenciones?",
+      "page": "index"
+    },
+    "preguntas-4.t0": {
+      "section": "preguntas",
+      "label": "Texto · Todas las atenciones se realizan online, mediante videollamada. Se recomienda contar ",
+      "node": "preguntas-4",
+      "index": 0,
+      "default": "Todas las atenciones se realizan online, mediante videollamada. Se recomienda contar con una conexión estable a internet y un espacio privado y tranquilo.",
+      "page": "index"
+    },
+    "preguntas-5.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Cuánto dura cada atención?",
+      "node": "preguntas-5",
+      "index": 0,
+      "default": "¿Cuánto dura cada atención?",
+      "page": "index"
+    },
+    "preguntas-6.t0": {
+      "section": "preguntas",
+      "label": "Texto · Las sesiones de psicoterapia breve y desarrollo de competencias duran 45 minutos. La ",
+      "node": "preguntas-6",
+      "index": 0,
+      "default": "Las sesiones de psicoterapia breve y desarrollo de competencias duran 45 minutos. La asesoría en empleabilidad tiene una duración de 90 minutos.",
+      "page": "index"
+    },
+    "preguntas-7.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Cuáles son los valores de los servicios?",
+      "node": "preguntas-7",
+      "index": 0,
+      "default": "¿Cuáles son los valores de los servicios?",
+      "page": "index"
+    },
+    "preguntas-8.t0": {
+      "section": "preguntas",
+      "label": "Texto · La psicoterapia breve y el desarrollo de competencias tienen un valor de $30.000 por ",
+      "node": "preguntas-8",
+      "index": 0,
+      "default": "La psicoterapia breve y el desarrollo de competencias tienen un valor de $30.000 por sesión. La asesoría en empleabilidad tiene un valor de $45.000.",
+      "page": "index"
+    },
+    "preguntas-9.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿En qué consiste la psicoterapia breve?",
+      "node": "preguntas-9",
+      "index": 0,
+      "default": "¿En qué consiste la psicoterapia breve?",
+      "page": "index"
+    },
+    "preguntas-10.t0": {
+      "section": "preguntas",
+      "label": "Texto · Es un proceso de atención psicológica centrado en comprender tus dificultades actuale",
+      "node": "preguntas-10",
+      "index": 0,
+      "default": "Es un proceso de atención psicológica centrado en comprender tus dificultades actuales, reconocer recursos personales y trabajar objetivos terapéuticos concretos. La cantidad de sesiones dependerá de las necesidades y avances de cada persona.",
+      "page": "index"
+    },
+    "preguntas-11.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Cómo puedo reservar una hora?",
+      "node": "preguntas-11",
+      "index": 0,
+      "default": "¿Cómo puedo reservar una hora?",
+      "page": "index"
+    },
+    "preguntas-12.t0": {
+      "section": "preguntas",
+      "label": "Texto · Selecciona un servicio, elige una fecha y horario disponible y completa los datos sol",
+      "node": "preguntas-12",
+      "index": 0,
+      "default": "Selecciona un servicio, elige una fecha y horario disponible y completa los datos solicitados. La reserva quedará confirmada después de verificar el pago y registrar la sesión. Recibirás los detalles por correo.",
+      "page": "index"
+    },
+    "preguntas-13.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Recibiré una boleta por mi atención?",
+      "node": "preguntas-13",
+      "index": 0,
+      "default": "¿Recibiré una boleta por mi atención?",
+      "page": "index"
+    },
+    "preguntas-14.t0": {
+      "section": "preguntas",
+      "label": "Texto · Sí. Prepararemos una boleta electrónica exenta con los datos que ingreses al reservar",
+      "node": "preguntas-14",
+      "index": 0,
+      "default": "Sí. Prepararemos una boleta electrónica exenta con los datos que ingreses al reservar tu atención.",
+      "page": "index"
+    },
+    "preguntas-15.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Puedo cancelar o reprogramar una atención?",
+      "node": "preguntas-15",
+      "index": 0,
+      "default": "¿Puedo cancelar o reprogramar una atención?",
+      "page": "index"
+    },
+    "preguntas-16.t0": {
+      "section": "preguntas",
+      "label": "Texto · Si necesitas cambiar tu hora, puedes reprogramarla una vez con al menos 24 horas de a",
+      "node": "preguntas-16",
+      "index": 0,
+      "default": "Si necesitas cambiar tu hora, puedes reprogramarla una vez con al menos 24 horas de anticipación, según disponibilidad. Para cambios el mismo día, se requiere justificativo médico. Las reservas confirmadas no contemplan cancelaciones.",
+      "page": "index"
+    },
+    "preguntas-17.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿La información que comparto es confidencial?",
+      "node": "preguntas-17",
+      "index": 0,
+      "default": "¿La información que comparto es confidencial?",
+      "page": "index"
+    },
+    "preguntas-18.t0": {
+      "section": "preguntas",
+      "label": "Texto · Sí. Tu privacidad es importante: tu atención y tus datos se resguardan con confidenci",
+      "node": "preguntas-18",
+      "index": 0,
+      "default": "Sí. Tu privacidad es importante: tu atención y tus datos se resguardan con confidencialidad profesional.",
+      "page": "index"
+    },
+    "preguntas-19.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Cómo sé qué servicio necesito?",
+      "node": "preguntas-19",
+      "index": 0,
+      "default": "¿Cómo sé qué servicio necesito?",
+      "page": "index"
+    },
+    "preguntas-20.t0": {
+      "section": "preguntas",
+      "label": "Texto · Para abordar dificultades emocionales o personales, puedes optar por psicoterapia bre",
+      "node": "preguntas-20",
+      "index": 0,
+      "default": "Para abordar dificultades emocionales o personales, puedes optar por psicoterapia breve. Para fortalecer tu búsqueda de empleo, elige asesoría en empleabilidad. Para trabajar habilidades específicas del ámbito laboral, selecciona desarrollo de competencias.",
+      "page": "index"
+    },
+    "preguntas-21.t0": {
+      "section": "preguntas",
+      "label": "Título · ¿Qué necesito para conectarme a mi atención?",
+      "node": "preguntas-21",
+      "index": 0,
+      "default": "¿Qué necesito para conectarme a mi atención?",
+      "page": "index"
+    },
+    "preguntas-22.t0": {
+      "section": "preguntas",
+      "label": "Texto · Un dispositivo con cámara y micrófono, conexión a internet y un lugar privado que per",
+      "node": "preguntas-22",
+      "index": 0,
+      "default": "Un dispositivo con cámara y micrófono, conexión a internet y un lugar privado que permita conversar sin interrupciones.",
+      "page": "index"
+    },
+    "agenda-1.t0": {
+      "section": "agenda",
+      "label": "Texto · Agenda de servicios online",
+      "node": "agenda-1",
+      "index": 0,
+      "default": "Agenda de servicios online",
+      "page": "index"
+    },
+    "agenda-2.t0": {
+      "section": "agenda",
+      "label": "Título · Elige tu día y horario",
+      "node": "agenda-2",
+      "index": 0,
+      "default": "Elige tu día y horario",
+      "page": "index"
+    },
+    "agenda-3.t0": {
+      "section": "agenda",
+      "label": "Texto · Selecciona el servicio y una hora disponible. Reserva tu atención online y confirma t",
+      "node": "agenda-3",
+      "index": 0,
+      "default": "Selecciona el servicio y una hora disponible. Reserva tu atención online y confirma tu horario pagando con Transbank.",
+      "page": "index"
+    },
+    "agenda-4.t0": {
+      "section": "agenda",
+      "label": "Texto · ● Reserva online con pago seguro",
+      "node": "agenda-4",
+      "index": 0,
+      "default": "● Reserva online con pago seguro",
+      "page": "index"
+    },
+    "agenda-5.t0": {
+      "section": "agenda",
+      "label": "Título · ¿Tienes un bono Fonasa?",
+      "node": "agenda-5",
+      "index": 0,
+      "default": "¿Tienes un bono Fonasa?",
+      "page": "index"
+    },
+    "agenda-6.t0": {
+      "section": "agenda",
+      "label": "Texto · Carga tu bono, valídalo y continúa a la agenda cuando esté activado.",
+      "node": "agenda-6",
+      "index": 0,
+      "default": "Carga tu bono, valídalo y continúa a la agenda cuando esté activado.",
+      "page": "index"
+    },
+    "agenda-7.t0": {
+      "section": "agenda",
+      "label": "Texto · Agendar con bono Fonasa →",
+      "node": "agenda-7",
+      "index": 0,
+      "default": "Agendar con bono Fonasa →",
+      "page": "index"
+    },
+    "enfoque-1.t0": {
+      "section": "enfoque",
+      "label": "Texto · Mi modelo de psicoterapia",
+      "node": "enfoque-1",
+      "index": 0,
+      "default": "Mi modelo de psicoterapia",
+      "page": "enfoque"
+    },
+    "enfoque-2.t0": {
+      "section": "enfoque",
+      "label": "Título · Psicoterapia breve centrada en soluciones y objetivos concretos.",
+      "node": "enfoque-2",
+      "index": 0,
+      "default": "Psicoterapia breve centrada en soluciones y objetivos concretos.",
+      "page": "enfoque"
+    },
+    "enfoque-3.t0": {
+      "section": "enfoque",
+      "label": "Texto · Trabajo con personas adultas desde un enfoque de",
+      "node": "enfoque-3",
+      "index": 0,
+      "default": "Trabajo con personas adultas desde un enfoque de ",
+      "page": "enfoque"
+    },
+    "enfoque-4.t0": {
+      "section": "enfoque",
+      "label": "Texto · Psicoterapia Breve Centrada en Soluciones",
+      "node": "enfoque-4",
+      "index": 0,
+      "default": "Psicoterapia Breve Centrada en Soluciones",
+      "page": "enfoque"
+    },
+    "enfoque-3.t1": {
+      "section": "enfoque",
+      "label": "Texto · . Nos enfocamos en comprender lo que está ocurriendo, reconocer tus recursos y acorda",
+      "node": "enfoque-3",
+      "index": 1,
+      "default": ". Nos enfocamos en comprender lo que está ocurriendo, reconocer tus recursos y acordar objetivos claros y alcanzables, respetando tu contexto y tus tiempos.",
+      "page": "enfoque"
+    },
+    "enfoque-5.t0": {
+      "section": "enfoque",
+      "label": "Texto · Según las necesidades de cada proceso, incorporo estrategias de reestructuración cogn",
+      "node": "enfoque-5",
+      "index": 0,
+      "default": "Según las necesidades de cada proceso, incorporo estrategias de reestructuración cognitiva, regulación emocional, resolución de problemas y fortalecimiento de herramientas personales. Revisamos juntos los avances para ajustar el trabajo cuando sea necesario.",
+      "page": "enfoque"
+    },
+    "enfoque-6.t0": {
+      "section": "enfoque",
+      "label": "Texto · “Breve” se refiere a una forma de trabajar focalizada y colaborativa, no a una cantid",
+      "node": "enfoque-6",
+      "index": 0,
+      "default": "“Breve” se refiere a una forma de trabajar focalizada y colaborativa, no a una cantidad fija de sesiones ni a resultados garantizados.",
+      "page": "enfoque"
+    },
+    "enfoque-7.t0": {
+      "section": "enfoque",
+      "label": "Texto · Conoce mi formación y experiencia →",
+      "node": "enfoque-7",
+      "index": 0,
+      "default": "Conoce mi formación y experiencia →",
+      "page": "enfoque"
+    },
+    "enfoque-9.t0": {
+      "section": "enfoque",
+      "label": "Texto · La terapia puede ser un espacio para mirar con claridad lo que ocurre y construir nue",
+      "node": "enfoque-9",
+      "index": 0,
+      "default": "La terapia puede ser un espacio para mirar con claridad lo que ocurre y construir nuevas formas de afrontarlo.",
+      "page": "enfoque"
+    },
+    "enfoque-10.t0": {
+      "section": "enfoque",
+      "label": "Texto · Carlos Santibáñez · Psicólogo",
+      "node": "enfoque-10",
+      "index": 0,
+      "default": "Carlos Santibáñez · Psicólogo",
+      "page": "enfoque"
+    },
+    "formacion-1.t0": {
+      "section": "formacion",
+      "label": "Texto · Formación académica y perfeccionamiento",
+      "node": "formacion-1",
+      "index": 0,
+      "default": "Formación académica y perfeccionamiento",
+      "page": "formacion"
+    },
+    "formacion-2.t0": {
+      "section": "formacion",
+      "label": "Título · Formación y experiencia profesional.",
+      "node": "formacion-2",
+      "index": 0,
+      "default": "Formación y experiencia profesional.",
+      "page": "formacion"
+    },
+    "formacion-3.t0": {
+      "section": "formacion",
+      "label": "Texto · Mi práctica se apoya en estudios universitarios y en formación complementaria en tera",
+      "node": "formacion-3",
+      "index": 0,
+      "default": "Mi práctica se apoya en estudios universitarios y en formación complementaria en terapia breve, psicodiagnóstico, evaluación pericial y evaluación por competencias.",
+      "page": "formacion"
+    },
+    "formacion-4.t0": {
+      "section": "formacion",
+      "label": "Texto · Formación base y especialización",
+      "node": "formacion-4",
+      "index": 0,
+      "default": "Formación base y especialización",
+      "page": "formacion"
+    },
+    "formacion-5.t0": {
+      "section": "formacion",
+      "label": "Título · Psicólogo · Especialización en Psicoterapia Breve",
+      "node": "formacion-5",
+      "index": 0,
+      "default": "Psicólogo · Especialización en Psicoterapia Breve",
+      "page": "formacion"
+    },
+    "formacion-6.t0": {
+      "section": "formacion",
+      "label": "Texto · Psicólogo · Licenciado en Psicología",
+      "node": "formacion-6",
+      "index": 0,
+      "default": "Psicólogo · Licenciado en Psicología",
+      "page": "formacion"
+    },
+    "formacion-7.t0": {
+      "section": "formacion",
+      "label": "Texto · Universidad del Desarrollo",
+      "node": "formacion-7",
+      "index": 0,
+      "default": "Universidad del Desarrollo",
+      "page": "formacion"
+    },
+    "formacion-8.t0": {
+      "section": "formacion",
+      "label": "Texto · Especialización en Terapia Breve",
+      "node": "formacion-8",
+      "index": 0,
+      "default": "Especialización en Terapia Breve",
+      "page": "formacion"
+    },
+    "formacion-9.t0": {
+      "section": "formacion",
+      "label": "Texto · Academia Digital de Psicología y Aprendizaje (ADIPA)",
+      "node": "formacion-9",
+      "index": 0,
+      "default": "Academia Digital de Psicología y Aprendizaje (ADIPA)",
+      "page": "formacion"
+    },
+    "formacion-10.t0": {
+      "section": "formacion",
+      "label": "Texto · Psicodiagnóstico y pericia",
+      "node": "formacion-10",
+      "index": 0,
+      "default": "Psicodiagnóstico y pericia",
+      "page": "formacion"
+    },
+    "formacion-11.t0": {
+      "section": "formacion",
+      "label": "Título · Formación en Psicodiagnóstico y evaluación pericial",
+      "node": "formacion-11",
+      "index": 0,
+      "default": "Formación en Psicodiagnóstico y evaluación pericial",
+      "page": "formacion"
+    },
+    "formacion-12.t0": {
+      "section": "formacion",
+      "label": "Texto · Curso en Psicodiagnóstico Clínico Pericial",
+      "node": "formacion-12",
+      "index": 0,
+      "default": "Curso en Psicodiagnóstico Clínico Pericial",
+      "page": "formacion"
+    },
+    "formacion-13.t0": {
+      "section": "formacion",
+      "label": "Texto · Curso de Test de Relaciones Objetales de Philipson (TRO)",
+      "node": "formacion-13",
+      "index": 0,
+      "default": "Curso de Test de Relaciones Objetales de Philipson (TRO)",
+      "page": "formacion"
+    },
+    "formacion-14.t0": {
+      "section": "formacion",
+      "label": "Texto · Curso de Test de Rorschach",
+      "node": "formacion-14",
+      "index": 0,
+      "default": "Curso de Test de Rorschach",
+      "page": "formacion"
+    },
+    "formacion-15.t0": {
+      "section": "formacion",
+      "label": "Texto · Curso de Psicodiagnóstico: Test de Zulliger",
+      "node": "formacion-15",
+      "index": 0,
+      "default": "Curso de Psicodiagnóstico: Test de Zulliger",
+      "page": "formacion"
+    },
+    "formacion-16.t0": {
+      "section": "formacion",
+      "label": "Texto · Curso de Psicodiagnóstico: Test de Lüscher",
+      "node": "formacion-16",
+      "index": 0,
+      "default": "Curso de Psicodiagnóstico: Test de Lüscher",
+      "page": "formacion"
+    },
+    "formacion-17.t0": {
+      "section": "formacion",
+      "label": "Texto · Ámbito organizacional",
+      "node": "formacion-17",
+      "index": 0,
+      "default": "Ámbito organizacional",
+      "page": "formacion"
+    },
+    "formacion-18.t0": {
+      "section": "formacion",
+      "label": "Título · Evaluación por competencias y ámbito organizacional",
+      "node": "formacion-18",
+      "index": 0,
+      "default": "Evaluación por competencias y ámbito organizacional",
+      "page": "formacion"
+    },
+    "formacion-19.t0": {
+      "section": "formacion",
+      "label": "Texto · Certificación en Entrevistas por Competencias — Targeted Selection",
+      "node": "formacion-19",
+      "index": 0,
+      "default": "Certificación en Entrevistas por Competencias — Targeted Selection",
+      "page": "formacion"
+    },
+    "formacion-20.t0": {
+      "section": "formacion",
+      "label": "Texto · Curso de Selección de Personal basado en Modelo de Competencias",
+      "node": "formacion-20",
+      "index": 0,
+      "default": "Curso de Selección de Personal basado en Modelo de Competencias",
+      "page": "formacion"
+    },
+    "formacion-21.t0": {
+      "section": "formacion",
+      "label": "Texto · Estas capacitaciones complementan mi experiencia en evaluación psicológica y consulto",
+      "node": "formacion-21",
+      "index": 0,
+      "default": "Estas capacitaciones complementan mi experiencia en evaluación psicológica y consultoría organizacional.",
+      "page": "formacion"
+    },
+    "formacion-22.t0": {
+      "section": "formacion",
+      "label": "Texto · Trayectoria profesional",
+      "node": "formacion-22",
+      "index": 0,
+      "default": "Trayectoria profesional",
+      "page": "formacion"
+    },
+    "formacion-23.t0": {
+      "section": "formacion",
+      "label": "Título · Experiencia profesional.",
+      "node": "formacion-23",
+      "index": 0,
+      "default": "Experiencia profesional.",
+      "page": "formacion"
+    },
+    "formacion-24.t0": {
+      "section": "formacion",
+      "label": "Texto · Mi trayectoria integra atención clínica, evaluación psicológica en contextos judicial",
+      "node": "formacion-24",
+      "index": 0,
+      "default": "Mi trayectoria integra atención clínica, evaluación psicológica en contextos judiciales y asesoría en el ámbito laboral.",
+      "page": "formacion"
+    },
+    "formacion-25.t0": {
+      "section": "formacion",
+      "label": "Texto · Área clínica",
+      "node": "formacion-25",
+      "index": 0,
+      "default": "Área clínica",
+      "page": "formacion"
+    },
+    "formacion-26.t0": {
+      "section": "formacion",
+      "label": "Título · Psicoterapia y evaluación clínica · desde 2014",
+      "node": "formacion-26",
+      "index": 0,
+      "default": "Psicoterapia y evaluación clínica · desde 2014",
+      "page": "formacion"
+    },
+    "formacion-27.t0": {
+      "section": "formacion",
+      "label": "Texto · Psicoterapia con personas adultas",
+      "node": "formacion-27",
+      "index": 0,
+      "default": "Psicoterapia con personas adultas",
+      "page": "formacion"
+    },
+    "formacion-28.t0": {
+      "section": "formacion",
+      "label": "Texto · Desde 2014 desarrollo atención psicoterapéutica, tanto de manera independiente como a",
+      "node": "formacion-28",
+      "index": 0,
+      "default": "Desde 2014 desarrollo atención psicoterapéutica, tanto de manera independiente como a través de empresas prestadoras de servicios de salud mental. Trabajo principalmente desde la psicoterapia breve, integrando evaluación clínica, definición de objetivos e intervenciones acordes a las necesidades de cada persona.",
+      "page": "formacion"
+    },
+    "formacion-29.t0": {
+      "section": "formacion",
+      "label": "Texto · Mutual Asesorías",
+      "node": "formacion-29",
+      "index": 0,
+      "default": "Mutual Asesorías",
+      "page": "formacion"
+    },
+    "formacion-30.t0": {
+      "section": "formacion",
+      "label": "Texto · Atención psicológica individual a trabajadores y sus familias, con un enfoque de psic",
+      "node": "formacion-30",
+      "index": 0,
+      "default": "Atención psicológica individual a trabajadores y sus familias, con un enfoque de psicoterapia breve centrada en soluciones.",
+      "page": "formacion"
+    },
+    "formacion-31.t0": {
+      "section": "formacion",
+      "label": "Texto · Tu Terapia SpA",
+      "node": "formacion-31",
+      "index": 0,
+      "default": "Tu Terapia SpA",
+      "page": "formacion"
+    },
+    "formacion-32.t0": {
+      "section": "formacion",
+      "label": "Texto · Atención clínica de adultos, coordinación interdisciplinaria y seguimiento de proceso",
+      "node": "formacion-32",
+      "index": 0,
+      "default": "Atención clínica de adultos, coordinación interdisciplinaria y seguimiento de procesos terapéuticos.",
+      "page": "formacion"
+    },
+    "formacion-33.t0": {
+      "section": "formacion",
+      "label": "Texto · Área judicial y forense",
+      "node": "formacion-33",
+      "index": 0,
+      "default": "Área judicial y forense",
+      "page": "formacion"
+    },
+    "formacion-34.t0": {
+      "section": "formacion",
+      "label": "Título · Peritajes y psicodiagnóstico",
+      "node": "formacion-34",
+      "index": 0,
+      "default": "Peritajes y psicodiagnóstico",
+      "page": "formacion"
+    },
+    "formacion-35.t0": {
+      "section": "formacion",
+      "label": "Texto · Peritajes psicológicos · desde 2019",
+      "node": "formacion-35",
+      "index": 0,
+      "default": "Peritajes psicológicos · desde 2019",
+      "page": "formacion"
+    },
+    "formacion-36.t0": {
+      "section": "formacion",
+      "label": "Texto · Realizo evaluaciones periciales a solicitud de abogados particulares y estudios juríd",
+      "node": "formacion-36",
+      "index": 0,
+      "default": "Realizo evaluaciones periciales a solicitud de abogados particulares y estudios jurídicos, mediante entrevistas, técnicas de psicodiagnóstico y elaboración de informes fundamentados para procedimientos judiciales.",
+      "page": "formacion"
+    },
+    "formacion-37.t0": {
+      "section": "formacion",
+      "label": "Texto · Inscripción en Cortes de Apelaciones · desde 2024",
+      "node": "formacion-37",
+      "index": 0,
+      "default": "Inscripción en Cortes de Apelaciones · desde 2024",
+      "page": "formacion"
+    },
+    "formacion-38.t0": {
+      "section": "formacion",
+      "label": "Texto · Inscrito en nóminas de peritos de las Ilustrísimas Cortes de Apelaciones de distintas",
+      "node": "formacion-38",
+      "index": 0,
+      "default": "Inscrito en nóminas de peritos de las Ilustrísimas Cortes de Apelaciones de distintas jurisdicciones del país: Arica, Iquique, La Serena, Santiago, San Miguel, Concepción y Chillán.",
+      "page": "formacion"
+    },
+    "formacion-39.t0": {
+      "section": "formacion",
+      "label": "Texto · Evaluación psicológica especializada",
+      "node": "formacion-39",
+      "index": 0,
+      "default": "Evaluación psicológica especializada",
+      "page": "formacion"
+    },
+    "formacion-40.t0": {
+      "section": "formacion",
+      "label": "Texto · Integración de antecedentes, entrevistas y pruebas psicométricas y proyectivas, con a",
+      "node": "formacion-40",
+      "index": 0,
+      "default": "Integración de antecedentes, entrevistas y pruebas psicométricas y proyectivas, con análisis técnico y conclusiones pertinentes a las preguntas periciales.",
+      "page": "formacion"
+    },
+    "formacion-41.t0": {
+      "section": "formacion",
+      "label": "Texto · Área laboral y organizacional",
+      "node": "formacion-41",
+      "index": 0,
+      "default": "Área laboral y organizacional",
+      "page": "formacion"
+    },
+    "formacion-42.t0": {
+      "section": "formacion",
+      "label": "Título · Selección, evaluación y desarrollo",
+      "node": "formacion-42",
+      "index": 0,
+      "default": "Selección, evaluación y desarrollo",
+      "page": "formacion"
+    },
+    "formacion-43.t0": {
+      "section": "formacion",
+      "label": "Texto · Selección de personal y evaluación psicolaboral",
+      "node": "formacion-43",
+      "index": 0,
+      "default": "Selección de personal y evaluación psicolaboral",
+      "page": "formacion"
+    },
+    "formacion-44.t0": {
+      "section": "formacion",
+      "label": "Texto · Experiencia en procesos de selección y evaluación de cargos operativos, técnicos, pro",
+      "node": "formacion-44",
+      "index": 0,
+      "default": "Experiencia en procesos de selección y evaluación de cargos operativos, técnicos, profesionales, jefaturas y puestos directivos, para organizaciones de diversos rubros. Realización de entrevistas por competencias, Assessment Center, aplicación de pruebas psicológicas y elaboración de informes para apoyar decisiones de selección.",
+      "page": "formacion"
+    },
+    "formacion-45.t0": {
+      "section": "formacion",
+      "label": "Texto · Experiencia en distintos sectores",
+      "node": "formacion-45",
+      "index": 0,
+      "default": "Experiencia en distintos sectores",
+      "page": "formacion"
+    },
+    "formacion-46.t0": {
+      "section": "formacion",
+      "label": "Texto · Trabajo profesional vinculado con instituciones públicas, empresas privadas y organiz",
+      "node": "formacion-46",
+      "index": 0,
+      "default": "Trabajo profesional vinculado con instituciones públicas, empresas privadas y organizaciones de sectores como minería, banca, comercio y servicios. Entre las organizaciones y contextos atendidos a lo largo de mi trayectoria se encuentran Municipalidad de Las Condes, Superintendencia de Pensiones, BancoEstado, Banco Falabella, Mina Invierno, Cencosud y Rotter & Krauss, en distintas modalidades de evaluación, asesoría o atención psicológica.",
+      "page": "formacion"
+    },
+    "formacion-47.t0": {
+      "section": "formacion",
+      "label": "Texto · Área de capacitación y relatorías",
+      "node": "formacion-47",
+      "index": 0,
+      "default": "Área de capacitación y relatorías",
+      "page": "formacion"
+    },
+    "formacion-48.t0": {
+      "section": "formacion",
+      "label": "Título · Relatorías y desarrollo de competencias",
+      "node": "formacion-48",
+      "index": 0,
+      "default": "Relatorías y desarrollo de competencias",
+      "page": "formacion"
+    },
+    "formacion-49.t0": {
+      "section": "formacion",
+      "label": "Texto · Actividades de formación orientadas a fortalecer habilidades laborales e interpersona",
+      "node": "formacion-49",
+      "index": 0,
+      "default": "Actividades de formación orientadas a fortalecer habilidades laborales e interpersonales, con temáticas como:",
+      "page": "formacion"
+    },
+    "formacion-50.t0": {
+      "section": "formacion",
+      "label": "Texto · Trabajo en equipo y colaboración.",
+      "node": "formacion-50",
+      "index": 0,
+      "default": "Trabajo en equipo y colaboración.",
+      "page": "formacion"
+    },
+    "formacion-51.t0": {
+      "section": "formacion",
+      "label": "Texto · Planificación y organización del trabajo.",
+      "node": "formacion-51",
+      "index": 0,
+      "default": "Planificación y organización del trabajo.",
+      "page": "formacion"
+    },
+    "formacion-52.t0": {
+      "section": "formacion",
+      "label": "Texto · Comunicación efectiva.",
+      "node": "formacion-52",
+      "index": 0,
+      "default": "Comunicación efectiva.",
+      "page": "formacion"
+    },
+    "formacion-53.t0": {
+      "section": "formacion",
+      "label": "Texto · Liderazgo y coordinación de equipos.",
+      "node": "formacion-53",
+      "index": 0,
+      "default": "Liderazgo y coordinación de equipos.",
+      "page": "formacion"
+    },
+    "formacion-54.t0": {
+      "section": "formacion",
+      "label": "Texto · Resolución de conflictos y relaciones laborales.",
+      "node": "formacion-54",
+      "index": 0,
+      "default": "Resolución de conflictos y relaciones laborales.",
+      "page": "formacion"
+    },
+    "formacion-55.t0": {
+      "section": "formacion",
+      "label": "Texto · Desarrollo de competencias y empleabilidad.",
+      "node": "formacion-55",
+      "index": 0,
+      "default": "Desarrollo de competencias y empleabilidad.",
+      "page": "formacion"
+    },
+    "formacion-56.t0": {
+      "section": "formacion",
+      "label": "Texto · Formación académica y perfeccionamiento profesional.",
+      "node": "formacion-56",
+      "index": 0,
+      "default": "Formación académica y perfeccionamiento profesional.",
+      "page": "formacion"
+    },
+    "formacion-57.t0": {
+      "section": "formacion",
+      "label": "Texto · Agendar una hora →",
+      "node": "formacion-57",
+      "index": 0,
+      "default": "Agendar una hora →",
+      "page": "formacion"
+    }
+  }
+}
