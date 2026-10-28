@@ -155,7 +155,7 @@ def fulfill(order):
     for role in ('patient','professional'):
         if data[role+'_mail']:continue
         try:
-            result=remote('mail',{'order':order,'service':r['service'],'start':r['starts_at'],'name':r['name'],'email':r['email'],'amount':r['amount'],'role':role,'revision':r['rebooked'],'meet_url':data.get('meet_url'),'rebooking_url':API+'/reagendar-produccion/'+r['rebook_token']})
+            result=remote('mail',{'order':order,'service':r['service'],'start':r['starts_at'],'end':r['ends_at'],'name':r['name'],'email':r['email'],'amount':r['amount'],'role':role,'revision':r['rebooked'],'meet_url':data.get('meet_url'),'rebooking_url':API+'/reagendar-produccion/'+r['rebook_token']})
             if result.get('state')=='SENT':
                 with billing.db() as c:c.execute('UPDATE production_payments SET '+role+'_mail=1 WHERE order_id=?',(order,))
         except Exception:pass
