@@ -25,7 +25,8 @@ def booking_links(booking, public_url='https://valhallaoffice.cl'):
         'ctz':'America/Santiago','location':OFFICE_ADDRESS,
         'details':'Reserva personal de 55 minutos. Consulta su estado y modificaciones en '+reservations})
     maps='https://www.google.com/maps/search/?'+urlencode({'api':'1','query':'Valhalla Office, '+OFFICE_ADDRESS})
-    return {'calendar':calendar,'directions':maps,'bookings':reservations}
+    return {'calendar':calendar,'directions':maps,'bookings':reservations,
+            'reschedule':public_url.rstrip('/')+'/#reagendar-'+str(booking['id']) if booking.get('id') else reservations}
 
 
 def notification_message(kind, payload, public_url):
@@ -78,7 +79,7 @@ def notification_message(kind, payload, public_url):
         if 'remaining' in payload:
             text += f"• Saldo disponible al confirmar: {payload['remaining']} sesiones.\n"
         links=booking_links(booking,public_url)
-        text += f"\nAgregar a mi calendario: {links['calendar']}\nCómo llegar: {links['directions']}\nMis reservas: {links['bookings']}\n"
+        text += f"\nReagendar Hora: {links['reschedule']}\nAgregar a mi calendario: {links['calendar']}\nCómo llegar: {links['directions']}\nMis reservas: {links['bookings']}\n"
     return title + ' · Valhalla Office', text + '\n' + public_url + '/'
 
 
@@ -124,7 +125,7 @@ def notification_html(kind, payload, public_url, logo_url=None):
         remaining=payload['remaining'];notes.append(f'Saldo disponible al confirmar: {remaining} '+('sesión.' if remaining==1 else 'sesiones.'))
     if kind=='booking_modified':notes.append('Si guardaste el horario anterior en tu calendario, actualízalo también.')
     bullets=''.join(f'<li style="margin:0 0 12px;padding-left:4px;">{escape(note)}</li>' for note in notes)
-    actions=[('Mis reservas',links['bookings'])]
+    actions=[('Mis reservas',links['bookings'])] if cancelled else [('Reagendar Hora',links['reschedule']),('Mis reservas',links['bookings'])]
     if not cancelled:actions += [('Agregar al calendario',links['calendar']),('Cómo llegar',links['directions'])]
     buttons=''.join(f'<tr><td align="center" style="padding:0 0 12px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" bgcolor="{"#245e50" if index==0 else "#f1f5ec"}" style="border:1px solid {"#245e50" if index==0 else "#c8d8cc"};border-radius:9px;"><a href="{escape(url,quote=True)}" target="_blank" style="display:block;padding:16px 12px;font-family:Arial,sans-serif;font-size:16px;line-height:22px;font-weight:bold;text-decoration:none;color:{"#ffffff" if index==0 else "#193e37"};">{label}</a></td></tr></table></td></tr>' for index,(label,url) in enumerate(actions))
     return f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)} · Valhalla Office</title></head>
