@@ -1221,6 +1221,10 @@ def _sii_probe_once():
                                             "host": frame_host,
                                             "password_fields": frame.locator('input[type="password"]').count(),
                                             "identity_fields": frame.locator('input[type="text"], input[type="tel"], input[inputmode="numeric"]').count(),
+                                            "visible_input_types": frame.locator("input:visible").evaluate_all("(els) => els.slice(0, 12).map(el => (el.type || \"text\").toLowerCase())"),
+                                            "forms": frame.locator("form").count(),
+                                            "visible_buttons": frame.locator("button:visible").count(),
+                                            "visible_links": frame.locator("a:visible").count(),
                                         })
                                     except Exception:
                                         continue
