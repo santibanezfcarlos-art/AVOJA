@@ -1206,10 +1206,33 @@ def _sii_probe_once():
                                     page.wait_for_load_state("domcontentloaded", timeout=7000)
                                 except Exception:
                                     page.wait_for_timeout(900)
-                                report["login_form_detected"] = page.locator('input[type="password"]').count() > 0
-                                report["login_user_field_detected"] = page.locator('input[type="text"], input[type="tel"]').count() > 0
+                                page.wait_for_timeout(1500)
+                                frame_signals = []
+                                for frame in page.frames[:8]:
+                                    try:
+                                        frame_host = urlparse(frame.url).hostname or ""
+                                        if not frame_host.endswith(".sii.cl"):
+                                            continue
+                                        frame_signals.append({
+                                            "host": frame_host,
+                                            "password_fields": frame.locator('input[type="password"]').count(),
+                                            "identity_fields": frame.locator('input[type="text"], input[type="tel"], input[inputmode="numeric"]').count(),
+                                        })
+                                    except Exception:
+                                        continue
+                                report["login_frames"] = frame_signals
+                                report["login_form_detected"] = any(row["password_fields"] > 0 for row in frame_signals)
+                                report["login_user_field_detected"] = any(row["identity_fields"] > 0 for row in frame_signals)
                                 report["login_title"] = (page.title() or "")[:100]
                                 report["login_navigation_hosts"] = list(dict.fromkeys(h for h in navigation_hosts if h))[-12:]
+                                body = (page.locator("body").inner_text(timeout=2500) or "").casefold()
+                                report["login_markers"] = {
+                                    "rut": bool(re.search(r"\\brut\\b", body)),
+                                    "clave_tributaria": "clave tributaria" in body,
+                                    "digital_certificate": "certificado digital" in body,
+                                    "captcha": "captcha" in body or "recaptcha" in body,
+                                    "sign_in": bool(re.search(r"ingresar|iniciar sesión|iniciar sesion", body)),
+                                }
                             report[key] = item
                             stage("sii_request_finished", target=key, http_status=item["http_status"], origin_matches=item["origin_matches"])
                         except Exception as exc:
