@@ -1069,7 +1069,7 @@ _SII_PROBE_LOCK = _sii_probe_threading.Lock()
 
 
 def _sii_probe_once():
-    """One read-only Decodo-to-SII check. Never authenticates or submits forms."""
+    """One bounded, read-only Decodo-to-SII check; no authentication or submission."""
     import json
     import logging
     import os
@@ -1088,291 +1088,138 @@ def _sii_probe_once():
     started = time.monotonic()
     logger = logging.getLogger("sii_probe")
     def stage(name, **flags):
-        logger.warning("SII_REACHABILITY_STAGE %s", json.dumps({"stage": name, **flags}, separators=(",", ":")))
-    stage("probe_started")
-    report = {
-        "status": "started",
-        "browser": "not_started",
-        "country": "unknown",
-        "chile_egress": False,
-        "sii_home": {"status": "not_attempted"},
-        "eboleta": {"status": "not_attempted"},
-        "login_form_detected": False,
-        "credentials_used": False,
-        "submitted": False,
-        "emitted": False,
-    }
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
-    proxy_server = "http://" + os.environ["DECODO_PROXY_HOST"].strip() + ":" + os.environ["DECODO_PROXY_PORT"].strip()
-    proxy = {
-        "server": proxy_server,
-        "username": os.environ["DECODO_PROXY_USER"],
-        "password": os.environ["DECODO_PROXY_PASSWORD"],
-    }
+        logger.warning("SII_REACHABILITY_STAGE %s", json.dumps(
+            {"stage": name, **flags}, separators=(",", ":")))
 
-    def check_proxy_connect(target):
-        import base64
-        import socket
-        userpass = (os.environ["DECODO_PROXY_USER"] + ":" +
-                    os.environ["DECODO_PROXY_PASSWORD"]).encode("utf-8")
-        authorization = base64.b64encode(userpass).decode("ascii")
-        request = (
-            f"CONNECT {target}:443 HTTP/1.1\r\n"
-            f"Host: {target}:443\r\n"
-            f"Proxy-Authorization: Basic {authorization}\r\n"
-            "Proxy-Connection: close\r\n\r\n"
-        ).encode("ascii")
-        try:
-            with socket.create_connection(
-                (os.environ["DECODO_PROXY_HOST"].strip(),
-                 int(os.environ["DECODO_PROXY_PORT"].strip())),
-                timeout=6,
-            ) as sock:
-                sock.settimeout(6)
-                sock.sendall(request)
-                status = sock.recv(512).split(b"\r\n", 1)[0].decode("ascii", "replace")
-            match = re.fullmatch(r"HTTP/1\.[01] (\d{3})(?: ([A-Za-z ]{0,60}))?", status)
-            return {"status": "received", "http_status": int(match.group(1)) if match else None,
-                    "reason": (match.group(2) or "")[:60] if match else "unrecognized"}
-        except Exception as exc:
-            return {"status": "failed", "error_type": type(exc).__name__}
+    result = {"status":"started", "browser":"not_started", "country":"unknown",
+              "chile_egress":False, "sii_home":{"status":"not_attempted"},
+              "eboleta":{"status":"not_attempted"}, "auth_hosts":[],
+              "login_form_detected":False, "credentials_used":False,
+              "submitted":False, "emitted":False}
 
+    raw_host = os.environ["DECODO_PROXY_HOST"].strip()
+    raw_port = os.environ["DECODO_PROXY_PORT"].strip()
+    if not raw_port.isdecimal() or not 1 <= int(raw_port) <= 65535:
+        return {"status":"invalid_proxy_port", "credentials_used":False,
+                "submitted":False, "emitted":False}
+    candidate = raw_host if "://" in raw_host else "http://" + raw_host
+    parsed_proxy = urlparse(candidate)
+    if parsed_proxy.scheme not in ("http", "https") or not parsed_proxy.hostname or parsed_proxy.path not in ("", "/"):
+        return {"status":"invalid_proxy_host", "credentials_used":False,
+                "submitted":False, "emitted":False}
     try:
-        report["proxy_connect"] = {}
-        for target in ("www.google.com", "www.sii.cl", "eboleta.sii.cl"):
-            report["proxy_connect"][target] = check_proxy_connect(target)
-            stage("proxy_connect_checked", target=target,
-                  result=report["proxy_connect"][target])
+        embedded_port = parsed_proxy.port
+    except ValueError:
+        return {"status":"invalid_proxy_host", "credentials_used":False,
+                "submitted":False, "emitted":False}
+    if embedded_port is not None and embedded_port != int(raw_port):
+        return {"status":"proxy_port_mismatch", "credentials_used":False,
+                "submitted":False, "emitted":False}
+    proxy_host = parsed_proxy.hostname
+    if ":" in proxy_host:
+        proxy_host = "[" + proxy_host + "]"
+    proxy_server = parsed_proxy.scheme + "://" + proxy_host + ":" + raw_port
+    proxy = {"server":proxy_server,
+             "username":os.environ["DECODO_PROXY_USER"],
+             "password":os.environ["DECODO_PROXY_PASSWORD"]}
+
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+    try:
         with sync_playwright() as playwright:
-            stage("chromium_launch_started")
             browser = playwright.chromium.launch(
-                headless=True, args=["--no-sandbox"], timeout=10000, proxy=proxy
-            )
-            report["browser"] = "started"
-            stage("chromium_started")
+                headless=True, args=["--no-sandbox"], timeout=6000, proxy=proxy)
+            result["browser"] = "started"
             try:
-                context = browser.new_context(locale="es-CL", timezone_id="America/Santiago", ignore_https_errors=False)
-                context.route(
-                    "**/*",
-                    lambda route: route.abort()
-                    if route.request.resource_type in ("image", "font", "media")
-                    else route.continue_(),
-                )
+                context = browser.new_context(
+                    locale="es-CL", timezone_id="America/Santiago",
+                    ignore_https_errors=False)
                 page = context.new_page()
-                auth_load = {"failed": [], "http_errors": [], "script_errors": []}
+                nav_hosts = []
+                bad_responses = []
+                page.on("request", lambda request: nav_hosts.append(
+                    urlparse(request.url).hostname or "")
+                    if request.is_navigation_request() else None)
+                page.on("response", lambda response: bad_responses.append({
+                    "host":urlparse(response.url).hostname or "",
+                    "status":response.status,
+                    "server":response.headers.get("server","")[:80],
+                    "via":response.headers.get("via","")[:80],
+                }) if response.status >= 400 and
+                    (urlparse(response.url).hostname or "").endswith(".sii.cl")
+                    and len(bad_responses) < 12 else None)
 
-                def record_failed_request(request):
-                    host = urlparse(request.url).hostname or ""
-                    failure = request.failure or ""
-                    match = re.search(r"net::ERR_[A-Z_]+", failure)
-                    if len(auth_load["failed"]) < 20:
-                        auth_load["failed"].append({
-                            "host": host[:100],
-                            "resource_type": request.resource_type,
-                            "network_error": match.group(0) if match else "request_failed",
-                        })
-
-                def record_bad_response(response):
-                    request = response.request
-                    if response.status >= 400 and request.resource_type in ("document", "script", "xhr", "fetch"):
-                        host = urlparse(response.url).hostname or ""
-                        if len(auth_load["http_errors"]) < 20:
-                            from urllib.parse import parse_qsl
-                            headers = response.headers
-                            failed_url = urlparse(response.url)
-                            location = urlparse(headers.get("location", ""))
-                            query_names = [name[:40] for name, _ in parse_qsl(failed_url.query)][:12]
-                            auth_load["http_errors"].append({
-                                "host": host[:100],
-                                "resource_type": request.resource_type,
-                                "http_status": response.status,
-                                "server": headers.get("server", "")[:100],
-                                "via": headers.get("via", "")[:100],
-                                "content_type": headers.get("content-type", "")[:80],
-                                "path_is_root": failed_url.path in ("", "/"),
-                                "path_segment_count": len([part for part in failed_url.path.split("/") if part]),
-                                "path_suffix": failed_url.path.rsplit(".", 1)[-1][:12] if "." in failed_url.path else "",
-                                "query_parameter_names": query_names,
-                                "location_host": location.hostname or "",
-                            })
-
-                page.on("requestfailed", record_failed_request)
-                page.on("response", record_bad_response)
-                page.on("pageerror", lambda error: auth_load["script_errors"].append(type(error).__name__)
-                        if len(auth_load["script_errors"]) < 10 else None)
                 try:
-                    try:
-                        stage("egress_request_started")
-                        geo = page.goto(
-                            "https://ipinfo.io/country",
-                            wait_until="commit",
-                            timeout=7000,
-                        )
-                        country = (page.locator("body").inner_text(timeout=2500) or "").strip().upper()
-                        report["country"] = country if re.fullmatch(r"[A-Z]{2}", country) else "unknown"
-                        report["chile_egress"] = report["country"] == "CL"
-                        report["egress_check_http"] = geo.status if geo else None
-                        stage("egress_request_finished", country=report["country"], http_status=report["egress_check_http"])
-                    except Exception as exc:
-                        report["egress_check_error"] = type(exc).__name__
-                        stage("egress_request_failed", error_type=type(exc).__name__)
+                    response = page.goto("https://ipinfo.io/country",
+                                         wait_until="commit", timeout=4500)
+                    country = (page.locator("body").inner_text(timeout=1200) or "").strip().upper()
+                    result["country"] = country if re.fullmatch(r"[A-Z]{2}", country) else "unknown"
+                    result["chile_egress"] = result["country"] == "CL"
+                    result["egress_http_status"] = response.status if response else None
+                except Exception as exc:
+                    result["egress_error_type"] = type(exc).__name__
 
-                    navigation_hosts = []
-                    page.on(
-                        "request",
-                        lambda request: navigation_hosts.append(urlparse(request.url).hostname)
-                        if request.is_navigation_request() and urlparse(request.url).hostname
-                        else None,
-                    )
-                    for key, url, expected_host in (
-                        ("control", "https://www.google.com/generate_204", "www.google.com"),
-                        ("sii_home", "https://www.sii.cl/", "www.sii.cl"),
-                        ("eboleta", "https://eboleta.sii.cl/emitir/", "eboleta.sii.cl"),
-                    ):
-                        try:
-                            stage("sii_request_started", target=key)
-                            navigation_hosts.clear()
-                            response = page.goto(
-                                url,
-                                wait_until="domcontentloaded" if key == "eboleta" else "commit",
-                                timeout=25000 if key == "eboleta" else 10000,
-                            )
-                            parsed = urlparse(page.url)
-                            final_host = parsed.hostname or ""
-                            item = {
-                                "status": "connected" if response else "no_response",
-                                "http_status": response.status if response else None,
-                                "origin_matches": parsed.scheme == "https" and final_host == expected_host,
-                                "final_host": final_host if final_host.endswith(".sii.cl") else "other",
-                                "navigation_hosts": list(dict.fromkeys(h for h in navigation_hosts if h))[-12:],
-                            }
-                            if key == "eboleta":
+                for key, url, expected in (
+                    ("sii_home","https://www.sii.cl/","www.sii.cl"),
+                    ("eboleta","https://eboleta.sii.cl/emitir/","eboleta.sii.cl"),
+                ):
+                    nav_hosts.clear()
+                    try:
+                        response = page.goto(url, wait_until="commit",
+                                             timeout=4500 if key == "sii_home" else 9000)
+                        final = urlparse(page.url)
+                        row = {"status":"connected" if response else "no_response",
+                               "http_status":response.status if response else None,
+                               "origin_matches":final.scheme == "https" and final.hostname == expected,
+                               "final_host":final.hostname or "",
+                               "navigation_hosts":list(dict.fromkeys(nav_hosts))[-10:]}
+                        if key == "eboleta":
+                            try:
+                                page.wait_for_load_state("domcontentloaded",timeout=1800)
+                            except Exception:
+                                pass
+                            hosts = list(dict.fromkeys(nav_hosts))
+                            result["auth_hosts"] = [h for h in hosts if h.endswith(".sii.cl")]
+                            frame_sets = []
+                            for frame in page.frames[:6]:
+                                fh = urlparse(frame.url).hostname or ""
+                                if not fh.endswith(".sii.cl"):
+                                    continue
                                 try:
-                                    page.wait_for_load_state("domcontentloaded", timeout=7000)
+                                    frame_sets.append({
+                                        "host":fh,
+                                        "password_fields":frame.locator('input[type="password"]').count(),
+                                        "identity_fields":frame.locator(
+                                            'input[type="text"],input[type="tel"],input[inputmode="numeric"]').count(),
+                                        "forms":frame.locator("form").count(),
+                                    })
                                 except Exception:
-                                    page.wait_for_timeout(900)
-                                page.wait_for_timeout(1500)
-                                frame_signals = []
-                                for frame in page.frames[:8]:
-                                    try:
-                                        frame_host = urlparse(frame.url).hostname or ""
-                                        if not frame_host.endswith(".sii.cl"):
-                                            continue
-                                        frame_signals.append({
-                                            "host": frame_host,
-                                            "password_fields": frame.locator('input[type="password"]').count(),
-                                            "identity_fields": frame.locator('input[type="text"], input[type="tel"], input[inputmode="numeric"]').count(),
-                                            "visible_input_types": frame.locator("input:visible").evaluate_all("(els) => els.slice(0, 12).map(el => (el.type || \"text\").toLowerCase())"),
-                                            "forms": frame.locator("form").count(),
-                                            "visible_buttons": frame.locator("button:visible").count(),
-                                            "visible_links": frame.locator("a:visible").count(),
-                                        })
-                                    except Exception:
-                                        continue
-                                report["login_frames"] = frame_signals
-                                report["login_form_detected"] = any(row["password_fields"] > 0 for row in frame_signals)
-                                report["login_user_field_detected"] = any(row["identity_fields"] > 0 for row in frame_signals)
-                                report["login_title"] = (page.title() or "")[:100]
-                                report["login_navigation_hosts"] = list(dict.fromkeys(h for h in navigation_hosts if h))[-12:]
-                                report["login_visible_link_labels"] = [
-                                    label[:60] for label in page.locator("a:visible").all_inner_texts()
-                                    if label.strip()
-                                ][:10]
-                                report["login_resource_failures"] = auth_load["failed"]
-                                report["login_resource_http_errors"] = auth_load["http_errors"]
-                                report["login_script_error_types"] = auth_load["script_errors"]
-                                body = (page.locator("body").inner_text(timeout=2500) or "").casefold()
-                                report["login_body_chars"] = len(body)
-                                report["login_error_markers"] = {
-                                    "forbidden": "forbidden" in body,
-                                    "access_denied": "access denied" in body or "acceso denegado" in body,
-                                    "blocked": "blocked" in body or "bloqueado" in body,
-                                    "proxy": "proxy" in body,
-                                    "decodo": "decodo" in body,
-                                }
-                                report["login_markers"] = {
-                                    "rut": bool(re.search(r"\\brut\\b", body)),
-                                    "clave_tributaria": "clave tributaria" in body,
-                                    "digital_certificate": "certificado digital" in body,
-                                    "captcha": "captcha" in body or "recaptcha" in body,
-                                    "sign_in": bool(re.search(r"ingresar|iniciar sesión|iniciar sesion", body)),
-                                }
-                            report[key] = item
-                            stage("sii_request_finished", target=key, http_status=item["http_status"], origin_matches=item["origin_matches"])
-                        except Exception as exc:
-                            error = {"status": "failed", "error_type": type(exc).__name__}
-                            match = re.search(r"net::ERR_[A-Z_]+", str(exc))
-                            if match:
-                                error["network_error"] = match.group(0)
-                            report[key] = error
-                            stage("sii_request_failed", target=key, error_type=type(exc).__name__, network_error=error.get("network_error"))
-                finally:
-                    page.close()
-                    context.close()
+                                    continue
+                            result["login_frames"] = frame_sets
+                            result["login_form_detected"] = any(
+                                row["password_fields"] > 0 for row in frame_sets)
+                            result["login_user_field_detected"] = any(
+                                row["identity_fields"] > 0 for row in frame_sets)
+                        result[key] = row
+                    except Exception as exc:
+                        result[key] = {"status":"failed","error_type":type(exc).__name__}
+                        match = re.search(r"net::ERR_[A-Z_]+",str(exc))
+                        if match:
+                            result[key]["network_error"] = match.group(0)
+                result["sii_http_errors"] = bad_responses
+                context.close()
             finally:
                 browser.close()
-        # Compare the same unauthenticated portal navigation without Decodo.
-        # This isolates a proxy policy response from an SII-side response.
-        direct = {"status": "not_attempted"}
-        try:
-            with sync_playwright() as direct_playwright:
-                direct_browser = direct_playwright.chromium.launch(
-                    headless=True, args=["--no-sandbox"], timeout=10000
-                )
-                try:
-                    direct_context = direct_browser.new_context(locale="es-CL", timezone_id="America/Santiago", ignore_https_errors=False)
-                    try:
-                        direct_page = direct_context.new_page()
-                        direct_errors = []
-                        direct_page.on(
-                            "response",
-                            lambda response: direct_errors.append({
-                                "host": urlparse(response.url).hostname or "",
-                                "status": response.status,
-                                "server": response.headers.get("server", "")[:100],
-                                "via": response.headers.get("via", "")[:100],
-                            })
-                            if response.status >= 400 and
-                               (urlparse(response.url).hostname or "").endswith(".sii.cl")
-                            else None,
-                        )
-                        direct_response = direct_page.goto(
-                            "https://eboleta.sii.cl/emitir/",
-                            wait_until="domcontentloaded",
-                            timeout=25000,
-                        )
-                        final = urlparse(direct_page.url)
-                        direct = {
-                            "status": "completed",
-                            "http_status": direct_response.status if direct_response else None,
-                            "final_host": final.hostname or "",
-                            "title": (direct_page.title() or "")[:100],
-                            "sii_http_errors": direct_errors[:10],
-                            "credentials_used": False,
-                            "submitted": False,
-                            "emitted": False,
-                        }
-                    finally:
-                        direct_context.close()
-                finally:
-                    direct_browser.close()
-        except Exception as exc:
-            direct = {"status": "failed", "error_type": type(exc).__name__}
-            match = re.search(r"net::ERR_[A-Z_]+", str(exc))
-            if match:
-                direct["network_error"] = match.group(0)
-        report["direct_control"] = direct
-        report["status"] = "completed"
-        stage("probe_completed", elapsed_seconds=round(time.monotonic() - started, 2))
+        result["status"] = "completed"
     except Exception as exc:
-        report["status"] = "failed"
-        stage("probe_failed", error_type=type(exc).__name__)
-        report["error_type"] = type(exc).__name__
-        match = re.search(r"net::ERR_[A-Z_]+", str(exc))
+        result["status"] = "failed"
+        result["error_type"] = type(exc).__name__
+        match = re.search(r"net::ERR_[A-Z_]+",str(exc))
         if match:
-            report["network_error"] = match.group(0)
-    report["elapsed_seconds"] = round(time.monotonic() - started, 2)
-    return report
+            result["network_error"] = match.group(0)
+    result["elapsed_seconds"] = round(time.monotonic()-started,2)
+    stage("probe_completed", status=result["status"],
+          country=result.get("country"), seconds=result["elapsed_seconds"])
+    return result
 
 
 @app.post("/sii-eboleta-reachability")
