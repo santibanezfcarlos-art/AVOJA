@@ -1177,8 +1177,11 @@ def _sii_probe_once():
                     if response.status >= 400 and request.resource_type in ("document", "script", "xhr", "fetch"):
                         host = urlparse(response.url).hostname or ""
                         if len(auth_load["http_errors"]) < 20:
+                            from urllib.parse import parse_qsl
                             headers = response.headers
+                            failed_url = urlparse(response.url)
                             location = urlparse(headers.get("location", ""))
+                            query_names = [name[:40] for name, _ in parse_qsl(failed_url.query)][:12]
                             auth_load["http_errors"].append({
                                 "host": host[:100],
                                 "resource_type": request.resource_type,
@@ -1186,6 +1189,10 @@ def _sii_probe_once():
                                 "server": headers.get("server", "")[:100],
                                 "via": headers.get("via", "")[:100],
                                 "content_type": headers.get("content-type", "")[:80],
+                                "path_is_root": failed_url.path in ("", "/"),
+                                "path_segment_count": len([part for part in failed_url.path.split("/") if part]),
+                                "path_suffix": failed_url.path.rsplit(".", 1)[-1][:12] if "." in failed_url.path else "",
+                                "query_parameter_names": query_names,
                                 "location_host": location.hostname or "",
                             })
 
