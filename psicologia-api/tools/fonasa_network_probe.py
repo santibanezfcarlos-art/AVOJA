@@ -1190,6 +1190,7 @@ def _sii_probe_once():
                     ):
                         try:
                             stage("sii_request_started", target=key)
+                            navigation_hosts.clear()
                             response = page.goto(url, wait_until="commit", timeout=10000)
                             parsed = urlparse(page.url)
                             final_host = parsed.hostname or ""
@@ -1197,8 +1198,6 @@ def _sii_probe_once():
                                 "status": "connected" if response else "no_response",
                                 "http_status": response.status if response else None,
                                 "origin_matches": parsed.scheme == "https" and final_host == expected_host,
-                                "final_host": final_host if final_host.endswith(".sii.cl") else "other",
-                            }
                                 "final_host": final_host if final_host.endswith(".sii.cl") else "other",
                                 "navigation_hosts": list(dict.fromkeys(h for h in navigation_hosts if h))[-12:],
                             }
@@ -1211,7 +1210,6 @@ def _sii_probe_once():
                                 report["login_user_field_detected"] = page.locator('input[type="text"], input[type="tel"]').count() > 0
                                 report["login_title"] = (page.title() or "")[:100]
                                 report["login_navigation_hosts"] = list(dict.fromkeys(h for h in navigation_hosts if h))[-12:]
-                            report[key] = item
                             report[key] = item
                             stage("sii_request_finished", target=key, http_status=item["http_status"], origin_matches=item["origin_matches"])
                         except Exception as exc:
