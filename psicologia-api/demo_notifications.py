@@ -247,6 +247,25 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         parts = urlsplit(meet_url)
         if parts.scheme != "https" or parts.hostname != "meet.google.com":
             raise NotificationError("Enlace Meet inválido")
+    calendar_button = ""
+    if not is_pro and not demonstration and end is not None:
+        from urllib.parse import urlencode
+        calendar_url = "https://calendar.google.com/calendar/render?" + urlencode({
+            "action": "TEMPLATE",
+            "text": service_name + " · Ps. Carlos Santibáñez",
+            "dates": start.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "/" + end.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            "ctz": "America/Santiago",
+            "location": meet_url or "Atención online",
+            "details": "Atención online con Ps. Carlos Santibáñez." + ("\\nGoogle Meet: " + meet_url if meet_url else ""),
+        })
+        calendar_button = (
+            "<tr><td style='padding:8px 30px 22px;text-align:center'>"
+            "<a href='" + esc(calendar_url) + "' target='_blank' style='display:inline-block;"
+            "background:#235943;color:#ffffff;padding:15px 28px;border-radius:10px;"
+            "font-weight:bold;text-decoration:none;line-height:1.4'>Agregar Sesión a Calendar</a>"
+            "<p style='font-size:12px;color:#657c6e;line-height:1.6'>"
+            "Revisa los datos y pulsa Guardar en Google Calendar.</p></td></tr>"
+        )
     intro = esc(description)
     html = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
@@ -292,7 +311,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
         "</p><p style='margin:14px 0 0'>"
         + (("La atención ya figura en tu calendario." if is_pro else "Conserva este correo para consultar los datos de tu atención.") if payment_label else ("Adjuntamos una invitación de calendario para que puedas incorporar el horario a tu agenda." if demonstration else ("La atención ya figura en tu calendario." if is_pro else "Puedes guardar tu atención usando el archivo de calendario adjunto."))) + "</p>"
         "</td></tr>"
-        + rebooking_button +
+        + calendar_button + rebooking_button +
         "<tr><td style='background:#eef4ed;border-top:1px solid #dce9df;"
         "padding:20px 30px;font-size:12px;line-height:1.7;"
         "color:#577166'><strong style='color:#194a3a'>"
