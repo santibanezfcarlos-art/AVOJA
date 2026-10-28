@@ -212,9 +212,11 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
             raise NotificationError("Enlace Meet inválido")
     meet_row = (
         "<tr><td style='padding:11px 0;color:#64796f;font-size:13px;vertical-align:top;width:37%'>"
-        "Google Meet</td><td style='padding:11px 0;font-size:14px;font-weight:600;word-break:break-all'>"
-        "<a href='" + esc(meet_url) + "' style='color:#176b58;text-decoration:underline'>"
-        + esc(meet_url) + "</a></td></tr>" if meet_url else ""
+        "Google Meet</td><td style='padding:11px 0;font-size:14px;font-weight:600'>"
+        "<a href='" + esc(meet_url) + "' target='_blank' style='display:inline-block;"
+        "background:#235943;color:#ffffff;padding:15px 28px;border-radius:10px;"
+        "font-weight:bold;text-decoration:none;text-align:center;line-height:1.4'>"
+        "Entrar a la sesión</a></td></tr>" if meet_url else ""
     )
     table = "".join(([field("Paciente", patient_name)] if is_pro and patient_name else []) + [
         field("Servicio", service_name),
