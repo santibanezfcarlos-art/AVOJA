@@ -1159,6 +1159,34 @@ def _sii_probe_once():
                     else route.continue_(),
                 )
                 page = context.new_page()
+                auth_load = {"failed": [], "http_errors": [], "script_errors": []}
+
+                def record_failed_request(request):
+                    host = urlparse(request.url).hostname or ""
+                    failure = request.failure or ""
+                    match = re.search(r"net::ERR_[A-Z_]+", failure)
+                    if len(auth_load["failed"]) < 20:
+                        auth_load["failed"].append({
+                            "host": host[:100],
+                            "resource_type": request.resource_type,
+                            "network_error": match.group(0) if match else "request_failed",
+                        })
+
+                def record_bad_response(response):
+                    request = response.request
+                    if response.status >= 400 and request.resource_type in ("document", "script", "xhr", "fetch"):
+                        host = urlparse(response.url).hostname or ""
+                        if len(auth_load["http_errors"]) < 20:
+                            auth_load["http_errors"].append({
+                                "host": host[:100],
+                                "resource_type": request.resource_type,
+                                "http_status": response.status,
+                            })
+
+                page.on("requestfailed", record_failed_request)
+                page.on("response", record_bad_response)
+                page.on("pageerror", lambda error: auth_load["script_errors"].append(type(error).__name__)
+                        if len(auth_load["script_errors"]) < 10 else None)
                 try:
                     try:
                         stage("egress_request_started")
@@ -1233,6 +1261,13 @@ def _sii_probe_once():
                                 report["login_user_field_detected"] = any(row["identity_fields"] > 0 for row in frame_signals)
                                 report["login_title"] = (page.title() or "")[:100]
                                 report["login_navigation_hosts"] = list(dict.fromkeys(h for h in navigation_hosts if h))[-12:]
+                                report["login_visible_link_labels"] = [
+                                    label[:60] for label in page.locator("a:visible").all_inner_texts()
+                                    if label.strip()
+                                ][:10]
+                                report["login_resource_failures"] = auth_load["failed"]
+                                report["login_resource_http_errors"] = auth_load["http_errors"]
+                                report["login_script_error_types"] = auth_load["script_errors"]
                                 body = (page.locator("body").inner_text(timeout=2500) or "").casefold()
                                 report["login_markers"] = {
                                     "rut": bool(re.search(r"\\brut\\b", body)),
