@@ -1176,6 +1176,13 @@ def _sii_probe_once():
                         report["egress_check_error"] = type(exc).__name__
                         stage("egress_request_failed", error_type=type(exc).__name__)
 
+                    navigation_hosts = []
+                    page.on(
+                        "request",
+                        lambda request: navigation_hosts.append(urlparse(request.url).hostname)
+                        if request.is_navigation_request() and urlparse(request.url).hostname
+                        else None,
+                    )
                     for key, url, expected_host in (
                         ("control", "https://www.google.com/generate_204", "www.google.com"),
                         ("sii_home", "https://www.sii.cl/", "www.sii.cl"),
@@ -1192,8 +1199,19 @@ def _sii_probe_once():
                                 "origin_matches": parsed.scheme == "https" and final_host == expected_host,
                                 "final_host": final_host if final_host.endswith(".sii.cl") else "other",
                             }
+                                "final_host": final_host if final_host.endswith(".sii.cl") else "other",
+                                "navigation_hosts": list(dict.fromkeys(h for h in navigation_hosts if h))[-12:],
+                            }
                             if key == "eboleta":
+                                try:
+                                    page.wait_for_load_state("domcontentloaded", timeout=7000)
+                                except Exception:
+                                    page.wait_for_timeout(900)
                                 report["login_form_detected"] = page.locator('input[type="password"]').count() > 0
+                                report["login_user_field_detected"] = page.locator('input[type="text"], input[type="tel"]').count() > 0
+                                report["login_title"] = (page.title() or "")[:100]
+                                report["login_navigation_hosts"] = list(dict.fromkeys(h for h in navigation_hosts if h))[-12:]
+                            report[key] = item
                             report[key] = item
                             stage("sii_request_finished", target=key, http_status=item["http_status"], origin_matches=item["origin_matches"])
                         except Exception as exc:
