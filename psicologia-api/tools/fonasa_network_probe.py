@@ -1191,7 +1191,11 @@ def _sii_probe_once():
                         try:
                             stage("sii_request_started", target=key)
                             navigation_hosts.clear()
-                            response = page.goto(url, wait_until="commit", timeout=10000)
+                            response = page.goto(
+                                url,
+                                wait_until="domcontentloaded" if key == "eboleta" else "commit",
+                                timeout=25000 if key == "eboleta" else 10000,
+                            )
                             parsed = urlparse(page.url)
                             final_host = parsed.hostname or ""
                             item = {
