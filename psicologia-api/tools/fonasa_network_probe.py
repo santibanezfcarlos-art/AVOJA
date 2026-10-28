@@ -1304,6 +1304,57 @@ def _sii_probe_once():
                     context.close()
             finally:
                 browser.close()
+        # Compare the same unauthenticated portal navigation without Decodo.
+        # This isolates a proxy policy response from an SII-side response.
+        direct = {"status": "not_attempted"}
+        try:
+            with sync_playwright() as direct_playwright:
+                direct_browser = direct_playwright.chromium.launch(
+                    headless=True, args=["--no-sandbox"], timeout=10000
+                )
+                try:
+                    direct_context = direct_browser.new_context(ignore_https_errors=False)
+                    try:
+                        direct_page = direct_context.new_page()
+                        direct_errors = []
+                        direct_page.on(
+                            "response",
+                            lambda response: direct_errors.append({
+                                "host": urlparse(response.url).hostname or "",
+                                "status": response.status,
+                                "server": response.headers.get("server", "")[:100],
+                                "via": response.headers.get("via", "")[:100],
+                            })
+                            if response.status >= 400 and
+                               (urlparse(response.url).hostname or "").endswith(".sii.cl")
+                            else None,
+                        )
+                        direct_response = direct_page.goto(
+                            "https://eboleta.sii.cl/emitir/",
+                            wait_until="domcontentloaded",
+                            timeout=25000,
+                        )
+                        final = urlparse(direct_page.url)
+                        direct = {
+                            "status": "completed",
+                            "http_status": direct_response.status if direct_response else None,
+                            "final_host": final.hostname or "",
+                            "title": (direct_page.title() or "")[:100],
+                            "sii_http_errors": direct_errors[:10],
+                            "credentials_used": False,
+                            "submitted": False,
+                            "emitted": False,
+                        }
+                    finally:
+                        direct_context.close()
+                finally:
+                    direct_browser.close()
+        except Exception as exc:
+            direct = {"status": "failed", "error_type": type(exc).__name__}
+            match = re.search(r"net::ERR_[A-Z_]+", str(exc))
+            if match:
+                direct["network_error"] = match.group(0)
+        report["direct_control"] = direct
         report["status"] = "completed"
         stage("probe_completed", elapsed_seconds=round(time.monotonic() - started, 2))
     except Exception as exc:
