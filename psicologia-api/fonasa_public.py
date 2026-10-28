@@ -74,12 +74,21 @@ def upload_patient_bono():
     if attempts>20:return jsonify(error='El módulo tiene alta demanda. Intenta más tarde o contacta al profesional.'),429
     data,status=_result(f._upload())
     if status>=400:return jsonify(error=data.get('error','No se pudo leer el bono.')),status
-    if data.get('existing'):
-        return jsonify(error='Este bono ya está registrado. Continúa en el navegador donde lo cargaste o contacta al profesional para recuperar tu enlace.'),409
     access=secrets.token_urlsafe(32)
     with billing.db() as con:
-        con.execute('UPDATE fonasa_intake SET public_access_hash=?,public_access_expiry=? WHERE id=?',
-                    (hashlib.sha256(access.encode()).hexdigest(),str(int(time.time())+7*86400),data['bono']['id']))
+        if data.get('existing'):
+            # Only resume a failed/unfinished lookup before any activation or booking.
+            # The same PDF was parsed and matched to the stored folio and RUT.
+            result=con.execute("""UPDATE fonasa_intake SET state='pdf_read',
+                public_access_hash=?,public_access_expiry=?,public_polled_at=NULL
+                WHERE id=? AND state IN ('pdf_read','check_failed')
+                  AND activation_status='not_requested'""",
+                (hashlib.sha256(access.encode()).hexdigest(),str(int(time.time())+7*86400),data['bono']['id']))
+            if result.rowcount!=1:
+                return jsonify(error='Este bono ya está en proceso o tiene una reserva. Contacta al profesional para continuar.'),409
+        else:
+            con.execute('UPDATE fonasa_intake SET public_access_hash=?,public_access_expiry=? WHERE id=?',
+                        (hashlib.sha256(access.encode()).hexdigest(),str(int(time.time())+7*86400),data['bono']['id']))
     return jsonify(access_token=access,state='pdf_read'),201
 
 
