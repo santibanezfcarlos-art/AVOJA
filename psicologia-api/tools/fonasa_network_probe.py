@@ -1164,8 +1164,8 @@ def _sii_probe_once():
                 ):
                     nav_hosts.clear()
                     try:
-                        response = page.goto(url, wait_until="commit",
-                                             timeout=4500 if key == "sii_home" else 9000)
+                        response = page.goto(url, wait_until="commit" if key == "sii_home" else "domcontentloaded",
+                                             timeout=4500 if key == "sii_home" else 20000)
                         final = urlparse(page.url)
                         row = {"status":"connected" if response else "no_response",
                                "http_status":response.status if response else None,
