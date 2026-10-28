@@ -1177,10 +1177,16 @@ def _sii_probe_once():
                     if response.status >= 400 and request.resource_type in ("document", "script", "xhr", "fetch"):
                         host = urlparse(response.url).hostname or ""
                         if len(auth_load["http_errors"]) < 20:
+                            headers = response.headers
+                            location = urlparse(headers.get("location", ""))
                             auth_load["http_errors"].append({
                                 "host": host[:100],
                                 "resource_type": request.resource_type,
                                 "http_status": response.status,
+                                "server": headers.get("server", "")[:100],
+                                "via": headers.get("via", "")[:100],
+                                "content_type": headers.get("content-type", "")[:80],
+                                "location_host": location.hostname or "",
                             })
 
                 page.on("requestfailed", record_failed_request)
@@ -1269,6 +1275,14 @@ def _sii_probe_once():
                                 report["login_resource_http_errors"] = auth_load["http_errors"]
                                 report["login_script_error_types"] = auth_load["script_errors"]
                                 body = (page.locator("body").inner_text(timeout=2500) or "").casefold()
+                                report["login_body_chars"] = len(body)
+                                report["login_error_markers"] = {
+                                    "forbidden": "forbidden" in body,
+                                    "access_denied": "access denied" in body or "acceso denegado" in body,
+                                    "blocked": "blocked" in body or "bloqueado" in body,
+                                    "proxy": "proxy" in body,
+                                    "decodo": "decodo" in body,
+                                }
                                 report["login_markers"] = {
                                     "rut": bool(re.search(r"\\brut\\b", body)),
                                     "clave_tributaria": "clave tributaria" in body,
