@@ -65,9 +65,18 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  }
  if(r.environment==='production'){
   if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
-   section.append(node('p',r.issuance_state==='processing'
-     ?'Solicitud de emisión en curso o inicio incierto. No vuelvas a pulsar Emitir hasta revisar el resultado.'
-     :'Emisión con resultado por conciliar. Comprueba el folio real en SII antes de cualquier otro intento.','warning'));
+   const message=r.issuance_state==='processing'
+     ?'Emisión solicitada en Render. No vuelvas a pulsar Emitir hasta conocer el resultado.'
+     :'El SII recibió un intento de emisión, pero PSC no ha confirmado su folio. Comprueba en eBoleta si existe el documento antes de hacer cualquier otra operación.';
+   const warning=node('p',message,'warning');
+   warning.setAttribute('role','status');
+   section.append(warning);
+   if(issueProgress[r.order_id]){
+    const live=node('p',issueProgress[r.order_id],'sii-progress');
+    live.dataset.issueOrder=r.order_id;
+    live.setAttribute('role','status');live.setAttribute('aria-live','polite');
+    actions.append(live);
+   }
   }else{
    // Never navigate to SII: ALL real issuance starts only through the
    // authenticated PSC backend -> Render Chromium. If this purchase is not
@@ -86,7 +95,6 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
      const data=await res.json();
      if(!res.ok)throw Error(data.error||'Render no confirmó el inicio de emisión.');
      issueMessage(r.order_id,'Chromium iniciado. Preparando la boleta real en SII…');
-     await refresh();
      pollIssue(r.order_id);
     }catch(err){
      issueRunning[r.order_id]=false;
@@ -232,42 +240,90 @@ async function pollPreview(order){
 
 async function pollIssue(order){
  if(issueTimers[order])return;
+ let checks=0;
  const terminal=new Set(['issued','reconciliation','failed','expired','unavailable','not_running']);
- const step=async()=>{
-  try{
-   const res=await fetch('/admin/boletas/'+encodeURIComponent(order)+'/issue-status',{cache:'no-store'});
-   const status=await res.json();
-   if(!res.ok)throw Error(status.error||'Estado no disponible');
-   const stage=status.stage||status.state;
-   const label={
-     starting:'Iniciando Chromium en Render…',opening_sii:'Abriendo SII…',
-     sii_authentication:'Ingresando al SII…',waiting_before_login:'Validando sesión SII…',
-     waiting_calculator:'Cargando e-Boleta…',preparing_order:'Completando importe y receptor…',
-     waiting_receiver_form:'Abriendo datos del receptor…',filling_receiver:'Completando datos de la compra…',
-     issue_approved_pending_claim:'Preparación completa. Emitiendo…',
-     claiming_canary:'Registrando intento y emitiendo…',issued:'Boleta emitida y folio guardado',
-     reconciliation:'Resultado SII incierto: verificar antes de otra emisión.',
-     not_running:'Chromium no informa un proceso activo. Revisar antes de reintentar.'
-   };
-   issueProgress[order]=label[stage]||stage;
-   if(status.state==='issued'||status.state==='reconciliation'
-      ||terminal.has(status.state)||stage.startsWith('canary_')||stage.startsWith('blocked_')){
-    issueRunning[order]=false;
-    delete issueTimers[order];
-    await refresh();return;
-   }
-   await refresh();
-   issueTimers[order]=setTimeout(step,3500);
-  }catch(err){
-   issueProgress[order]='No se pudo consultar Render. Revisar antes de repetir la emisión.';
+ const finish=async (message)=>{
    issueRunning[order]=false;
    delete issueTimers[order];
-   await refresh();
+   issueMessage(order,message);
+   // Rebuild only once at completion, not on every status poll.
+   await refresh({quiet:true});
+ };
+ const step=async()=>{
+  try{
+   const response=await fetch('/admin/boletas/'+encodeURIComponent(order)+'/issue-status',{cache:'no-store'});
+   if(!response.ok)throw Error('No se pudo consultar el estado de Render.');
+   const result=await response.json();
+   const stage=result.stage||result.state||'unknown';
+   const labels={
+      starting:'Iniciando Chromium en Render…',
+      credential_fetch:'Recuperando datos de la compra…',
+      opening_sii:'Abriendo SII…',
+      sii_authentication:'Ingresando al SII…',
+      waiting_before_login:'Validando la sesión SII…',
+      waiting_calculator:'Cargando e-Boleta…',
+      preparing_order:'Completando datos de la boleta…',
+      waiting_receiver_form:'Abriendo los datos del receptor…',
+      filling_receiver:'Completando receptor…',
+      prepared_canary_awaiting_approval:'Formulario validado; preparando emisión real…',
+      issue_approved_pending_claim:'Formulario validado. Iniciando emisión real…',
+      claiming_canary:'Registrando intento único y enviando al SII…',
+      canary_clicked_reconciliation:'Se pulsó Emitir en SII, pero no se confirmó el folio. Verifica el documento oficial antes de repetir.',
+      canary_attempt_reconciliation:'Intento SII incierto: verifica si se generó folio antes de repetir.',
+      canary_issued_pdf_saved:'Boleta confirmada: folio y PDF guardados.',
+      canary_issued_pdf_pending:'Boleta confirmada: falta guardar el PDF oficial.',
+      issued:'Boleta emitida y folio registrado.',
+      reconciliation:'Emisión con resultado incierto; revisar folio en SII. No volver a emitir.',
+      not_running:'No hay una sesión Chromium activa. Verifica primero el estado de esta compra.'
+   };
+   const message=labels[stage]||
+       (result.state==='reconciliation'?'Resultado SII por conciliar: verifica el folio antes de volver a emitir.'
+        :'Estado de emisión: '+stage);
+   issueMessage(order,message);
+   if(terminal.has(result.state)||stage.startsWith('canary_')||stage.startsWith('blocked_')){
+     await finish(message);
+     return;
+   }
+   if(++checks>240){
+     await finish('El proceso no confirmó su resultado. Verifica la boleta en SII; no repitas la emisión.');
+     return;
+   }
+   issueTimers[order]=setTimeout(step,3500);
+  }catch(err){
+   await finish('No fue posible comprobar el resultado en Render. Revisa el SII antes de otro intento.');
   }
  };
- issueTimers[order]=true;await step();
+ issueTimers[order]=true;
+ await step();
 }
 
-async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));issuanceEnabled=!!rd.issuance_enabled;for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
+async function refresh({quiet=false}={}){
+ const seq=++generation;
+ if(!quiet)$('notice').textContent='Actualizando historial…';
+ try{
+  const response=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});
+  if(!response.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');
+  const data=await response.json();
+  const jobsResponse=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});
+  if(!jobsResponse.ok)throw Error('No se pudo verificar el estado del agente SII.');
+  const jobs=await jobsResponse.json();
+  const receiptsResponse=await fetch('/admin/boletas/receipts',{cache:'no-store'});
+  if(!receiptsResponse.ok)throw Error('No se pudo comprobar el historial de PDFs.');
+  const receipts=await receiptsResponse.json();
+  if(seq!==generation)return;
+  siiJobs=jobs.jobs;
+  receiptMap=Object.fromEntries(receipts.receipts.map(x=>[x.order_id,x]));
+  issuanceEnabled=!!receipts.issuance_enabled;
+  const rendered=document.createDocumentFragment();
+  for(const order of data.orders)rendered.append(card(order));
+  // Keep the previous list visible during requests. Replace it once.
+  $('orders').replaceChildren(rendered);
+  $('count').textContent=data.orders.length+' compras';
+  if(!quiet)$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.';
+ }catch(err){
+  if(seq===generation)$('notice').textContent=err.message;
+ }
+}
+
 $('environment').onchange=()=>{$('status').replaceChildren();for(const [value,label] of ($('environment').value==='integration'?[['test','Pruebas aprobadas'],['all','Todos los pagos de prueba']]:[['pending','Pendientes de emisión'],['issued','Emitidas'],['all','Todos los pagos']])){const o=node('option',label);o.value=value;$('status').append(o)}refresh()};
 $('refresh').onclick=refresh;$('status').onchange=refresh;$('export').onclick=()=>{location.href='/admin/boletas/export.csv?'+query()};refresh();
