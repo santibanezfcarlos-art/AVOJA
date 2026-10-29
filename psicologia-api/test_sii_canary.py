@@ -115,6 +115,48 @@ class CanaryTests(unittest.TestCase):
             self.assertEqual(row["pdf"],pdf)
             self.assertEqual(con.execute("SELECT state FROM sii_first_canary").fetchone()[0],"issued")
 
+    def test_sii_email_claim_only_after_official_pdf_and_once_per_purchase(self):
+        self.assertEqual(self.claim().status_code,200)
+        pdf=b'%PDF-1.4\\n'+b'x'*120+b'\\n%%EOF\\n'
+        data={"ticket":self.ticket(),"snapshot":{"folio":"716","dte":41,
+              "amount":30000,"pdf":base64.b64encode(pdf).decode()}}
+        with patch("sii_receipt_admin.dispatch_psc",return_value="accepted"):
+            self.assertEqual(self.client.post("/admin/sii-visual/internal-canary-complete",
+                json=data,headers=self.bridge).status_code,200)
+        endpoint="/admin/sii-visual/internal-sii-delivery"
+        def send(action,outcome=None):
+            payload={"ticket":self.ticket(),"folio":"716","action":action}
+            if outcome:payload["outcome"]=outcome
+            return self.client.post(endpoint,json=payload,headers=self.bridge)
+        self.assertEqual(send("complete","accepted").status_code,409)
+        first=send("claim")
+        self.assertEqual(first.status_code,200,first.text)
+        self.assertEqual(first.json["recipient"],"example@example.invalid")
+        self.assertEqual(send("claim").status_code,409)
+        finish=send("complete","accepted")
+        self.assertEqual(finish.status_code,200,finish.text)
+        self.assertEqual(finish.json["state"],"accepted")
+        self.assertEqual(send("complete","accepted").status_code,409)
+        with billing.db() as con:
+            r=con.execute("SELECT sii_state,sii_reference FROM sii_receipts WHERE order_id=?",(OID,)).fetchone()
+            self.assertEqual(r["sii_state"],"accepted")
+            self.assertEqual(r["sii_reference"],"sii-portal-716")
+
+    def test_sii_email_unknown_blocks_duplicate(self):
+        self.assertEqual(self.claim().status_code,200)
+        pdf=b'%PDF-1.4\\n'+b'x'*120+b'\\n%%EOF\\n'
+        with patch("sii_receipt_admin.dispatch_psc",return_value="accepted"):
+            self.client.post("/admin/sii-visual/internal-canary-complete",
+                json={"ticket":self.ticket(),"snapshot":{"folio":"716","dte":41,
+                      "amount":30000,"pdf":base64.b64encode(pdf).decode()}},headers=self.bridge)
+        route="/admin/sii-visual/internal-sii-delivery"
+        d={"ticket":self.ticket(),"folio":"716","action":"claim"}
+        self.assertEqual(self.client.post(route,json=d,headers=self.bridge).status_code,200)
+        d["action"]="complete";d["outcome"]="unknown"
+        self.assertEqual(self.client.post(route,json=d,headers=self.bridge).json["state"],"unknown")
+        d["action"]="claim";d.pop("outcome")
+        self.assertEqual(self.client.post(route,json=d,headers=self.bridge).status_code,409)
+
     def test_invalid_completion_does_not_create_folio(self):
         self.assertEqual(self.claim().status_code,200)
         wrong={"ticket":self.ticket(),"snapshot":{"folio":"716","dte":39,

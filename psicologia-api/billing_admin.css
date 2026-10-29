@@ -3,3 +3,8 @@
 /* Render SII progress belongs directly below the corresponding purchase controls. */
 .sii-progress{flex:1 0 100%;margin:0;padding:5px 0;font-size:13px;font-weight:650;color:#246447;line-height:1.6}
 .sii-progress:empty{display:none}
+
+/* Advanced manual folio entry: visible only on request, not part of normal issuance. */
+.manual-folio{flex-basis:100%;margin-top:10px;padding:10px 0;border-top:1px solid #dbe6df}
+.manual-folio>summary{font-size:12px;color:#597264;cursor:pointer}
+.manual-folio>.actions{margin-top:12px;align-items:end}

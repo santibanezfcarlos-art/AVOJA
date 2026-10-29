@@ -94,6 +94,54 @@ class ReceiptAdminTests(unittest.TestCase):
         self.assertEqual(b.json['state'],'unknown')
         self.assertEqual(len(calls),1)
 
+    def test_explicit_resend_uses_unique_incrementing_attempts_and_stores_history(self):
+        self.mark();self.upload()
+        calls=[]
+        def send(action,payload):
+            calls.append((action,payload.get("resend_attempt",0)))
+            return {"state":"SENT","reference":"receipt-provider-"+str(len(calls))}
+        with patch("production_checkout.remote",side_effect=send):
+            r=self.client.post("/admin/boletas/"+self.order+"/send-psc",
+                auth=self.auth,headers=self.headers)
+            self.assertEqual(r.json["state"],"accepted")
+            one=self.client.post("/admin/boletas/"+self.order+"/resend-psc",
+                auth=self.auth,headers=self.headers)
+            self.assertEqual(one.json["state"],"accepted")
+            self.assertEqual(one.json["attempt"],1)
+            two=self.client.post("/admin/boletas/"+self.order+"/resend-psc",
+                auth=self.auth,headers=self.headers)
+            self.assertEqual(two.json["attempt"],2)
+        self.assertEqual(calls,[("receipt-mail",0),("receipt-mail",1),("receipt-mail",2)])
+        state=self.client.get("/admin/boletas/receipts",auth=self.auth).json["receipts"][0]
+        self.assertEqual(state["resend_count"],2)
+        self.assertEqual(state["resend_state"],"accepted")
+
+    def test_resend_unknown_is_not_retried(self):
+        self.mark();self.upload()
+        with patch("production_checkout.remote",
+                   return_value={"state":"SENT","reference":"original-id"}):
+            self.client.post("/admin/boletas/"+self.order+"/send-psc",
+                auth=self.auth,headers=self.headers)
+        calls=[]
+        def error(*args):
+            calls.append(1)
+            raise TimeoutError()
+        with patch("production_checkout.remote",side_effect=error):
+            first=self.client.post("/admin/boletas/"+self.order+"/resend-psc",
+                auth=self.auth,headers=self.headers)
+            again=self.client.post("/admin/boletas/"+self.order+"/resend-psc",
+                auth=self.auth,headers=self.headers)
+        self.assertEqual(first.json["state"],"unknown")
+        self.assertEqual(again.status_code,409)
+        self.assertEqual(len(calls),1)
+
+    def test_resend_requires_verified_original_and_admin(self):
+        self.mark();self.upload()
+        path="/admin/boletas/"+self.order+"/resend-psc"
+        self.assertEqual(self.client.post(path).status_code,401)
+        self.assertEqual(self.client.post(path,auth=self.auth).status_code,403)
+        self.assertEqual(self.client.post(path,auth=self.auth,headers=self.headers).status_code,409)
+
     def test_authorization_invalid_pdf_and_order_binding(self):
         self.mark()
         self.assertEqual(self.client.post('/admin/boletas/'+self.order+'/official-pdf',

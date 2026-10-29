@@ -125,20 +125,31 @@ if(r.invoice_status==='issued'){
  if(r.environment==='production'){
   const receipt=receiptMap[r.order_id];
   const hasPdf=!!(receipt&&receipt.has_pdf);
-  section.append(node('p',hasPdf?'Boleta emitida · PDF guardado · Correo PSC: '+(receipt.psc_state==='accepted'?'Aceptado':receipt.psc_state==='unknown'?'Resultado incierto, revisar':receipt.psc_state==='sending'?'En proceso, no reenviar':'Pendiente'):'Boleta emitida · PDF pendiente de guardar','meta'));
+  const describe=s=>s==='accepted'?'aceptado por el servicio':s==='pending'?'pendiente':s==='sending'?'en curso; no reintentar':s==='unknown'?'resultado incierto; revisar antes de reenviar':'sin confirmar';
+  section.append(node('p',hasPdf?'PDF oficial guardado como respaldo de la compra.':'Boleta emitida · PDF oficial pendiente de guardar.','meta'));
+  if(receipt){
+   section.append(node('p','Correo SII: '+describe(receipt.sii_state)+' · Correo PSC: '+describe(receipt.psc_state),'meta'));
+   if(receipt.resend_count) section.append(node('p','Reenvíos PSC: '+receipt.resend_count+' · Último: '+describe(receipt.resend_state),'meta'));
+  }
   if(hasPdf){
-   const download=node('a','Descargar boleta PDF');download.href='/admin/boletas/'+encodeURIComponent(r.order_id)+'/official-pdf';
+   const download=node('a','Descargar PDF oficial');download.href='/admin/boletas/'+encodeURIComponent(r.order_id)+'/official-pdf';
    actions.append(download);
-   const send=node('button','Enviar boleta desde PSC');send.type='button';
-   send.disabled=receipt.psc_state!=='pending';
+   const delivered=receipt.psc_state==='accepted';
+   const send=node('button',delivered?'Reenviar al paciente':'Enviar al paciente');send.type='button';
+   send.disabled=!delivered&&receipt.psc_state!=='pending'
+      ||delivered&&['sending','unknown'].includes(receipt.resend_state);
+   send.title=delivered?'Reenvío nuevo y explícito del PDF guardado desde PSC.':'Envía el PDF oficial de esta compra desde PSC.';
    send.onclick=async()=>{
-    send.disabled=true;$('notice').textContent='Solicitando un único envío al proveedor de correo…';
+    if(delivered&&!confirm('¿Reenviar una nueva copia del PDF oficial al correo registrado para esta compra?'))return;
+    send.disabled=true;$('notice').textContent='Consultando el envío de la boleta…';
     try{
-     const response=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/send-psc',
+     const route=delivered?'resend-psc':'send-psc';
+     const response=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/'+route,
        {method:'POST',headers:{'X-Billing-Action':'manual-invoice'}});
      const result=await response.json();if(!response.ok)throw Error(result.error||'No se pudo procesar');
-     await refresh();$('notice').textContent=result.state==='accepted'?'Proveedor aceptó el correo con PDF.':'Estado '+result.state+'; revisar antes de reintentar.';
-    }catch(e){$('notice').textContent=e.message}
+     await refresh();
+     $('notice').textContent=result.state==='accepted'?'El proveedor de correo aceptó '+(delivered?'el reenvío.':'la boleta con PDF.'):'Resultado incierto. Revisa antes de otro envío.';
+    }catch(e){$('notice').textContent=e.message;await refresh()}
    };
    actions.append(send);
   }else{
@@ -159,11 +170,13 @@ if(r.invoice_status==='issued'){
  }
 }
 if(r.environment==='production'&&r.payment_status==='approved'&&r.invoice_status==='pending'){
+ const manual=node('details');manual.className='manual-folio';
+ manual.append(node('summary','Registrar manualmente una boleta ya emitida fuera de PSC'));
  const form=node('form',undefined,'actions');const fl=node('label','Folio emitido en SII'),folio=node('input');folio.required=true;folio.pattern='[1-9][0-9]{0,9}';folio.inputMode='numeric';fl.append(folio);
  const dl=node('label','Fecha de emisión'),date=node('input');date.type='date';date.required=true;date.min=r.created_at.slice(0,10);dl.append(date);
  const button=node('button','Marcar como emitida','primary');button.type='submit';form.append(fl,dl,button);
  form.onsubmit=async e=>{e.preventDefault();if(!confirm('¿Ya emitiste en el SII la boleta con folio '+folio.value+'?'))return;button.disabled=true;try{const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/issued',{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({folio:folio.value,issued_date:date.value})});const result=await res.json();if(!res.ok)throw Error(result.error||'No se pudo registrar');await refresh();$('notice').textContent='Folio registrado correctamente.'}catch(err){$('notice').textContent=err.message}finally{button.disabled=false}};
- actions.append(form);
+ manual.append(form);actions.append(manual);
 }section.append(actions);return section}
 async function pollPreview(order){
  if(previewTimers[order])return;
