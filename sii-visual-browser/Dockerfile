@@ -1,5 +1,5 @@
 FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
-ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 DISPLAY=:99
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb x11vnc novnc websockify nginx supervisor gettext-base \
     && rm -rf /var/lib/apt/lists/*
