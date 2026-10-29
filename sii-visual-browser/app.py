@@ -303,13 +303,27 @@ def _prepare_order_preview(page, order, canary=False):
         matches[0].click(timeout=10000)
     finally:
         page.evaluate("() => { window.__pscCalculatorAdvance = null; }")
-    # No further EMITIR is allowed, including Enter and native submit.
-    page.evaluate("""() => {
-        document.addEventListener('submit', e => {e.preventDefault();e.stopImmediatePropagation();}, true);
-        document.addEventListener('keydown', e => {
-            if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();}
-        },true);
-    }""")
+    # Preview and real issuance have different submit permissions:
+    # In a preview, freeze ALL form submissions. In a canary, the global
+    # BLOCK_ISSUE_ACTIONS guard already rejects final submits unless the
+    # *exact verified* button is temporarily authorized after a durable claim.
+    # Previously this blanket listener prevented the real SII form submit,
+    # even when the button click itself succeeded.
+    if not canary:
+        page.evaluate("""() => {
+            document.addEventListener('submit', e => {
+                e.preventDefault();e.stopImmediatePropagation();
+            }, true);
+            document.addEventListener('keydown', e => {
+                if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();}
+            },true);
+        }""")
+    else:
+        page.evaluate("""() => {
+            document.addEventListener('keydown', e => {
+                if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();}
+            },true);
+        }""")
     with _lock:
         _session["stage"] = "waiting_receiver_form"
     deadline_form = time.monotonic() + 90
