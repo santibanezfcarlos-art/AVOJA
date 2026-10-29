@@ -16,13 +16,13 @@ import urllib.request
 from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 4096
 _lock = threading.Lock()
 _used_nonces = set()
-_session = {"state": "idle", "browser": None, "started": None}
+_session = {"state": "idle", "browser": None, "started": None, "stage": "idle"}
 SESSION_TTL = 15 * 60
 TARGET = "https://eboleta.sii.cl/emitir/"
 
@@ -132,7 +132,10 @@ def _sign_in_if_needed(page, credentials):
         return "unexpected_auth_host"
 
     password_input = page.locator('input[type="password"]')
-    password_input.first.wait_for(state="visible", timeout=25000)
+    try:
+        password_input.first.wait_for(state="visible", timeout=60000)
+    except PlaywrightTimeoutError:
+        return "login_form_not_loaded"
     rut_candidates = page.locator(
         'input[name*="rut" i], input[id*="rut" i], input[placeholder*="rut" i], '
         'input[autocomplete="username"], input[type="text"], input[type="tel"]'
@@ -202,6 +205,7 @@ def _expire_session(started):
 
 
 def _browser_owner(started, credentials):
+    stage = "chromium_launch"
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -215,21 +219,39 @@ def _browser_owner(started, credentials):
                     return
                 _session["browser"] = browser
                 _session["state"] = "open"
+                _session["stage"] = "opening_sii"
             context = browser.new_context(locale="es-CL", timezone_id="America/Santiago",
                                           viewport={"width":1365,"height":768})
             context.add_init_script(BLOCK_ISSUE_ACTIONS)
             page = context.new_page()
-            response = page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
+            response = None
+            try:
+                response = page.goto(TARGET, wait_until="commit", timeout=60000)
+            except PlaywrightTimeoutError:
+                app.logger.warning("SII_VISUAL_NAVIGATION_TIMEOUT stage=commit")
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=60000)
+            except PlaywrightTimeoutError:
+                app.logger.warning("SII_VISUAL_NAVIGATION_TIMEOUT stage=domcontentloaded")
+            page.wait_for_timeout(2000)
+            stage = "sii_authentication"
+            with _lock:
+                if _session.get("started") == started:
+                    _session["stage"] = stage
             auth_result = _sign_in_if_needed(page, credentials)
             credentials.clear()
+            stage = "waiting_calculator"
+            with _lock:
+                if _session.get("started") == started:
+                    _session["stage"] = stage
             try:
                 page.wait_for_function(
                     "() => location.hostname === 'eboleta.sii.cl' && "
                     "document.body && /EMITIR/i.test(document.body.innerText)",
-                    timeout=60000,
+                    timeout=90000,
                 )
                 calculator = _calculator_ready(page)
-            except Exception:
+            except PlaywrightTimeoutError:
                 calculator = False
             host = urlparse(page.url).hostname or ""
             safe_result = {
@@ -243,6 +265,7 @@ def _browser_owner(started, credentials):
                 if _session.get("started") == started:
                     _session["connectivity"] = safe_result
                     _session["state"] = "open"
+                    _session["stage"] = "calculator_ready" if calculator else "sii_page_open"
             app.logger.warning("SII_VISUAL_DIRECT_LOGIN %s", json.dumps(safe_result, separators=(",", ":")))
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 time.sleep(1)
@@ -254,7 +277,7 @@ def _browser_owner(started, credentials):
         with _lock:
             if _session.get("started") == started:
                 _session.update(state="failed", browser=None, started=None, stop=False,
-                                error=type(exc).__name__)
+                                error=type(exc).__name__, stage=stage)
 
 
 @app.after_request
@@ -305,7 +328,7 @@ def start():
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
             return jsonify(error="Ya hay una sesión visual activa. Espera a que termine."), 409
-        _session.update(state="starting", error=None, stop=False, connectivity=None, started=time.monotonic(), browser=None)
+        _session.update(state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
     threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
@@ -325,5 +348,6 @@ def stop():
 
 @app.get("/api/status")
 def status():
-    return jsonify(status=_session["state"], error=_session.get("error"), connectivity=_session.get("connectivity"),
+    return jsonify(status=_session["state"], error=_session.get("error"), stage=_session.get("stage"),
+                   connectivity=_session.get("connectivity"),
                    expires_in_seconds=SESSION_TTL if _session.get("started") else 0)
