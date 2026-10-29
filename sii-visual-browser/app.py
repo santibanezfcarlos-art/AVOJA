@@ -32,7 +32,7 @@ BLOCK_ISSUE_ACTIONS = r"""
     .replace(/\s+/g, " ").trim().toUpperCase();
   const protect = (event) => {
     const el = event.target?.closest?.("button, input[type=submit], [role=button], a");
-    if (el && blocked.has(label(el))) {
+    if (el && isIssueAction(el)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       const notice = document.getElementById("__psc_issue_guard");
@@ -42,7 +42,9 @@ BLOCK_ISSUE_ACTIONS = r"""
   document.addEventListener("click", protect, true);
   document.addEventListener("submit", (event) => {
     const submitter = event.submitter;
-    if (submitter && blocked.has(label(submitter))) {
+    const finalAction = (submitter && isIssueAction(submitter)) ||
+      (!submitter && Array.from(event.target.querySelectorAll("button,input[type=submit],[role=button]")).some(isIssueAction));
+    if (finalAction) {
       event.preventDefault();
       event.stopImmediatePropagation();
       const notice = document.getElementById("__psc_issue_guard");
