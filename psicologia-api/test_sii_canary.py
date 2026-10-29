@@ -178,6 +178,27 @@ class CanaryTests(unittest.TestCase):
             self.assertEqual(con.execute("SELECT count(*) FROM sii_first_canary").fetchone()[0],0)
             self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
 
+    def test_preview_503_bridge_error_is_not_misreported_as_busy(self):
+        from urllib.error import HTTPError
+        with patch("sii_canary._server_request",
+                   side_effect=HTTPError("https://psc-sii-visual-test.onrender.com/api/internal/start",
+                                         503,"unavailable",{},None)):
+            r=self.client.post("/admin/boletas/"+OID+"/prepare-render",
+                auth=self.auth,headers={"X-Billing-Action":"manual-invoice"})
+        self.assertEqual(r.status_code,503)
+        self.assertIn("no se emitió",r.json["error"].lower())
+        self.assertNotIn("ocupado",r.json["error"].lower())
+
+    def test_preview_rejects_other_active_work_without_false_issuance(self):
+        from urllib.error import HTTPError
+        with patch("sii_canary._server_request",
+                   side_effect=HTTPError("https://psc-sii-visual-test.onrender.com/api/internal/start",
+                                         409,"already running",{},None)):
+            r=self.client.post("/admin/boletas/"+OID+"/prepare-render",
+                auth=self.auth,headers={"X-Billing-Action":"manual-invoice"})
+        self.assertEqual(r.status_code,409)
+        self.assertIn("operación SII",r.json["error"])
+
     def test_preview_status_reports_exact_safe_chromium_stage(self):
         ready={"state":"prepared","stage":"prepared_not_issued","preparation":"prepared_not_issued"}
         with patch("sii_canary._server_request",return_value=(200,ready)):
