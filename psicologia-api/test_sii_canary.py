@@ -30,7 +30,7 @@ class CanaryTests(unittest.TestCase):
             "SII_VISUAL_TICKET_SECRET":SECRET})
         self.env.start()
         self.client=main.app.test_client()
-        person={"rut":"12345678-5","name":"Giovanni Ejemplo","email":"example@example.invalid",
+        person={"rut":"12345678-5","name":"Giovanni Salas","email":"example@example.invalid",
                 "address":"Dirección ficticia 123","phone":"+56912345678"}
         billing.prepare(OID,"psicoterapia","2026-11-10","10:00",30000,person,"production")
         billing.bind_token(OID,"Z"*40)
