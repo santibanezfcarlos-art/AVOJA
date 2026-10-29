@@ -38,10 +38,10 @@ def _enabled():
         and len(os.environ.get(KEY_NAME,""))>=40)
 
 
-def _authorize():
+def _authorize(*, max_content_length=1800):
     if not _enabled():
         return None
-    if not request.is_json or (request.content_length or 0)>1800:
+    if not request.is_json or (request.content_length or 0)>max_content_length:
         return None
     raw=request.get_data(cache=True)
     ts=request.headers.get("X-Psc-Timestamp","")
