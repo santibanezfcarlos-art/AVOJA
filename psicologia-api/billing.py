@@ -200,7 +200,8 @@ def private(view):
                  else hmac.compare_digest(supplied.encode(), os.environ.get('PSICOLOGIA_BILLING_ADMIN_PASSWORD', '').encode()))
         if (not auth or auth.type != 'basic' or not hmac.compare_digest((auth.username or '').encode(), username.encode()) or not valid):
             return Response('Acceso privado', status=401, headers={'WWW-Authenticate': 'Basic realm="Boletas PSC", charset="UTF-8"'})
-        if request.method == 'POST' and request.headers.get('X-Billing-Action') != 'manual-invoice':
+        if (request.method == 'POST' and request.headers.get('X-Billing-Action') != 'manual-invoice'
+                and request.endpoint != 'sii_visual_admin.create_sii_visual_session'):
             return jsonify(error='Solicitud no autorizada'), 403
         return view(*args, **kwargs)
     return wrapped
