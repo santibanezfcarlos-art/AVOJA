@@ -355,12 +355,21 @@ def issue_status(order):
         return jsonify(error="Compra no encontrada."),404
     if receipt["invoice_status"]=="issued":
         return jsonify(state="issued",folio=receipt["folio"])
-    if queued and queued["status"]=="reconciliation":
-        return jsonify(state="reconciliation",message="Comprobar folio en SII antes de reintentar")
     try:
         base,secret=_visual_service()
         _,status=_server_request(base+"/api/internal/status?"+urlencode({"order_id":order}),secret)
-        return jsonify(state=status.get("state","unknown"),stage=status.get("stage","unknown"),
-                       preparation=status.get("preparation"))
+        current=status.get("state","unknown")
+        stage=status.get("stage","unknown")
+        if queued and queued["status"]=="reconciliation":
+            # Claim is persisted BEFORE the irreversible SII click.
+            # It means "do not retry", NOT "Chromium finished".
+            if current in ("starting","open") and not stage.startswith("canary_"):
+                return jsonify(state="running",stage=stage,claimed=True)
+            return jsonify(state="reconciliation",stage=stage,
+                           message="Resultado de emisión pendiente de verificación en el SII. No reintentar.")
+        return jsonify(state=current,stage=stage,preparation=status.get("preparation"))
     except Exception:
+        if queued and queued["status"]=="reconciliation":
+            return jsonify(state="reconciliation",stage="render_unavailable",
+                           message="Verificar folio en SII antes de volver a intentar.")
         return jsonify(state="unavailable",stage="render_unavailable")
