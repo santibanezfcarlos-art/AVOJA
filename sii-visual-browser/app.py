@@ -125,12 +125,14 @@ def _fetch_sii_credentials(ticket):
             data = json.loads(response.read(16384).decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise RuntimeError("SII credentials could not be retrieved") from exc
+    if not isinstance(data,dict):
+        raise RuntimeError("credential_bridge_invalid_json_shape")
     rut, password = data.get("rut"), data.get("password")
     if not isinstance(rut, str) or not rut or not isinstance(password, str) or not password:
-        raise RuntimeError("SII credentials are not configured in the PSC API")
+        raise RuntimeError("credential_bridge_missing_login")
     order = data.get("preview_order")
     if not isinstance(order, dict) or type(order.get("amount")) is not int or order["amount"] <= 0:
-        raise RuntimeError("preview order unavailable")
+        raise RuntimeError("credential_bridge_missing_purchase")
     return {"rut": rut, "password": password, "preview_order": order}
 
 
@@ -553,7 +555,12 @@ def _browser_owner(started, credentials, ticket, mode):
             browser.close()
             with _lock:
                 if _session.get("started") == started:
-                    _session.update(state="expired", browser=None, started=None, stop=False)
+                    result=_session.get("preparation")
+                    preview_finished=(mode=="preview" and result is not None)
+                    _session.update(
+                        state=("prepared" if result=="prepared_not_issued" else "blocked")
+                              if preview_finished else "expired",
+                        browser=None,started=None,stop=False)
     except Exception as exc:
         with _lock:
             if _session.get("started") == started:
@@ -618,23 +625,62 @@ def _start_ticket(ticket, *, automatic=False):
     if not data:
         return jsonify(error="El enlace venció o no es válido. Inicia la prueba otra vez desde el panel PSC."), 403
 
+    mode=data.get("mode","preview")
+    if mode not in ("preview","issue_canary"):
+        return jsonify(error="Tipo de sesión SII inválido."),403
+
+    # A previously opened visual *preview* must never block a normal backend
+    # request. Only a completed read-only preview may be reclaimed. Never
+    # cancel or hijack a real SII issuance or an unfinished preparation.
+    release_old=False
     with _lock:
         if data["nonce"] in _used_nonces:
-            return jsonify(error="Este enlace ya fue utilizado."), 403
-        if _session.get("state") in ("starting", "open"):
-            return jsonify(error="Chromium ya está ocupado preparando otra compra."),409
+            return jsonify(error="Este enlace ya fue utilizado."),403
+        if _session.get("state") in ("starting","open"):
+            old_preview=(_session.get("mode")=="preview"
+                         and _session.get("preparation") is not None)
+            same_order=_session.get("order_id")==data.get("preview_order")
+            if automatic and mode=="preview" and old_preview and same_order:
+                result=_session.get("preparation")
+                _session["stop"]=True
+                return jsonify(status="prepared" if result=="prepared_not_issued" else "blocked",
+                               stage=result, reused=True),202
+            if automatic and mode=="preview" and old_preview:
+                _session["stop"]=True
+                release_old=True
+            else:
+                return jsonify(error="Existe un proceso SII todavía activo. No se ha iniciado otro."),409
+    if release_old:
+        deadline=time.monotonic()+12
+        while time.monotonic()<deadline:
+            with _lock:
+                if _session.get("state") not in ("starting","open"):
+                    break
+            time.sleep(.25)
+        else:
+            return jsonify(error="La vista previa anterior aún se está cerrando. No se emitió ninguna boleta."),409
+
+    with _lock:
+        if data["nonce"] in _used_nonces:
+            return jsonify(error="Este enlace ya fue utilizado."),403
+        if _session.get("state") in ("starting","open"):
+            return jsonify(error="Chromium sigue ejecutando otra operación SII."),409
         _used_nonces.add(data["nonce"])
 
     try:
         credentials = _fetch_sii_credentials(ticket)
     except Exception as exc:
-        app.logger.warning("SII_VISUAL_CREDENTIAL_FETCH_FAILED %s", type(exc).__name__)
-        return jsonify(error="No se pudieron obtener las credenciales SII desde la API PSC."), 503
-
-    mode=data.get("mode","preview")
-    if mode not in ("preview","issue_canary"):
-        credentials.clear()
-        return jsonify(error="Tipo de sesión SII inválido."),403
+        safe_codes={
+            "SII credential service is not configured",
+            "SII credentials could not be retrieved",
+            "credential_bridge_invalid_json_shape",
+            "credential_bridge_missing_login",
+            "credential_bridge_missing_purchase",
+        }
+        reason=str(exc) if type(exc) is RuntimeError and str(exc) in safe_codes else type(exc).__name__
+        app.logger.warning("SII_VISUAL_CREDENTIAL_FETCH_FAILED reason=%s",reason)
+        return jsonify(error="No se pudieron obtener los datos de la compra desde PSC. No se inició la preparación.",
+                       code=reason),503
     with _lock:
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
