@@ -109,7 +109,7 @@ def _fetch_sii_credentials(ticket):
         data=body,
         headers={
             "Content-Type": "application/json",
-            "X-PSC-Visual-Bridge": os.environ.get("SII_VISUAL_BRIDGE_SECRET", ""),
+            "X-PSC-Visual-Bridge": os.environ.get("SII_VISUAL_TICKET_SECRET", ""),
         },
         method="POST",
     )
