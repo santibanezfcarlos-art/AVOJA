@@ -93,7 +93,7 @@ def receipt_mail():
             raise ValueError()
         if (not isinstance(data['to'],list) or len(data['to'])!=1
             or not isinstance(data['to'][0],str)
-            or not re.fullmatch(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+',data['to'][0])):
+            or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',data['to'][0])):
             raise ValueError()
         attachment=data['attachments']
         if not isinstance(attachment,list) or len(attachment)!=1 or not isinstance(attachment[0],dict):
