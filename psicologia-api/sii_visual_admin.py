@@ -56,7 +56,7 @@ def create_sii_visual_session():
         pass
     return jsonify(
         url=base + "/#ticket=" + ticket,
-        expires_in_seconds=300,
+        expires_in_seconds=600,
         message="Enlace de un solo uso; no incluye credenciales del SII.",
     )
 
