@@ -53,7 +53,8 @@ def recover_once():
             con.executescript(sii_canary.SCHEMA)
             con.executescript(RECEIPT_SCHEMA)
             con.executescript(SCHEMA)
-            con.execute("BEGIN IMMEDIATE")
+            # Do not hold a write lock while asking Render whether Chromium
+            # is still running; this would block all payment/booking writes.
             if con.execute("SELECT 1 FROM sii_issue_recovery_audit WHERE recovery_key=?",
                            (RECOVERY_KEY,)).fetchone():
                 return "already_recovered"
@@ -104,6 +105,22 @@ def recover_once():
                 return "browser_still_active"
             if state in ("starting","open"):
                 return "browser_requires_shutdown"
+            con.execute("BEGIN IMMEDIATE")
+            # Re-check all material conditions under the write lock: a late
+            # receipt callback may have arrived during the browser status call.
+            if con.execute("SELECT 1 FROM sii_issue_recovery_audit WHERE recovery_key=?",
+                           (RECOVERY_KEY,)).fetchone():
+                return "already_recovered"
+            current=_candidate(con)
+            if len(current)!=1 or current[0]["order_id"]!=order_id or current[0]["queue_status"]!=status:
+                return "state_changed_no_reset"
+            if con.execute("SELECT 1 FROM sii_receipts WHERE order_id=?",(order_id,)).fetchone():
+                return "document_record_exists_no_reset"
+            newer_count=int(bool(con.execute("SELECT 1 FROM sii_issuance_attempts WHERE order_id=?",
+                                             (order_id,)).fetchone()))+int(bool(con.execute(
+                "SELECT 1 FROM sii_first_canary WHERE order_id=?",(order_id,)).fetchone()))
+            if newer_count!=claim_count:
+                return "state_changed_no_reset"
             now=billing.now()
             con.execute("""INSERT INTO sii_issue_recovery_audit
                  (recovery_key,order_id,previous_queue_status,previous_claim_count,
