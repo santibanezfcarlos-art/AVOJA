@@ -90,6 +90,11 @@ def create_sii_visual_session():
             if any_claim(con):
                 return jsonify(error="Ya existe un primer intento de emisión real. Debe conciliarse en SII."),409
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order_id,)).fetchone()
+            if queued is None:
+                # Giovanni and other legitimate pre-integration purchases may
+                # predate the issue-request queue. Bind only the selected order.
+                billing._queue_sii_after_approved(con,order_id)
+                queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order_id,)).fetchone()
             if not queued or queued["status"]!="awaiting_issuer":
                 return jsonify(error="La compra no está disponible para la primera emisión."),409
     now = int(time.time())
