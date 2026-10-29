@@ -63,7 +63,9 @@ BLOCK_ISSUE_ACTIONS = r"""
     });
     document.body.appendChild(banner);
   };
-  new MutationObserver(addWarning).observe(document.documentElement, {childList:true,subtree:true});
+  const observer = new MutationObserver(addWarning);
+  if (document.documentElement) observer.observe(document.documentElement, {childList:true,subtree:true});
+  document.addEventListener("DOMContentLoaded", addWarning, {once:true});
   addWarning();
 })();
 """
@@ -244,7 +246,7 @@ def start():
         if _session.get("state") in ("starting", "open"):
             return jsonify(error="Ya hay una sesión visual activa. Espera a que termine."), 409
         _used_nonces.add(data["nonce"])
-        _session.update(state="starting", error=None, stop=False, started=time.monotonic(), browser=None)
+        _session.update(state="starting", error=None, stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
     try:
