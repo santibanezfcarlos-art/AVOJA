@@ -8,23 +8,22 @@ button,a{display:inline-block;border:0;border-radius:10px;background:#277a5a;col
 button:disabled{opacity:.55;cursor:wait}.muted{color:#52685f}#status{min-height:1.5em;margin-top:1rem}
 </style></head><body><main><section class="card">
 <p><a href="/admin">← Volver a Administración</a></p>
-<h1>Prueba visual de acceso al SII mediante Decodo</h1>
-<p>Este botón abre una sesión Chromium remota que sale por Decodo. Ingresa tu RUT y Clave Tributaria directamente en esa ventana. PSC no recibe ni almacena esos datos.</p>
+<h1>Prueba visual de acceso directo al SII</h1>
+<p>Este botón abre Chromium visible en Render y entra directamente al e-Boleta del SII, sin usar Decodo ni otro proxy. Ingresa tu RUT y Clave Tributaria en la ventana remota; PSC no recibe ni almacena esos datos.</p>
 <p class="warning"><strong>La emisión está bloqueada en esta sesión.</strong> No ingreses datos de un receptor real ni pulses EMITIR. El enlace vence en diez minutos y el navegador se cierra a los quince.</p>
-<button id="launch" type="button">Abrir Chromium con Decodo</button>
+<button id="launch" type="button">Abrir Chromium (sin Decodo)</button>
 <p id="status" class="muted" role="status" aria-live="polite"></p>
 </section></main>
 <script>
 const button=document.getElementById("launch"),status=document.getElementById("status");
 button.addEventListener("click",async()=>{
- const popup=window.open("about:blank","_blank");
- button.disabled=true;status.textContent="Preparando enlace de un solo uso…";
+ button.disabled=true;status.textContent="Preparando la sesión…";
  try{
   const response=await fetch("/admin/sii-visual/session",{method:"POST",credentials:"same-origin"});
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||"No se pudo iniciar la prueba.");
-  if(popup){popup.location.replace(data.url)}else{window.location.href=data.url}
-  status.textContent="Chromium se abrirá en otra pestaña. El enlace vence en diez minutos.";
- }catch(error){if(popup)popup.close();status.textContent=error.message;button.disabled=false}
+  status.textContent="Abriendo Chromium en esta pestaña…";
+  window.location.assign(data.url);
+ }catch(error){status.textContent=error.message;button.disabled=false}
 });
 </script></body></html>
