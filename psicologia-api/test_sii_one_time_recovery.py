@@ -109,11 +109,12 @@ class RecoveryTests(unittest.TestCase):
         with billing.db() as con:
             con.executescript(SCHEMA)
             con.execute("""INSERT INTO sii_receipts(
-              order_id,folio,issued_date,amount,dte,recipient,
-              pdf,sii_state,psc_state,created_at,updated_at)
+              order_id,folio,issued_date,amount,recipient,patient_name,detail,
+              pdf,sii_state,psc_state,updated_at)
               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-              (OID,"777","2026-10-29",30000,41,"test@example.invalid",
-               None,"pending","pending","2026-10-29","2026-10-29"))
+              (OID,"777","2026-10-29",30000,"test@example.invalid",
+               "Giovanni Salas","Sesión de psicoterapia breve online",
+               None,"pending","pending","2026-10-29"))
         self.assertEqual(recover_once(),"document_record_exists_no_reset")
         self.assertEqual(self.state()[1]["status"],"reconciliation")
 
