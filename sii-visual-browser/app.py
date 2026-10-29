@@ -1,7 +1,7 @@
 """Short-lived, visible SII Chromium session over noVNC.
 
 Credentials are fetched server-to-server from the PSC API and used only in
-memory to sign in. The browser blocks the final EMITIR action.
+memory to fill the login form without submitting. The browser blocks the final EMITIR action.
 """
 import base64
 import hashlib
@@ -124,56 +124,33 @@ def _fetch_sii_credentials(ticket):
     return {"rut": rut, "password": password}
 
 
-def _sign_in_if_needed(page, credentials):
-    host = urlparse(page.url).hostname or ""
-    if host == "eboleta.sii.cl":
-        return "already_authenticated"
-    if host != "clave.w.sii.cl":
-        return "unexpected_auth_host"
-
-    password_input = page.locator('input[type="password"]')
-    try:
-        password_input.first.wait_for(state="visible", timeout=60000)
-    except PlaywrightTimeoutError:
-        return "login_form_not_loaded"
-    rut_candidates = page.locator(
-        'input[name*="rut" i], input[id*="rut" i], input[placeholder*="rut" i], '
-        'input[autocomplete="username"], input[type="text"], input[type="tel"]'
-    )
-    rut_field = None
-    for i in range(min(rut_candidates.count(), 12)):
-        candidate = rut_candidates.nth(i)
-        if candidate.is_visible() and candidate.is_enabled():
-            rut_field = candidate
-            break
-    if rut_field is None:
-        return "login_form_not_recognized"
-
-    rut_field.fill(credentials["rut"], timeout=10000)
-    password_input.first.fill(credentials["password"], timeout=10000)
-
-    submit_candidates = page.locator('button, input[type="submit"], [role="button"]')
-    submit = None
-    for i in range(min(submit_candidates.count(), 30)):
-        candidate = submit_candidates.nth(i)
-        if not candidate.is_visible() or not candidate.is_enabled():
-            continue
-        label = " ".join([
-            candidate.get_attribute("value") or "",
-            candidate.get_attribute("aria-label") or "",
-            candidate.inner_text(timeout=500) if candidate.evaluate("(e) => e.tagName !== 'INPUT'") else "",
-        ]).strip().casefold()
-        if any(word in label for word in ("ingresar", "iniciar sesión", "iniciar sesion", "continuar")):
-            submit = candidate
-            break
-    if submit is None:
-        return "login_submit_not_recognized"
-    submit.click(timeout=10000)
-    try:
-        page.wait_for_url("https://eboleta.sii.cl/**", timeout=60000)
-    except Exception:
-        return "login_not_completed"
-    return "signed_in"
+def _fill_login_only(page, credentials):
+    """Wait through redirects, fill fields, and never submit."""
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        if _session.get("stop", False):
+            return "stopped"
+        for frame in page.frames:
+            if urlparse(frame.url).hostname != "clave.w.sii.cl":
+                continue
+            passwords = frame.locator('input[type="password"]:visible')
+            ruts = frame.locator(
+                'input[name*="rut" i]:visible, input[id*="rut" i]:visible, '
+                'input[autocomplete="username"]:visible, input[type="text"]:visible, input[type="tel"]:visible'
+            )
+            if passwords.count() == 0:
+                continue
+            for i in range(min(ruts.count(), 12)):
+                rut, password = ruts.nth(i), passwords.first
+                if not rut.is_enabled() or not password.is_enabled():
+                    continue
+                rut.fill(credentials["rut"], timeout=10000)
+                password.fill(credentials["password"], timeout=10000)
+                verified = (rut.input_value() == credentials["rut"]
+                            and password.input_value() == credentials["password"])
+                return "fields_filled_not_submitted" if verified else "field_verification_failed"
+        page.wait_for_timeout(500)
+    return "login_form_not_loaded"
 
 
 def _calculator_ready(page):
@@ -238,34 +215,25 @@ def _browser_owner(started, credentials):
             with _lock:
                 if _session.get("started") == started:
                     _session["stage"] = stage
-            auth_result = _sign_in_if_needed(page, credentials)
-            credentials.clear()
-            stage = "waiting_calculator"
-            with _lock:
-                if _session.get("started") == started:
-                    _session["stage"] = stage
             try:
-                page.wait_for_function(
-                    "() => location.hostname === 'eboleta.sii.cl' && "
-                    "document.body && /EMITIR/i.test(document.body.innerText)",
-                    timeout=90000,
-                )
-                calculator = _calculator_ready(page)
-            except PlaywrightTimeoutError:
-                calculator = False
+                auth_result = _fill_login_only(page, credentials)
+            finally:
+                credentials.clear()
+            calculator = False
             host = urlparse(page.url).hostname or ""
             safe_result = {
                 "connection": "direct",
                 "sii_http_status": response.status if response else None,
                 "final_host": host if host.endswith(".sii.cl") else "other",
                 "authentication": auth_result,
+                "submitted": False,
                 "calculator_ready": calculator,
             }
             with _lock:
                 if _session.get("started") == started:
                     _session["connectivity"] = safe_result
                     _session["state"] = "open"
-                    _session["stage"] = "calculator_ready" if calculator else "sii_page_open"
+                    _session["stage"] = "fields_filled" if auth_result == "fields_filled_not_submitted" else "sii_page_open"
             app.logger.warning("SII_VISUAL_DIRECT_LOGIN %s", json.dumps(safe_result, separators=(",", ":")))
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 time.sleep(1)
