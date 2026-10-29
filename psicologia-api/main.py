@@ -355,6 +355,9 @@ def _recover_giovanni_unissued_sii_once():
     _time.sleep(4)
     from sii_one_time_recovery import recover_once
     status=recover_once()
+    from sii_one_time_recovery import dispatch_authorized_once, log_selected_state
+    log_selected_state()
+    dispatch_authorized_once(app)
     _logging.getLogger("sii_invoice_recovery").warning(
         "PSC_SII_GIOVANNI_RECOVERY status=%s",status)
 
@@ -365,6 +368,7 @@ if os.environ.get("PSC_SII_UNLOCK_GIOVANNI_20261029")=="yes":
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
 
 

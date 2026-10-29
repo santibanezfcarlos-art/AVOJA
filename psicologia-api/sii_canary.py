@@ -320,6 +320,11 @@ def prepare_status(order):
 @billing.private
 def emit_from_panel(order):
     """One administrator click -> Render Chromium -> SII, never local/manual."""
+    return start_emission(order, request.authorization.username)
+
+
+def start_emission(order, actor):
+    """Shared coordinator for authenticated admin and scoped operator maintenance."""
     if os.environ.get("SII_CANARY_ENABLED")!="true":
         return jsonify(error="La emisión desde Render todavía está deshabilitada."),503
     if not re.fullmatch(r"PSCP[0-9A-F]{18}",order):
@@ -357,7 +362,7 @@ def emit_from_panel(order):
             return jsonify(error="Chromium no confirmó el inicio."),503
         with billing.db() as con:
             con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
-                        (order,"render_sii_emission_started",billing.now(),request.authorization.username))
+                        (order,"render_sii_emission_started",billing.now(),actor))
         return jsonify(started=True,state="starting",order_id=order),202
     except urllib.error.HTTPError as exc:
         return jsonify(error="Chromium rechazó el inicio; revisa su estado antes de repetir."),409 if exc.code==409 else 503
@@ -393,3 +398,4 @@ def issue_status(order):
             return jsonify(state="reconciliation",stage="render_unavailable",
                            message="Verificar folio en SII antes de volver a intentar.")
         return jsonify(state="unavailable",stage="render_unavailable")
+

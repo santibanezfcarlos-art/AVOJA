@@ -31,6 +31,8 @@ class RecoveryTests(unittest.TestCase):
             "PSICOLOGIA_BILLING_ADMIN_HASH":"",
             "PSC_SII_UNLOCK_GIOVANNI_20261029":"yes"})
         self.env.start()
+        self.target=patch("sii_one_time_recovery.TARGET_ORDER",OID)
+        self.target.start()
         add_paid(OID,"Giovanni Salas")
         with billing.db() as con:
             sii_canary.any_claim(con)
@@ -54,6 +56,7 @@ class RecoveryTests(unittest.TestCase):
     def tearDown(self):
         self.remote.stop()
         self.browser.stop()
+        self.target.stop()
         self.env.stop()
         self.tmp.cleanup()
 
@@ -120,12 +123,35 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(recover_once(),"document_record_exists_no_reset")
         self.assertEqual(self.state()[1]["status"],"reconciliation")
 
-    def test_scope_requires_exact_name(self):
+    def test_scope_uses_order_not_patient_name(self):
         with billing.db() as con:
             con.execute("UPDATE billing_orders SET name='Fernando Salas Rodriguez' WHERE order_id=?",
                         (OID,))
+        self.assertEqual(recover_once(),"unblocked")
+        self.assertEqual(self.state()[1]["status"],"awaiting_issuer")
+
+    def test_unapproved_order_is_never_modified(self):
+        with billing.db() as con:
+            con.execute("UPDATE billing_orders SET payment_status='initiated' WHERE order_id=?",(OID,))
         self.assertEqual(recover_once(),"no_unique_pending_match")
         self.assertEqual(self.state()[1]["status"],"reconciliation")
+
+    def test_dispatch_intent_is_durable_and_not_repeated(self):
+        import main
+        from sii_one_time_recovery import dispatch_authorized_once
+        self.assertEqual(recover_once(),"unblocked")
+        with (patch.dict(os.environ,{"PSC_SII_DISPATCH_APPROVED_ORDER":OID}),
+              patch("sii_canary.start_emission",return_value=(main.app.response_class('{}',mimetype='application/json'),503)) as start):
+            dispatch_authorized_once(main.app)
+            dispatch_authorized_once(main.app)
+            self.assertEqual(start.call_count,1)
+
+    def test_archives_the_full_previous_claim(self):
+        import json
+        self.assertEqual(recover_once(),"unblocked")
+        with billing.db() as con:
+            row=con.execute("SELECT row_json FROM sii_recovered_claim_archive WHERE source_table='sii_issuance_attempts'").fetchone()
+        self.assertEqual(json.loads(row[0])["nonce_hash"],"test-nonce-hash")
 
     def test_not_enabled(self):
         with patch.dict(os.environ,{"PSC_SII_UNLOCK_GIOVANNI_20261029":"no"}):
@@ -135,3 +161,4 @@ class RecoveryTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
