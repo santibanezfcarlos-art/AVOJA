@@ -1,7 +1,7 @@
 name: Verificar correo corporativo de boletas
 on:
   push:
-    branches: [feature/psc-sii-email-pdf-20261029]
+    branches: [feature/psc-sii-email-pdf-20261029, feature/sii-postissue-pilot-resend-20261029]
   pull_request:
     branches: [psicologia-webpay-produccion-preparacion]
 permissions:
