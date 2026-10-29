@@ -14,7 +14,8 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 <button id="start" type="button">Iniciar Chromium</button>
 <button id="stop" type="button" hidden>Cerrar sesión</button>
 <p id="status" class="status" role="status" aria-live="polite">Esperando inicio autorizado desde el panel PSC…</p></section>
-<section class="card"><div id="screen" aria-label="Pantalla remota de Chromium"></div></section>
+<section class="card"><p>Vista de Chromium actualizada cada 3 segundos. La clave está tapada.</p><img id="preview" alt="Esperando imagen de Chromium…" style="width:100%;height:auto" hidden></section>
+<section class="card"><details><summary>Pantalla remota interactiva</summary><div id="screen" aria-label="Pantalla remota de Chromium"></div></details></section>
 </main>
 <script type="module">
 import RFB from "/novnc/core/rfb.js";
@@ -22,6 +23,18 @@ const launch=document.getElementById("start"), stop=document.getElementById("sto
 const status=document.getElementById("status"), screen=document.getElementById("screen");
 let rfb=null, ticket=new URLSearchParams(location.hash.slice(1)).get("ticket"), pollTimer=null;
 history.replaceState(null,"",location.pathname);
+let previewUrl=null;
+async function refreshPreview(){
+ try{
+  const res=await fetch("/api/preview",{cache:"no-store"});
+  if(res.status!==200)return;
+  const next=URL.createObjectURL(await res.blob());
+  const img=document.getElementById("preview");
+  img.src=next;img.hidden=false;
+  if(previewUrl)URL.revokeObjectURL(previewUrl);
+  previewUrl=next;
+ }catch{}
+}
 async function refreshStatus(){
  try{
   const response=await fetch("/api/status",{cache:"no-store"}), data=await response.json();
@@ -31,7 +44,8 @@ async function refreshStatus(){
    const c=data.connectivity;
    const authLabels={fields_filled_not_submitted:"RUT y clave rellenados y verificados. INGRESAR no fue pulsado",field_verification_failed:"No se pudo verificar el relleno",signed_in:"Ingreso automático completado",already_authenticated:"Sesión SII activa",login_form_not_recognized:"Formulario de acceso no reconocido",login_submit_not_recognized:"No se identificó el botón de ingreso",login_not_completed:"SII aún no confirmó el ingreso",login_form_not_loaded:"Esperando el formulario de acceso",unexpected_auth_host:"Redirección SII inesperada"};
    const auth=authLabels[c.authentication]||"Autenticación pendiente";
-   const calculator="Prueba de relleno únicamente";
+   const check=data.field_check;
+   const calculator=check?("RUT "+(check.rut_matches?"verificado":"no coincide")+" · Clave "+(check.password_matches?"verificada":"no coincide")+" · Sin pulsar INGRESAR"):"Prueba de relleno únicamente";
    status.textContent="Conexión directa (sin Decodo) · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host+" · "+auth+" · "+calculator;
   }
  }catch{}
@@ -44,11 +58,14 @@ async function startBrowser(){
   const data=await response.json();ticket=null;
   if(!response.ok)throw new Error(data.error||"No se pudo iniciar la sesión.");
   status.textContent="Conectando con la pantalla remota…";
+  stop.hidden=false;refreshStatus();refreshPreview();
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(()=>{refreshStatus();refreshPreview()},3000);
   const scheme=location.protocol==="https:"?"wss":"ws";
   rfb=new RFB(screen,scheme+"://"+location.host+"/websockify",{credentials:{password:data.vnc_password}});
   rfb.scaleViewport=true;rfb.resizeSession=false;rfb.clipViewport=true;
-  rfb.addEventListener("connect",()=>{status.textContent="Chromium conectado. Abriendo e-Boleta SII directamente…";stop.hidden=false;refreshStatus();pollTimer=setInterval(refreshStatus,2000)});
-  rfb.addEventListener("disconnect",()=>{if(pollTimer)clearInterval(pollTimer);status.textContent="La conexión visual se cerró. Puedes volver al panel e iniciar otra sesión."});
+  rfb.addEventListener("connect",()=>{status.textContent="Chromium conectado. Abriendo e-Boleta SII directamente…";stop.hidden=false;refreshStatus();refreshPreview()});
+  rfb.addEventListener("disconnect",()=>{status.textContent="Pantalla interactiva desconectada; la vista de Chromium seguirá actualizándose."});
  }catch(e){status.textContent=e.message;launch.hidden=false;launch.disabled=false}
 }
 launch.addEventListener("click",startBrowser);
