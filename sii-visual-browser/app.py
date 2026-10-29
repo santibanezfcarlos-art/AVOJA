@@ -13,7 +13,6 @@ import threading
 import time
 from urllib.parse import urlparse
 
-import requests
 from flask import Flask, jsonify, request, send_file
 from playwright.sync_api import sync_playwright
 
@@ -97,39 +96,6 @@ def _decode_ticket(ticket):
         return None
 
 
-def _proxy_settings():
-    base = os.environ.get("SII_PROXY_WORKER_URL", "").rstrip("/")
-    bridge = os.environ.get("SII_VISUAL_BRIDGE_TOKEN", "")
-    if not base or len(bridge) < 32:
-        raise RuntimeError("proxy bridge unavailable")
-    response = requests.post(
-        base + "/internal/sii-visual-proxy",
-        headers={"X-SII-Visual-Bridge": bridge},
-        json={},
-        timeout=(5, 12),
-    )
-    if response.status_code != 200:
-        raise RuntimeError("proxy bridge unavailable")
-    payload = response.json()
-    config = payload.get("proxy") if payload.get("status") == "ready" else None
-    if not isinstance(config, dict):
-        raise RuntimeError("proxy bridge unavailable")
-    host = config["DECODO_PROXY_HOST"].strip()
-    port = config["DECODO_PROXY_PORT"].strip()
-    candidate = host if "://" in host else "http://" + host
-    parsed = urlparse(candidate)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise RuntimeError("proxy settings invalid")
-    if not port.isdecimal() or not 1 <= int(port) <= 65535:
-        raise RuntimeError("proxy settings invalid")
-    server = f"{parsed.scheme}://{parsed.hostname}:{port}"
-    return {
-        "server": server,
-        "username": config["DECODO_PROXY_USER"],
-        "password": config["DECODO_PROXY_PASSWORD"],
-    }
-
-
 def _close_browser():
     browser = _session.get("browser")
     _session["browser"] = None
@@ -148,27 +114,11 @@ def _expire_session(started):
             _session.update(state="expired", started=None)
 
 
-def _start_browser(proxy):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=False,
-            proxy=proxy,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
-            timeout=30000,
-        )
-    context = browser.new_context(locale="es-CL", timezone_id="America/Santiago", viewport={"width":1364,"height":768})
-    context.add_init_script(BLOCK_ISSUE_ACTIONS)
-    page = context.new_page()
-    page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
-    # Keep the Playwright objects alive in a dedicated owner thread.
-    return browser
-
-
-def _browser_owner(proxy, started):
+def _browser_owner(started):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False, proxy=proxy,
+                headless=False,
                 args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
                 timeout=30000,
             )
@@ -182,20 +132,16 @@ def _browser_owner(proxy, started):
                                           viewport={"width":1365,"height":768})
             context.add_init_script(BLOCK_ISSUE_ACTIONS)
             page = context.new_page()
-            country_response = page.goto("https://ipinfo.io/country", wait_until="domcontentloaded", timeout=20000)
-            country = (page.locator("body").inner_text(timeout=5000) or "").strip().upper()
-            if country not in ("CL", "DE", "US", "GB", "FR", "SG", "NL"):
-                country = "unknown"
             response = page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
             host = urlparse(page.url).hostname or ""
-            safe_result = {"country": country,
+            safe_result = {"connection": "direct",
                            "sii_http_status": response.status if response else None,
                            "final_host": host if host.endswith(".sii.cl") else "other"}
             with _lock:
                 if _session.get("started") == started:
                     _session["connectivity"] = safe_result
                     _session["state"] = "open"
-            app.logger.warning("SII_VISUAL_CONNECTIVITY %s", json.dumps(safe_result, separators=(",", ":")))
+            app.logger.warning("SII_VISUAL_DIRECT_CONNECTIVITY %s", json.dumps(safe_result, separators=(",", ":")))
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 time.sleep(1)
             browser.close()
@@ -249,14 +195,7 @@ def start():
         _session.update(state="starting", error=None, stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
-    try:
-        proxy = _proxy_settings()
-    except Exception as exc:
-        with _lock:
-            _session.update(state="failed", started=None, error=type(exc).__name__)
-        return jsonify(error="No se pudo conectar con la configuración de Decodo. Revisa el estado en el panel."), 503
-
-    threading.Thread(target=_browser_owner, args=(proxy, started), daemon=True,
+    threading.Thread(target=_browser_owner, args=(started,), daemon=True,
                      name="sii-visible-chromium").start()
     threading.Thread(target=_expire_session, args=(started,), daemon=True,
                      name="sii-visible-chromium-timeout").start()
