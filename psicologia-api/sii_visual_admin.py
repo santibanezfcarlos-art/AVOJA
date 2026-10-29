@@ -36,9 +36,19 @@ def create_sii_visual_session():
     if len(secret) < 32:
         return jsonify(error="Falta la clave de autorización temporal del servicio visual."), 503
 
+    # Pin the oldest eligible real payment in the signed ticket.
+    with billing.db() as con:
+        row = con.execute(
+            "SELECT * FROM billing_orders WHERE environment='production' "
+            "AND payment_status='approved' AND invoice_status='pending' "
+            "AND (folio IS NULL OR folio='') ORDER BY COALESCE(paid_at,created_at),created_at,order_id LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return jsonify(error="No hay compras reales pagadas pendientes de boleta."), 409
+        order_id = row["order_id"]
     now = int(time.time())
     payload = _b64(json.dumps(
-        {"exp": now + 600, "nonce": secrets.token_urlsafe(24)},
+        {"exp": now + 600, "nonce": secrets.token_urlsafe(24), "preview_order": order_id},
         separators=(",", ":"),
     ).encode("utf-8"))
     signature = _b64(hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest())
@@ -97,7 +107,28 @@ def sii_visual_internal_credentials():
     password = os.environ.get("SII_PASSWORD", "")
     if not rut or not password:
         return jsonify(error="Credenciales SII no configuradas"), 503
-    response = jsonify(rut=rut, password=password)
+    order_id = data.get("preview_order")
+    if not isinstance(order_id, str):
+        return jsonify(error="Abre una nueva vista previa desde el panel PSC."), 409
+    with billing.db() as con:
+        row = con.execute("SELECT * FROM billing_orders WHERE order_id=?", (order_id,)).fetchone()
+        if (not row or row["environment"] != "production" or row["payment_status"] != "approved"
+                or row["invoice_status"] != "pending" or row["folio"]
+                or type(row["amount"]) is not int or row["amount"] <= 0):
+            return jsonify(error="La compra ya no está pendiente o no es elegible."), 409
+        try:
+            person = billing.receiver({"billing_" + k: row[k] for k in ("rut", "name", "address", "email", "phone")})
+            if not 1 <= len(row["detail"].strip()) <= 80:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return jsonify(error="Los datos de la compra están incompletos."), 409
+        preview_order = {"order_id": order_id, "amount": row["amount"],
+                         "rut": person["rut"], "nombre": person["name"],
+                         "direccion": person["address"], "email": person["email"],
+                         "telefono": person["phone"], "detalle": row["detail"]}
+        con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                    (order_id, "visual_preview_requested_no_issuance", billing.now(), "sii-visual"))
+    response = jsonify(rut=rut, password=password, preview_order=preview_order)
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
     return response
