@@ -4,6 +4,9 @@ let generation=0;
 let siiJobs=[];
 let receiptMap={};
 let firstCanaryReady=false;
+let firstCanaryOrderId=null;
+const issueProgress=Object.create(null);
+const issueTimers=Object.create(null);
 const siiLabels={queued:"Esperando agente local",running:"Preparando en tu computador",prepared:"Formulario verificado · sin emitir",blocked:"Detenido · revisar formulario",session_required:"Renovar sesión SII",failed:"Preparación fallida",reconciliation:"Pendiente de conciliación"};
 const labels={initiated:'Pago sin confirmar',approved:'Pago aprobado',rejected:'Pago rechazado',cancelled:'Pago cancelado',pending:'Boleta pendiente',issued:'Boleta emitida',test:'Prueba · no emitir',not_applicable:'No corresponde emitir'};
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
@@ -31,15 +34,29 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  if(r.environment==='production'){
   if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
    section.append(node('p','Emisión SII con resultado por conciliar. NO volver a emitir. Primero comprueba si existe folio real en SII.','warning'));
-  }else if(firstCanaryReady){
-   const issueForm=node('form',undefined,'actions');
-   issueForm.action='/admin/sii-visual/session';issueForm.method='post';issueForm.target='_blank';
-   const oid=node('input');oid.type='hidden';oid.name='order_id';oid.value=r.order_id;
-   const mode=node('input');mode.type='hidden';mode.name='mode';mode.value='issue_canary';
-   const emit=node('button','Emitir','primary');emit.type='submit';
-   emit.title='Preparar la primera emisión real y aprobar el único clic final desde Render.';
-   issueForm.append(oid,mode,emit);actions.append(issueForm);
-   section.append(node('p','Primera emisión supervisada: después de revisar el formulario en Render, confirma una sola vez la acción tributaria.','meta'));
+  }else if(firstCanaryReady&&firstCanaryOrderId===r.order_id){
+   const emit=node('button','Emitir','primary');emit.type='button';
+   emit.disabled=!!issueProgress[r.order_id];
+   emit.title='Un clic inicia Chromium en Render y la emisión real del SII en segundo plano.';
+   emit.onclick=async()=>{
+    emit.disabled=true;
+    issueProgress[r.order_id]='Conectando Chromium en Render…';
+    $('notice').textContent='Ejecutando la emisión de esta compra directamente en Render…';
+    try{
+     const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/emit',{
+       method:'POST',headers:{'X-Billing-Action':'manual-invoice'}});
+     const data=await res.json();
+     if(!res.ok)throw Error(data.error||'Render no confirmó el inicio.');
+     issueProgress[r.order_id]='Chromium iniciado; SII preparando boleta…';
+     await refresh();
+     pollIssue(r.order_id);
+    }catch(err){
+     issueProgress[r.order_id]='Revisar estado antes de intentar nuevamente: '+err.message;
+     $('notice').textContent=issueProgress[r.order_id];
+     await refresh();
+    }
+   };actions.append(emit);
+   section.append(node('p',issueProgress[r.order_id]||'Emisión desde Render: presiona Emitir y Chromium ejecutará el proceso en segundo plano.','meta'));
   }else{
    const emit=node('button','Emitir','primary');emit.type='button';
    emit.title='Abrir e-Boleta SII oficial. Completa y confirma la emisión directamente en el portal.';
@@ -112,6 +129,42 @@ if(r.environment==='production'&&r.payment_status==='approved'&&r.invoice_status
  form.onsubmit=async e=>{e.preventDefault();if(!confirm('¿Ya emitiste en el SII la boleta con folio '+folio.value+'?'))return;button.disabled=true;try{const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/issued',{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({folio:folio.value,issued_date:date.value})});const result=await res.json();if(!res.ok)throw Error(result.error||'No se pudo registrar');await refresh();$('notice').textContent='Folio registrado correctamente.'}catch(err){$('notice').textContent=err.message}finally{button.disabled=false}};
  actions.append(form);
 }section.append(actions);return section}
-async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));firstCanaryReady=!!rd.first_canary_ready;for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
+async function pollIssue(order){
+ if(issueTimers[order])return;
+ const terminal=new Set(['issued','reconciliation','failed','expired','unavailable','not_running']);
+ const step=async()=>{
+  try{
+   const res=await fetch('/admin/boletas/'+encodeURIComponent(order)+'/issue-status',{cache:'no-store'});
+   const status=await res.json();
+   if(!res.ok)throw Error(status.error||'Estado no disponible');
+   const stage=status.stage||status.state;
+   const label={
+     starting:'Iniciando Chromium en Render…',opening_sii:'Abriendo SII…',
+     sii_authentication:'Ingresando al SII…',waiting_before_login:'Validando sesión SII…',
+     waiting_calculator:'Cargando e-Boleta…',preparing_order:'Completando importe y receptor…',
+     waiting_receiver_form:'Abriendo datos del receptor…',filling_receiver:'Completando datos de la compra…',
+     issue_approved_pending_claim:'Preparación completa. Emitiendo…',
+     claiming_canary:'Registrando intento y emitiendo…',issued:'Boleta emitida y folio guardado',
+     reconciliation:'Resultado SII incierto: verificar antes de otra emisión.',
+     not_running:'Chromium no informa un proceso activo. Revisar antes de reintentar.'
+   };
+   issueProgress[order]=label[stage]||stage;
+   if(status.state==='issued'||status.state==='reconciliation'
+      ||terminal.has(status.state)||stage.startsWith('canary_')||stage.startsWith('blocked_')){
+    delete issueTimers[order];
+    await refresh();return;
+   }
+   await refresh();
+   issueTimers[order]=setTimeout(step,3500);
+  }catch(err){
+   issueProgress[order]='No se pudo consultar Render. Revisar antes de repetir la emisión.';
+   delete issueTimers[order];
+   await refresh();
+  }
+ };
+ issueTimers[order]=true;await step();
+}
+
+async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));firstCanaryReady=!!rd.first_canary_ready;firstCanaryOrderId=rd.first_canary_order_id||null;for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
 $('environment').onchange=()=>{$('status').replaceChildren();for(const [value,label] of ($('environment').value==='integration'?[['test','Pruebas aprobadas'],['all','Todos los pagos de prueba']]:[['pending','Pendientes de emisión'],['issued','Emitidas'],['all','Todos los pagos']])){const o=node('option',label);o.value=value;$('status').append(o)}refresh()};
 $('refresh').onclick=refresh;$('status').onchange=refresh;$('export').onclick=()=>{location.href='/admin/boletas/export.csv?'+query()};refresh();
