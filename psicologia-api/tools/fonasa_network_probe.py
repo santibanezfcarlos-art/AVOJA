@@ -1069,156 +1069,146 @@ _SII_PROBE_LOCK = _sii_probe_threading.Lock()
 
 
 def _sii_probe_once():
-    """One bounded, read-only Decodo-to-SII check; no authentication or submission."""
-    import json
-    import logging
-    import os
-    import re
-    import time
+    """Read-only sticky Decodo session. Never reads or submits taxpayer credentials."""
+    import os, re, time, json, secrets, logging
     from urllib.parse import urlparse
     from playwright.sync_api import sync_playwright
+    import fonasa_live_bridge
 
-    keys = ("DECODO_PROXY_HOST", "DECODO_PROXY_PORT",
-            "DECODO_PROXY_USER", "DECODO_PROXY_PASSWORD")
-    missing = [key for key in keys if not os.environ.get(key)]
-    if missing:
-        return {"status": "configuration_missing", "missing": missing,
-                "credentials_used": False, "submitted": False, "emitted": False}
-
-    started = time.monotonic()
-    logger = logging.getLogger("sii_probe")
-    def stage(name, **flags):
-        logger.warning("SII_REACHABILITY_STAGE %s", json.dumps(
-            {"stage": name, **flags}, separators=(",", ":")))
-
-    result = {"status":"started", "browser":"not_started", "country":"unknown",
-              "chile_egress":False, "sii_home":{"status":"not_attempted"},
-              "eboleta":{"status":"not_attempted"}, "auth_hosts":[],
-              "login_form_detected":False, "credentials_used":False,
-              "submitted":False, "emitted":False}
-
-    raw_host = os.environ["DECODO_PROXY_HOST"].strip()
-    raw_port = os.environ["DECODO_PROXY_PORT"].strip()
-    if not raw_port.isdecimal() or not 1 <= int(raw_port) <= 65535:
-        return {"status":"invalid_proxy_port", "credentials_used":False,
-                "submitted":False, "emitted":False}
-    candidate = raw_host if "://" in raw_host else "http://" + raw_host
-    parsed_proxy = urlparse(candidate)
-    if parsed_proxy.scheme not in ("http", "https") or not parsed_proxy.hostname or parsed_proxy.path not in ("", "/"):
-        return {"status":"invalid_proxy_host", "credentials_used":False,
-                "submitted":False, "emitted":False}
+    result = {"status":"started", "credentials_used":False, "submitted":False,
+              "emitted":False, "country_before":"unknown", "country_after":"unknown",
+              "same_exit_ip":None, "login_user_visible":False, "login_password_visible":False,
+              "navigation":[], "errors":[]}
+    started=time.monotonic()
+    def busy():
+        with fonasa_live_bridge._lock:
+            return any(x["data"].get("state")=="running" for x in fonasa_live_bridge._jobs.values())
+    def log(stage):
+        logging.getLogger("sii_probe").warning("SII_STICKY_STAGE %s",stage)
+    def safe_error(exc):
+        code=re.search(r"net::ERR_[A-Z_]+",str(exc))
+        return {"type":type(exc).__name__, "network":code.group(0) if code else None}
+    if busy():
+        return {**result,"status":"skipped_fonasa_busy"}
+    keys=("DECODO_PROXY_HOST","DECODO_PROXY_PORT","DECODO_PROXY_USER","DECODO_PROXY_PASSWORD")
+    if any(not os.environ.get(k) for k in keys):
+        return {**result,"status":"proxy_configuration_missing"}
+    host=os.environ["DECODO_PROXY_HOST"].strip()
+    port=os.environ["DECODO_PROXY_PORT"].strip()
+    parsed=urlparse(host if "://" in host else "http://"+host)
+    if (parsed.scheme not in ("http","https") or not parsed.hostname or parsed.username
+        or parsed.path not in ("","/") or not port.isdecimal() or not 1<=int(port)<=65535):
+        return {**result,"status":"proxy_configuration_invalid"}
+    if parsed.port and parsed.port!=int(port):
+        return {**result,"status":"proxy_port_mismatch"}
+    configured=os.environ["DECODO_PROXY_USER"].strip()
+    result["previous_username_had_session"]=bool(re.search(r"-session-[^-]+",configured))
+    result["previous_username_targeted_chile"]=bool(re.search(r"-country-cl(?:-|$)",configured,re.I))
+    user=re.sub(r"-(?:country|session|sessionduration)-[^-]+","",configured,flags=re.I)
+    if not user.startswith("user-"):
+        user="user-"+user
+    # Only this diagnostic gets the suffix; production environment stays unchanged.
+    user += "-country-cl-session-psc"+secrets.token_hex(6)
+    proxy={"server":parsed.scheme+"://"+parsed.hostname+":"+port,
+           "username":user,"password":os.environ["DECODO_PROXY_PASSWORD"]}
+    result["sticky_session_requested"]=True
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"]="0"
+    before={}
+    after={}
     try:
-        embedded_port = parsed_proxy.port
-    except ValueError:
-        return {"status":"invalid_proxy_host", "credentials_used":False,
-                "submitted":False, "emitted":False}
-    if embedded_port is not None and embedded_port != int(raw_port):
-        return {"status":"proxy_port_mismatch", "credentials_used":False,
-                "submitted":False, "emitted":False}
-    proxy_host = parsed_proxy.hostname
-    if ":" in proxy_host:
-        proxy_host = "[" + proxy_host + "]"
-    proxy_server = parsed_proxy.scheme + "://" + proxy_host + ":" + raw_port
-    proxy = {"server":proxy_server,
-             "username":os.environ["DECODO_PROXY_USER"],
-             "password":os.environ["DECODO_PROXY_PASSWORD"]}
-
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
-    try:
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                headless=True, args=["--no-sandbox"], timeout=6000, proxy=proxy)
-            result["browser"] = "started"
+        log("launch")
+        with sync_playwright() as pw:
+            browser=pw.chromium.launch(headless=True,proxy=proxy,
+                args=["--no-sandbox","--disable-dev-shm-usage"],timeout=30000)
             try:
-                context = browser.new_context(
-                    locale="es-CL", timezone_id="America/Santiago",
-                    ignore_https_errors=False)
-                page = context.new_page()
-                nav_hosts = []
-                bad_responses = []
-                page.on("request", lambda request: nav_hosts.append(
-                    urlparse(request.url).hostname or "")
-                    if request.is_navigation_request() else None)
-                page.on("response", lambda response: bad_responses.append({
-                    "host":urlparse(response.url).hostname or "",
-                    "status":response.status,
-                    "server":response.headers.get("server","")[:80],
-                    "via":response.headers.get("via","")[:80],
-                }) if response.status >= 400 and
-                    (urlparse(response.url).hostname or "").endswith(".sii.cl")
-                    and len(bad_responses) < 12 else None)
-
-                try:
-                    response = page.goto("https://ipinfo.io/country",
-                                         wait_until="commit", timeout=4500)
-                    country = (page.locator("body").inner_text(timeout=1200) or "").strip().upper()
-                    result["country"] = country if re.fullmatch(r"[A-Z]{2}", country) else "unknown"
-                    result["chile_egress"] = result["country"] == "CL"
-                    result["egress_http_status"] = response.status if response else None
-                except Exception as exc:
-                    result["egress_error_type"] = type(exc).__name__
-
-                for key, url, expected in (
-                    ("sii_home","https://www.sii.cl/","www.sii.cl"),
-                    ("eboleta","https://eboleta.sii.cl/emitir/","eboleta.sii.cl"),
-                ):
-                    nav_hosts.clear()
+                ctx=browser.new_context(locale="es-CL",timezone_id="America/Santiago",
+                    ignore_https_errors=False,service_workers="block")
+                ctx.set_default_timeout(4000)
+                def guard(route):
+                    if busy() or route.request.method not in ("GET","HEAD","OPTIONS") or route.request.resource_type in ("image","font","media"):
+                        route.abort()
+                    else:
+                        route.continue_()
+                ctx.route("**/*",guard)
+                def geo():
+                    page=ctx.new_page()
                     try:
-                        response = page.goto(url, wait_until="commit" if key == "sii_home" else "domcontentloaded",
-                                             timeout=4500 if key == "sii_home" else 20000)
-                        final = urlparse(page.url)
-                        row = {"status":"connected" if response else "no_response",
-                               "http_status":response.status if response else None,
-                               "origin_matches":final.scheme == "https" and final.hostname == expected,
-                               "final_host":final.hostname or "",
-                               "navigation_hosts":list(dict.fromkeys(nav_hosts))[-10:]}
-                        if key == "eboleta":
-                            try:
-                                page.wait_for_load_state("domcontentloaded",timeout=1800)
-                            except Exception:
-                                pass
-                            hosts = list(dict.fromkeys(nav_hosts))
-                            result["auth_hosts"] = [h for h in hosts if h.endswith(".sii.cl")]
-                            frame_sets = []
-                            for frame in page.frames[:6]:
-                                fh = urlparse(frame.url).hostname or ""
-                                if not fh.endswith(".sii.cl"):
-                                    continue
-                                try:
-                                    frame_sets.append({
-                                        "host":fh,
-                                        "password_fields":frame.locator('input[type="password"]').count(),
-                                        "identity_fields":frame.locator(
-                                            'input[type="text"],input[type="tel"],input[inputmode="numeric"]').count(),
-                                        "forms":frame.locator("form").count(),
-                                    })
-                                except Exception:
-                                    continue
-                            result["login_frames"] = frame_sets
-                            result["login_form_detected"] = any(
-                                row["password_fields"] > 0 for row in frame_sets)
-                            result["login_user_field_detected"] = any(
-                                row["identity_fields"] > 0 for row in frame_sets)
-                        result[key] = row
+                        page.goto("https://ipinfo.io/json",wait_until="domcontentloaded",timeout=15000)
+                        data=json.loads(page.locator("body").inner_text(timeout=4000))
+                        return {"country":data.get("country","unknown"),"ip":data.get("ip")}
                     except Exception as exc:
-                        result[key] = {"status":"failed","error_type":type(exc).__name__}
-                        match = re.search(r"net::ERR_[A-Z_]+",str(exc))
-                        if match:
-                            result[key]["network_error"] = match.group(0)
-                result["sii_http_errors"] = bad_responses
-                context.close()
+                        result["errors"].append({"step":"geo",**safe_error(exc)})
+                        return {}
+                    finally:
+                        page.close()
+                before=geo()
+                result["country_before"]=before.get("country","unknown")
+                log("country_"+str(result["country_before"])[:2])
+                if before.get("country")!="CL":
+                    result["status"]="chile_egress_not_confirmed"
+                    return result
+                page=ctx.new_page()
+                def response_seen(response):
+                    if not response.request.is_navigation_request():
+                        return
+                    hostname=urlparse(response.url).hostname or ""
+                    if hostname.endswith(".sii.cl") and len(result["navigation"])<20:
+                        headers=response.headers
+                        result["navigation"].append({"host":hostname,"status":response.status,
+                            "server":headers.get("server","")[:70],
+                            "content_type":headers.get("content-type","")[:70]})
+                page.on("response",response_seen)
+                for label,url in (("home","https://www.sii.cl/"),("eboleta","https://eboleta.sii.cl/emitir/")):
+                    if busy():
+                        result["status"]="stopped_for_fonasa"
+                        return result
+                    log("open_"+label)
+                    try:
+                        page.goto(url,wait_until="domcontentloaded",timeout=30000)
+                    except Exception as exc:
+                        result["errors"].append({"step":label,**safe_error(exc)})
+                log("wait_login")
+                deadline=time.monotonic()+35
+                while time.monotonic()<deadline:
+                    if busy():
+                        result["status"]="stopped_for_fonasa"
+                        return result
+                    for frame in page.frames:
+                        hostname=urlparse(frame.url).hostname or ""
+                        if not hostname.endswith(".sii.cl"):
+                            continue
+                        try:
+                            passwords=frame.locator('input[type="password"]:visible').count()
+                            usernames=frame.locator('input[type="text"]:visible,input[type="tel"]:visible,input[inputmode="numeric"]:visible').count()
+                            if passwords and usernames:
+                                result["login_user_visible"]=True
+                                result["login_password_visible"]=True
+                                result["login_frame_host"]=hostname
+                        except Exception:
+                            pass
+                    if result["login_password_visible"]:
+                        break
+                    page.wait_for_timeout(500)
+                final_host=urlparse(page.url).hostname or ""
+                result["final_host"]=final_host if final_host.endswith(".sii.cl") else "other"
+                after=geo()
+                result["country_after"]=after.get("country","unknown")
+                if before.get("ip") and after.get("ip"):
+                    result["same_exit_ip"]=before["ip"]==after["ip"]
+                result["status"]="login_visible" if result["login_password_visible"] and result["login_user_visible"] else "login_not_visible"
+                if result["same_exit_ip"] is False:
+                    result["status"]="exit_ip_changed"
+                ctx.close()
             finally:
                 browser.close()
-        result["status"] = "completed"
     except Exception as exc:
-        result["status"] = "failed"
-        result["error_type"] = type(exc).__name__
-        match = re.search(r"net::ERR_[A-Z_]+",str(exc))
-        if match:
-            result["network_error"] = match.group(0)
-    result["elapsed_seconds"] = round(time.monotonic()-started,2)
-    stage("probe_completed", status=result["status"],
-          country=result.get("country"), seconds=result["elapsed_seconds"])
+        result["status"]="failed"
+        result["errors"].append(safe_error(exc))
+    finally:
+        before.clear()
+        after.clear()
+        result["elapsed_seconds"]=round(time.monotonic()-started,1)
+        log("finished")
     return result
 
 
@@ -1271,7 +1261,10 @@ def _sii_reachability_startup_once():
         )
 
 
-_sii_startup_enabled = __import__("os").environ.get("SII_REACHABILITY_ON_START") == "once"
+_sii_startup_enabled = (
+    __import__("os").environ.get("SII_REACHABILITY_ON_START") == "once"
+    and __import__("time").time() < float(__import__("os").environ.get("SII_REACHABILITY_DEADLINE", "0"))
+)
 import json as _sii_startup_json
 import logging as _sii_startup_logging
 _sii_startup_logging.getLogger("sii_probe").warning(
