@@ -1,7 +1,7 @@
 name: Validar primera emisión SII supervisada sin emitir
 on:
   push:
-    branches: [feature/psc-sii-canary-20261029, fix/psc-sii-preview-inline-20261029, fix/psc-sii-preview-error-message-20261029, feature/sii-postissue-dual-delivery-20261029, fix/psc-sii-emit-no-external-tab-20261029, fix/psc-sii-stable-polling-reconciliation-20261029, fix/psc-sii-90s-inline-status-20261029]
+    branches: [feature/psc-sii-canary-20261029, fix/psc-sii-preview-inline-20261029, fix/psc-sii-preview-error-message-20261029, feature/sii-postissue-dual-delivery-20261029, fix/psc-sii-emit-no-external-tab-20261029, fix/psc-sii-stable-polling-reconciliation-20261029, fix/psc-sii-90s-inline-status-20261029, fix/sii-unlock-giovanni-once-20261029]
   pull_request:
     branches: [psicologia-carlos]
 permissions: {contents: read}
@@ -14,5 +14,5 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r psicologia-api/requirements.txt
       - run: python -m compileall -q psicologia-api
-      - run: cd psicologia-api && python -m unittest -v test_billing_admin_ui test_sii_canary test_sii_receipt_admin test_billing test_production_checkout test_sii_post_issue
+      - run: cd psicologia-api && python -m unittest -v test_sii_one_time_recovery test_billing_admin_ui test_sii_canary test_sii_receipt_admin test_billing test_production_checkout test_sii_post_issue
       - run: node --check psicologia-api/billing_admin.js

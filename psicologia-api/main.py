@@ -348,6 +348,21 @@ if os.environ.get("FONASA_REPAIR_EXISTING_ON_START")=="yes":
     threading.Thread(target=_recover_one_existing_fonasa_booking,daemon=True).start()
 
 
+def _recover_giovanni_unissued_sii_once():
+    """Admin-authorized one-shot maintenance; does not issue or email."""
+    import logging as _logging
+    import time as _time
+    _time.sleep(4)
+    from sii_one_time_recovery import recover_once
+    status=recover_once()
+    _logging.getLogger("sii_invoice_recovery").warning(
+        "PSC_SII_GIOVANNI_RECOVERY status=%s",status)
+
+
+if os.environ.get("PSC_SII_UNLOCK_GIOVANNI_20261029")=="yes":
+    threading.Thread(target=_recover_giovanni_unissued_sii_once,daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
