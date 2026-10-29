@@ -88,6 +88,27 @@ class BillingTests(unittest.TestCase):
             self.assertEqual(row['invoice_status'],'issued')
             self.assertEqual(row['payment_status'],'approved')
             self.assertEqual(con.execute('SELECT count(*) FROM billing_audit').fetchone()[0],1)
+    def test_approved_real_payment_creates_one_durable_issue_request(self):
+        token = self.order('prod-paid', 'production')
+        billing.record_result('prod-paid', token, 30000, True, 'VD')
+        billing.record_result('prod-paid', token, 30000, True, 'VD')
+        with billing.db() as con:
+            queue = con.execute("SELECT * FROM sii_issuance_queue WHERE order_id=?", ('prod-paid',)).fetchall()
+            self.assertEqual(len(queue), 1)
+            self.assertEqual(queue[0]['status'], 'awaiting_issuer')
+            self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id='prod-paid'").fetchone()[0], 'pending')
+        self.assertEqual(self.mark('prod-paid').status_code, 200)
+        with billing.db() as con:
+            self.assertEqual(con.execute("SELECT status FROM sii_issuance_queue WHERE order_id='prod-paid'").fetchone()[0], 'issued')
+
+    def test_no_issuance_request_for_test_or_rejected_payment(self):
+        for order, env, approved in [('sandbox', 'integration', True),
+                                     ('rejected-real', 'production', False)]:
+            token = self.order(order, env)
+            billing.record_result(order, token, 30000, approved, 'VD')
+        with billing.db() as con:
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM sii_issuance_queue').fetchone()[0], 0)
+
     def test_rejected_cancelled_and_mismatch(self):
         token=self.order()
         with self.assertRaises(ValueError):
