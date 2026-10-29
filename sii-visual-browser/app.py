@@ -425,10 +425,21 @@ def _expire_session(started):
             _session.update(state="expired", started=None)
 
 
-def _browser_owner(started, credentials, ticket, mode):
-    order = credentials.pop("preview_order")
-    stage = "chromium_launch"
+def _browser_owner(started, ticket, mode):
+    # Critical: Never fetch credentials from PSC in /api/internal/start.
+    # PSC runs a single synchronous Gunicorn worker and must finish its
+    # outgoing request before it can answer our internal-credentials callback.
+    stage = "credential_fetch"
     try:
+        with _lock:
+            if _session.get("started")==started:
+                _session["stage"]=stage
+        credentials = _fetch_sii_credentials(ticket)
+        order = credentials.pop("preview_order")
+        decoded = _decode_ticket(ticket)
+        if (not decoded or order.get("order_id")!=decoded.get("preview_order")):
+            raise RuntimeError("credential_order_mismatch")
+        stage = "chromium_launch"
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=False,
@@ -562,10 +573,21 @@ def _browser_owner(started, credentials, ticket, mode):
                               if preview_finished else "expired",
                         browser=None,started=None,stop=False)
     except Exception as exc:
+        # No secret or personally identifying values in diagnostics.
+        safe_reasons={
+            "SII credential service is not configured",
+            "SII credentials could not be retrieved",
+            "credential_bridge_invalid_json_shape",
+            "credential_bridge_missing_login",
+            "credential_bridge_missing_purchase",
+            "credential_order_mismatch",
+        }
+        reason=str(exc) if type(exc) is RuntimeError and str(exc) in safe_reasons else type(exc).__name__
+        app.logger.warning("SII_VISUAL_BACKGROUND_FAILED stage=%s reason=%s",stage,reason)
         with _lock:
             if _session.get("started") == started:
                 _session.update(state="failed", browser=None, started=None, stop=False,
-                                error=type(exc).__name__, stage=stage)
+                                error=reason, stage=stage)
 
 
 @app.after_request
@@ -667,25 +689,14 @@ def _start_ticket(ticket, *, automatic=False):
             return jsonify(error="Chromium sigue ejecutando otra operación SII."),409
         _used_nonces.add(data["nonce"])
 
-    try:
-        credentials = _fetch_sii_credentials(ticket)
-    except Exception as exc:
-        safe_codes={
-            "SII credential service is not configured",
-            "SII credentials could not be retrieved",
-            "credential_bridge_invalid_json_shape",
-            "credential_bridge_missing_login",
-            "credential_bridge_missing_purchase",
-        }
-        reason=str(exc) if type(exc) is RuntimeError and str(exc) in safe_codes else type(exc).__name__
-        app.logger.warning("SII_VISUAL_CREDENTIAL_FETCH_FAILED reason=%s",reason)
-        return jsonify(error="No se pudieron obtener los datos de la compra desde PSC. No se inició la preparación.",
-                       code=reason),503
+    # Store only the signed purchase ID here; sensitive credentials are
+    # retrieved by the background worker *after* this HTTP request completes.
+    selected_order=data.get("preview_order")
+    if not isinstance(selected_order,str) or not re.fullmatch(r"PSCP[0-9A-F]{18}",selected_order):
+        return jsonify(error="La compra del ticket SII no es válida."),403
     with _lock:
         if _session.get("state") in ("starting", "open"):
-            credentials.clear()
-            return jsonify(error="La emisión SII ya está ejecutándose."),409
-        selected_order=credentials["preview_order"]["order_id"]
+            return jsonify(error="Chromium todavía está ocupado."),409
         _session.update(preparation=None, submitted=False, login_click_attempted=False,
                         preview=None, field_check=None, field_ids=None,
                         mode=mode, issue_confirmed=False,
@@ -695,7 +706,7 @@ def _start_ticket(ticket, *, automatic=False):
                         connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
-    threading.Thread(target=_browser_owner, args=(started, credentials, ticket, mode), daemon=True,
+    threading.Thread(target=_browser_owner, args=(started, ticket, mode), daemon=True,
                      name="sii-visible-chromium").start()
     threading.Thread(target=_expire_session, args=(started,), daemon=True,
                      name="sii-visible-chromium-timeout").start()
