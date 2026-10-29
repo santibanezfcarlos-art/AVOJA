@@ -38,7 +38,7 @@ def create_sii_visual_session():
 
     now = int(time.time())
     payload = _b64(json.dumps(
-        {"exp": now + 300, "nonce": secrets.token_urlsafe(24)},
+        {"exp": now + 600, "nonce": secrets.token_urlsafe(24)},
         separators=(",", ":"),
     ).encode("utf-8"))
     signature = _b64(hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest())
