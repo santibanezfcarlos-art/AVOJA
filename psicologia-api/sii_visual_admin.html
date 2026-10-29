@@ -8,11 +8,11 @@ button,a{display:inline-block;border:0;border-radius:10px;background:#277a5a;col
 button:disabled{opacity:.55;cursor:wait}.muted{color:#52685f}#status{min-height:1.5em;margin-top:1rem}
 </style></head><body><main><section class="card">
 <p><a href="/admin">← Volver a Administración</a></p>
-<h1>Prueba visual de acceso directo al SII</h1>
-<p>Este botón abre Chromium visible en Render y entra directamente al e-Boleta del SII, sin usar Decodo ni otro proxy. Ingresa tu RUT y Clave Tributaria en la ventana remota; PSC no recibe ni almacena esos datos.</p>
-<p class="warning"><strong>La emisión está bloqueada en esta sesión.</strong> No ingreses datos de un receptor real ni pulses EMITIR. El enlace vence en diez minutos y el navegador se cierra a los quince.</p>
+<h1>Vista previa de la primera compra pendiente</h1>
+<p>Abre Chromium en Render sin Decodo, inicia sesión y prepara el monto y los datos de la compra real pagada más antigua que siga pendiente de boleta.</p>
+<p class="warning"><strong>La emisión está bloqueada en esta sesión.</strong> Se usarán los datos guardados de esa compra. El formulario quedará completo para revisión, sin emitir. El enlace vence en diez minutos y el navegador se cierra a los quince.</p>
 <form method="post" action="/admin/sii-visual/session">
-<button id="launch" type="submit">Abrir Chromium (sin Decodo)</button>
+<button id="launch" type="submit">Preparar primera compra pendiente (sin emitir)</button>
 </form>
 </section></main>
 </body></html>
