@@ -268,6 +268,7 @@ async function pollIssue(order){
       prepared_canary_awaiting_approval:'Formulario validado; preparando emisión real…',
       issue_approved_pending_claim:'Formulario validado. Iniciando emisión real…',
       claiming_canary:'Registrando intento único y enviando al SII…',
+      waiting_sii_receipt:'Esperando comprobante oficial del SII (hasta 90 segundos)…',
       canary_clicked_reconciliation:'Se pulsó Emitir en SII, pero no se confirmó el folio. Verifica el documento oficial antes de repetir.',
       canary_attempt_reconciliation:'Intento SII incierto: verifica si se generó folio antes de repetir.',
       canary_issued_pdf_saved:'Boleta confirmada: folio y PDF guardados.',
