@@ -3,6 +3,7 @@ const $=id=>document.getElementById(id);
 let generation=0;
 let siiJobs=[];
 let receiptMap={};
+let firstCanaryReady=false;
 const siiLabels={queued:"Esperando agente local",running:"Preparando en tu computador",prepared:"Formulario verificado · sin emitir",blocked:"Detenido · revisar formulario",session_required:"Renovar sesión SII",failed:"Preparación fallida",reconciliation:"Pendiente de conciliación"};
 const labels={initiated:'Pago sin confirmar',approved:'Pago aprobado',rejected:'Pago rechazado',cancelled:'Pago cancelado',pending:'Boleta pendiente',issued:'Boleta emitida',test:'Prueba · no emitir',not_applicable:'No corresponde emitir'};
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
@@ -28,13 +29,25 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
   section.append(node('p',r.issuance_state==='awaiting_issuer'?'Compra aprobada vinculada a solicitud de boleta. Emisor automático aún no habilitado.':'Compra aprobada pendiente de gestión en SII.','meta'));
  }
  if(r.environment==='production'){
-  const emit=node('button','Emitir','primary');emit.type='button';
-  emit.title='Abrir el portal oficial SII para efectuar una emisión real. El registro requiere folio verdadero.';
-  emit.onclick=async()=>{
-   const portal=window.open('https://eboleta.sii.cl/emitir/','_blank','noopener,noreferrer');
-   if(!portal){$('notice').textContent='Autoriza ventanas emergentes para abrir e-Boleta SII.';return}
-   $('notice').textContent='SII abierto. Utiliza la ficha de esta compra para completar la emisión real y después registra el folio y guarda su PDF aquí. La preparación automática continúa sin permiso de emisión.';
-  };actions.append(emit);
+  if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
+   section.append(node('p','Emisión SII con resultado por conciliar. NO volver a emitir. Primero comprueba si existe folio real en SII.','warning'));
+  }else if(firstCanaryReady){
+   const issueForm=node('form',undefined,'actions');
+   issueForm.action='/admin/sii-visual/session';issueForm.method='post';issueForm.target='_blank';
+   const oid=node('input');oid.type='hidden';oid.name='order_id';oid.value=r.order_id;
+   const mode=node('input');mode.type='hidden';mode.name='mode';mode.value='issue_canary';
+   const emit=node('button','Emitir','primary');emit.type='submit';
+   emit.title='Preparar la primera emisión real y aprobar el único clic final desde Render.';
+   issueForm.append(oid,mode,emit);actions.append(issueForm);
+   section.append(node('p','Primera emisión supervisada: después de revisar el formulario en Render, confirma una sola vez la acción tributaria.','meta'));
+  }else{
+   const emit=node('button','Emitir','primary');emit.type='button';
+   emit.title='Abrir e-Boleta SII oficial. Completa y confirma la emisión directamente en el portal.';
+   emit.onclick=()=>{
+    window.open('https://eboleta.sii.cl/emitir/','_blank','noopener,noreferrer');
+    $('notice').textContent='SII oficial abierto. Completa la emisión real con esta ficha y registra el folio y PDF aquí. No hay autoemisión habilitada para esta compra.';
+   };actions.append(emit);
+  }
  }
  if(active&&active.mode==='preview'){
   const close=node('button','Cerrar preparación interrumpida');close.type='button';
@@ -99,6 +112,6 @@ if(r.environment==='production'&&r.payment_status==='approved'&&r.invoice_status
  form.onsubmit=async e=>{e.preventDefault();if(!confirm('¿Ya emitiste en el SII la boleta con folio '+folio.value+'?'))return;button.disabled=true;try{const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/issued',{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({folio:folio.value,issued_date:date.value})});const result=await res.json();if(!res.ok)throw Error(result.error||'No se pudo registrar');await refresh();$('notice').textContent='Folio registrado correctamente.'}catch(err){$('notice').textContent=err.message}finally{button.disabled=false}};
  actions.append(form);
 }section.append(actions);return section}
-async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
+async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));firstCanaryReady=!!rd.first_canary_ready;for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
 $('environment').onchange=()=>{$('status').replaceChildren();for(const [value,label] of ($('environment').value==='integration'?[['test','Pruebas aprobadas'],['all','Todos los pagos de prueba']]:[['pending','Pendientes de emisión'],['issued','Emitidas'],['all','Todos los pagos']])){const o=node('option',label);o.value=value;$('status').append(o)}refresh()};
 $('refresh').onclick=refresh;$('status').onchange=refresh;$('export').onclick=()=>{location.href='/admin/boletas/export.csv?'+query()};refresh();
