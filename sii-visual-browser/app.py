@@ -557,7 +557,12 @@ def _browser_owner(started, ticket, mode):
                     try:
                         if not ids or not order:
                             raise RuntimeError("canary_fields_missing")
-                        outcome=issue_once(page,order,ids,ticket)
+                        def on_sii_submit(stage):
+                            with _lock:
+                                if _session.get("started")==started:
+                                    _session["stage"]=stage
+                        outcome=issue_once(page,order,ids,ticket,
+                                           on_submitted=on_sii_submit)
                     except Exception as exc:
                         outcome="canary_blocked_"+type(exc).__name__
                     finally:
