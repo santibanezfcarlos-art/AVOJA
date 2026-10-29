@@ -135,6 +135,29 @@ class CanaryTests(unittest.TestCase):
             current=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(OID,)).fetchone()
         self.assertEqual(current["status"],"awaiting_issuer")
 
+    def test_one_click_issues_through_server_to_server_chromium(self):
+        with patch("sii_canary._server_request",return_value=(202,{"status":"starting"})) as request_start:
+            response=self.client.post("/admin/boletas/"+OID+"/emit",auth=self.auth,
+                                      headers={"X-Billing-Action":"manual-invoice"})
+        self.assertEqual(response.status_code,202,response.text)
+        self.assertTrue(response.json["started"])
+        args=request_start.call_args.args
+        self.assertTrue(args[0].endswith("/api/internal/start"))
+        from sii_canary import ticket_data
+        ticket=args[2]["ticket"]
+        self.assertEqual(ticket_data(ticket)["preview_order"],OID)
+        self.assertEqual(ticket_data(ticket)["mode"],"issue_canary")
+        with billing.db() as con:
+            # No false issuance claim before the browser actually clicks.
+            self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
+
+    def test_one_click_rejects_unapproved_and_unauthorized_requests(self):
+        self.assertEqual(self.client.post("/admin/boletas/"+OID+"/emit").status_code,401)
+        self.assertEqual(self.client.post("/admin/boletas/"+OID+"/emit",auth=self.auth).status_code,403)
+        self.assertEqual(self.client.post("/admin/boletas/PSCP"+("F"*18)+"/emit",
+                                          auth=self.auth,headers={"X-Billing-Action":"manual-invoice"}).status_code,409)
+        self.assertEqual(self.client.get("/admin/boletas/"+OID+"/issue-status",auth=self.auth).status_code,200)
+
     def test_disabled_canary_stays_unavailable(self):
         with patch.dict(os.environ,{"SII_CANARY_ENABLED":"false"}):
             r=self.client.post("/admin/sii-visual/session",auth=self.auth,
