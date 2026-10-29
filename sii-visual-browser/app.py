@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, Response, jsonify, request, send_file
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 app = Flask(__name__)
@@ -144,10 +144,15 @@ def _fill_login_only(page, credentials):
                 rut, password = ruts.nth(i), passwords.first
                 if not rut.is_enabled() or not password.is_enabled():
                     continue
+                password.evaluate("(el) => el.setAttribute('data-psc-secret', 'true')")
                 rut.fill(credentials["rut"], timeout=10000)
                 password.fill(credentials["password"], timeout=10000)
-                verified = (rut.input_value() == credentials["rut"]
-                            and password.input_value() == credentials["password"])
+                normalize_rut = lambda value: value.replace(".", "").replace("-", "").replace(" ", "").upper()
+                rut_matches = normalize_rut(rut.input_value()) == normalize_rut(credentials["rut"])
+                password_matches = password.input_value() == credentials["password"]
+                with _lock:
+                    _session["field_check"] = {"rut_matches": rut_matches, "password_matches": password_matches}
+                verified = rut_matches and password_matches
                 return "fields_filled_not_submitted" if verified else "field_verification_failed"
         page.wait_for_timeout(500)
     return "login_form_not_loaded"
@@ -235,8 +240,18 @@ def _browser_owner(started, credentials):
                     _session["state"] = "open"
                     _session["stage"] = "fields_filled" if auth_result == "fields_filled_not_submitted" else "sii_page_open"
             app.logger.warning("SII_VISUAL_DIRECT_LOGIN %s", json.dumps(safe_result, separators=(",", ":")))
+            page.bring_to_front()
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
-                time.sleep(1)
+                try:
+                    # Memory-only preview; password is masked even if its eye toggle was used.
+                    preview = page.screenshot(type="jpeg", quality=65,
+                                              mask=[page.locator('input[type="password"], input[autocomplete="current-password"], input[data-psc-secret]')],
+                                              timeout=5000)
+                    with _lock:
+                        _session["preview"] = preview
+                except Exception:
+                    pass
+                page.wait_for_timeout(2000)
             browser.close()
             with _lock:
                 if _session.get("started") == started:
@@ -326,7 +341,7 @@ def start():
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
             return _visual_connection_response()
-        _session.update(resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
+        _session.update(preview=None, field_check=None, resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
     threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
@@ -346,8 +361,19 @@ def stop():
     return jsonify(status="stopping")
 
 
+@app.get("/api/preview")
+def preview():
+    with _lock:
+        if not _can_resume():
+            return jsonify(error="Sesión no autorizada."), 403
+        if _session.get("state") != "open" or not _session.get("preview"):
+            return Response(status=204)
+        return Response(_session["preview"], mimetype="image/jpeg")
+
+
 @app.get("/api/status")
 def status():
     return jsonify(status=_session["state"], error=_session.get("error"), stage=_session.get("stage"),
+                   field_check=_session.get("field_check") if _can_resume() else None,
                    connectivity=_session.get("connectivity"),
                    expires_in_seconds=SESSION_TTL if _session.get("started") else 0)
