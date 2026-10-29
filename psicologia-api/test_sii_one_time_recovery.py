@@ -59,6 +59,8 @@ class RecoveryTests(unittest.TestCase):
 
     def state(self,order=OID):
         with billing.db() as con:
+            from sii_one_time_recovery import SCHEMA
+            con.executescript(SCHEMA)
             row=con.execute("SELECT invoice_status,folio,payment_status FROM billing_orders WHERE order_id=?",
                             (order,)).fetchone()
             queue=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",
