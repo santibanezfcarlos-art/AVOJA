@@ -23,6 +23,16 @@ class EmitButtonUiTests(unittest.TestCase):
         self.assertIn("r.environment==='production'&&r.invoice_status==='pending'",script)
         self.assertIn("r.issuance_state==='reconciliation'||r.issuance_state==='processing'",script)
 
+    def test_emission_progress_never_clears_purchase_cards(self):
+        script=SCRIPT.read_text(encoding="utf-8")
+        poll=script.split("async function pollIssue(order){",1)[1].split("async function refresh(",1)[0]
+        self.assertNotIn("await refresh();",poll)
+        self.assertIn("issueMessage(order,message)",poll)
+        self.assertIn("await refresh({quiet:true});",poll)
+        refresh=script.split("async function refresh({quiet=false}={})",1)[1]
+        self.assertNotIn("$('orders').replaceChildren();",refresh)
+        self.assertIn("document.createDocumentFragment()",refresh)
+
     def test_preview_does_not_issue(self):
         script=SCRIPT.read_text(encoding="utf-8")
         self.assertIn("'/prepare-render'",script)
