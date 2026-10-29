@@ -31,7 +31,7 @@ class FakePage:
         self.evaluations+=1
         if "__pscPermitFinal" in script:
             return None
-        return next(self.results)
+        return next(self.results,None)
     def locator(self,selector):
         assert selector=="[data-psc-issue-final=yes]"
         return FakeNode(self)
@@ -48,6 +48,18 @@ class Canaries(unittest.TestCase):
         self.assertEqual(status,"canary_clicked_reconciliation")
         claim.assert_called_once_with("signed-opaque")
         self.assertEqual(p.clicks,1)
+    def test_official_result_is_reported_once_and_pdf_saved(self):
+        page=FakePage([{"ok":True,"amount":30000,"form_id":"btn","text_length":100},
+                       {"ok":True,"amount":30000,"form_id":"btn","text_length":100},
+                       {"folio":"615","dte":41,"amount":30000,"pdf":"fake-b64-pdf"}])
+        with (patch("issue_canary.claim",return_value=True),
+              patch("issue_canary.report_complete",return_value={"state":"issued","pdf_stored":True}) as send):
+            result=issue_canary.issue_once(page,ORDER,IDS,"signed-canary-ticket")
+        self.assertEqual(result,"canary_issued_pdf_saved")
+        self.assertEqual(page.clicks,1)
+        send.assert_called_once()
+        self.assertEqual(send.call_args.args[1]["folio"],"615")
+
     def test_never_clicks_if_any_form_check_fails(self):
         p=FakePage([{"ok":False,"reason":"amount_not_confirmed"}])
         with patch("issue_canary.claim") as claim:
