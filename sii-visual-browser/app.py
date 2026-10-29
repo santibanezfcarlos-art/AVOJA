@@ -507,6 +507,20 @@ def _browser_owner(started, credentials, ticket, mode):
                 app.logger.warning("SII_VISUAL_PREPARATION %s", prepare_result)
             else:
                 order.clear()
+            # Background-only preparation never needs a 15-minute visual
+            # session. Keep its final status while freeing Chromium for
+            # another purchase (and preserving the existing visual workflow).
+            if mode=="preview" and _session.get("auto_issue"):
+                result=_session.get("preparation")
+                browser.close()
+                with _lock:
+                    if _session.get("started")==started:
+                        _session.update(
+                            state="prepared" if result=="prepared_not_issued" else "blocked",
+                            started=None,browser=None,stop=False,
+                            stage=result or "calculator_not_ready",
+                            preparation=result or "calculator_not_ready")
+                return
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 if mode=="issue_canary" and _session.get("issue_confirmed"):
                     with _lock:
@@ -608,8 +622,7 @@ def _start_ticket(ticket, *, automatic=False):
         if data["nonce"] in _used_nonces:
             return jsonify(error="Este enlace ya fue utilizado."), 403
         if _session.get("state") in ("starting", "open"):
-            return jsonify(error="Otro proceso SII está ejecutándose. No se inició otra emisión."),409
-        _used_nonces.add(data["nonce"])
+            return jsonify(error="Chromium ya está ocupado preparando otra compra."),409
         _used_nonces.add(data["nonce"])
 
     try:
@@ -664,8 +677,10 @@ def internal_start():
     body=request.get_json(silent=True) or {}
     ticket=body.get("ticket","")
     decoded=_decode_ticket(ticket)
-    if not decoded or decoded.get("mode")!="issue_canary":
+    if not decoded or decoded.get("mode") not in ("issue_canary","preview"):
         return jsonify(error="Solicitud SII inválida."),403
+    # preview: prepare and verify, NO final SII emission.
+    # issue_canary: existing one-click real issuance, separately authorized.
     return _start_ticket(ticket, automatic=True)
 
 
