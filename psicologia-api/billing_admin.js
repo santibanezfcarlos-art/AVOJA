@@ -7,6 +7,14 @@ let firstCanaryReady=false;
 let firstCanaryOrderId=null;
 const issueProgress=Object.create(null);
 const issueTimers=Object.create(null);
+const previewProgress=Object.create(null);
+const previewRunning=Object.create(null);
+const previewTimers=Object.create(null);
+function previewMessage(order,message){
+ previewProgress[order]=message;
+ const status=Array.from(document.querySelectorAll('[data-preview-order]')).find(e=>e.dataset.previewOrder===order);
+ if(status)status.textContent=message;
+}
 const siiLabels={queued:"Esperando agente local",running:"Preparando en tu computador",prepared:"Formulario verificado · sin emitir",blocked:"Detenido · revisar formulario",session_required:"Renovar sesión SII",failed:"Preparación fallida",reconciliation:"Pendiente de conciliación"};
 const labels={initiated:'Pago sin confirmar',approved:'Pago aprobado',rejected:'Pago rechazado',cancelled:'Pago cancelado',pending:'Boleta pendiente',issued:'Boleta emitida',test:'Prueba · no emitir',not_applicable:'No corresponde emitir'};
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
@@ -23,20 +31,38 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  const jobs=siiJobs.filter(j=>j.order_id===r.order_id);
  const active=jobs.find(j=>['queued','running','reconciliation'].includes(j.status));
  const latest=jobs[0];
- if(latest)section.append(node('p','Agente SII: '+(siiLabels[latest.status]||latest.status)));
+ if(latest&&r.environment==='integration')section.append(node('p','Agente SII: '+(siiLabels[latest.status]||latest.status)));
  if(r.environment==='production'){
-  const formSii=node('form',undefined,'actions');formSii.action='/admin/sii-visual/session';formSii.method='post';formSii.target='_blank';formSii.rel='noopener';
-  const id=node('input');id.type='hidden';id.name='order_id';id.value=r.order_id;
-  const open=node('button','Abrir esta compra en SII (sin emitir)','primary');open.type='submit';
-  formSii.append(id,open);actions.append(formSii);
-  section.append(node('p',r.issuance_state==='awaiting_issuer'?'Compra aprobada vinculada a solicitud de boleta. Emisor automático aún no habilitado.':'Compra aprobada pendiente de gestión en SII.','meta'));
+  const prepare=node('button','Preparar en SII (sin emitir)','primary');
+  prepare.type='button';
+  prepare.disabled=!!previewRunning[r.order_id]||r.issuance_state==='reconciliation'||r.issuance_state==='processing';
+  prepare.title='Ejecuta Chromium en Render sin abrir otra pestaña y sin emitir un documento.';
+  prepare.onclick=async()=>{
+   if(previewRunning[r.order_id])return;
+   previewRunning[r.order_id]=true;prepare.disabled=true;
+   previewMessage(r.order_id,'Iniciando Chromium en Render…');
+   try{
+    const response=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/prepare-render',{
+       method:'POST',headers:{'X-Billing-Action':'manual-invoice'}});
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'No se pudo preparar el formulario.');
+    previewMessage(r.order_id,'Chromium iniciado. Ingresando al SII…');
+    pollPreview(r.order_id);
+   }catch(err){
+    previewRunning[r.order_id]=false;
+    previewMessage(r.order_id,'Preparación no iniciada: '+err.message);
+    prepare.disabled=false;
+   }
+  };
+  actions.append(prepare);
+  section.append(node('p',r.issuance_state==='awaiting_issuer'?'Compra aprobada · boleta pendiente.':'Compra aprobada · revisión SII pendiente.','meta'));
  }
  if(r.environment==='production'){
   if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
    section.append(node('p','Emisión SII con resultado por conciliar. NO volver a emitir. Primero comprueba si existe folio real en SII.','warning'));
   }else if(firstCanaryReady&&firstCanaryOrderId===r.order_id){
    const emit=node('button','Emitir','primary');emit.type='button';
-   emit.disabled=!!issueProgress[r.order_id];
+   emit.disabled=!!issueProgress[r.order_id]||!!previewRunning[r.order_id];
    emit.title='Un clic inicia Chromium en Render y la emisión real del SII en segundo plano.';
    emit.onclick=async()=>{
     emit.disabled=true;
@@ -56,7 +82,9 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
      await refresh();
     }
    };actions.append(emit);
-   section.append(node('p',issueProgress[r.order_id]||'Emisión desde Render: presiona Emitir y Chromium ejecutará el proceso en segundo plano.','meta'));
+   const issueState=node('p',issueProgress[r.order_id]||'','sii-progress');
+   issueState.dataset.issueOrder=r.order_id;issueState.setAttribute('role','status');
+   issueState.setAttribute('aria-live','polite');actions.append(issueState);
   }else{
    const emit=node('button','Emitir','primary');emit.type='button';
    emit.title='Abrir e-Boleta SII oficial. Completa y confirma la emisión directamente en el portal.';
@@ -66,14 +94,15 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
    };actions.append(emit);
   }
  }
- if(active&&active.mode==='preview'){
+ if(r.environment==='integration'&&active&&active.mode==='preview'){
   const close=node('button','Cerrar preparación interrumpida');close.type='button';
   close.onclick=async()=>{
    if(!confirm('Primero detén el agente con Ctrl+C y cierra su Chromium. ¿Ya está detenido?'))return;
    try{const res=await fetch('/admin/boletas/sii-jobs/'+active.id+'/close',{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({agent_stopped:true})});if(!res.ok)throw Error('No fue posible cerrar el trabajo');await refresh()}catch(e){$('notice').textContent=e.message}
   };actions.append(close);
  }
- const prep=node('button',r.environment==='integration'?'Previsualizar prueba en SII (sin emitir)':'Preparar en mi computador (sin emitir)');prep.type='button';prep.disabled=!!active;
+ if(r.environment==='integration'){
+ const prep=node('button','Previsualizar prueba SII (sin emitir)');prep.type='button';prep.disabled=!!active;
  prep.onclick=async()=>{
   prep.disabled=true;$('notice').textContent='Validando orden en el servidor…';
   try{
@@ -83,6 +112,13 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
    await refresh();$('notice').textContent='Compra enviada al agente local. Revisa el navegador que se abrirá en tu computador. Cierra esa ventana al terminar y pulsa Actualizar. No se emitirá una boleta.';
   }catch(error){$('notice').textContent=error.message;prep.disabled=false}
  };actions.append(prep);
+ }
+ if(r.environment==='production'){
+  const state=node('p',previewProgress[r.order_id]||'','sii-progress');
+  state.dataset.previewOrder=r.order_id;
+  state.setAttribute('role','status');state.setAttribute('aria-live','polite');
+  actions.append(state);
+ }
 }
 if(r.invoice_status==='issued'){
  section.append(node('p','Folio '+r.folio+' · Emisión '+r.issued_date));
@@ -129,6 +165,50 @@ if(r.environment==='production'&&r.payment_status==='approved'&&r.invoice_status
  form.onsubmit=async e=>{e.preventDefault();if(!confirm('¿Ya emitiste en el SII la boleta con folio '+folio.value+'?'))return;button.disabled=true;try{const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/issued',{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Action':'manual-invoice'},body:JSON.stringify({folio:folio.value,issued_date:date.value})});const result=await res.json();if(!res.ok)throw Error(result.error||'No se pudo registrar');await refresh();$('notice').textContent='Folio registrado correctamente.'}catch(err){$('notice').textContent=err.message}finally{button.disabled=false}};
  actions.append(form);
 }section.append(actions);return section}
+async function pollPreview(order){
+ if(previewTimers[order])return;
+ let checks=0;previewTimers[order]=true;
+ const finish=async (message)=>{
+   previewRunning[order]=false;delete previewTimers[order];
+   previewMessage(order,message);
+   await refresh();
+ };
+ const step=async()=>{
+  try{
+   const res=await fetch('/admin/boletas/'+encodeURIComponent(order)+'/prepare-status',{cache:'no-store'});
+   if(!res.ok)throw Error('No se pudo consultar Render');
+   const value=await res.json();
+   const stage=value.stage||value.state;
+   const labels={
+    starting:'Iniciando Chromium en Render…',opening_sii:'Abriendo portal SII…',
+    sii_authentication:'Ingresando al SII…',waiting_before_login:'Verificando credenciales…',
+    waiting_calculator:'Cargando e-Boleta…',calculator_ready:'Calculadora SII lista…',
+    preparing_order:'Preparando monto y receptor…',
+    waiting_receiver_form:'Abriendo formulario del receptor…',
+    filling_receiver:'Completando datos del receptor…',
+    prepared_not_issued:'Formulario completo y verificado. NO se emitió una boleta.',
+    filled_document_type_unverified:'Campos completados, pero falta verificar boleta exenta. NO se emitió.',
+    blocked_receiver_verification:'El SII no validó un campo. NO se emitió.',
+    calculator_not_ready:'No se pudo abrir la calculadora SII.',
+    not_running:'Chromium no informa un proceso activo. Comprueba el estado antes de reintentar.',
+    issued:'La boleta ya figura como emitida en el registro.'
+   };
+   const text=labels[stage]||((value.state==='blocked'||value.state==='failed')
+                       ?'Preparación detenida: '+stage+'. NO se emitió desde esta preparación.'
+                       :'Procesando en Render: '+stage+'…');
+   previewMessage(order,text);
+   if(value.state==='prepared'||value.state==='blocked'||value.state==='failed'
+      ||value.state==='expired'||value.state==='not_running'||value.state==='issued'
+      ||stage==='prepared_not_issued'||stage.startsWith('blocked_')){
+     await finish(text);return;
+   }
+   if(++checks>120){await finish('La preparación supera el tiempo previsto; comprueba Render antes de reintentar.');return}
+   previewTimers[order]=setTimeout(step,3000);
+  }catch(err){await finish('No se pudo consultar el estado de Chromium. Revisa antes de repetir.')}
+ };
+ await step();
+}
+
 async function pollIssue(order){
  if(issueTimers[order])return;
  const terminal=new Set(['issued','reconciliation','failed','expired','unavailable','not_running']);
