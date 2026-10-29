@@ -410,7 +410,8 @@ def _browser_owner(started, credentials):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False,
+                headless=True,
+                channel="chromium",
                 args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
                 timeout=30000,
             )
@@ -447,7 +448,7 @@ def _browser_owner(started, credentials):
             host = urlparse(page.url).hostname or ""
             safe_result = {
                 "connection": "direct",
-                "browser_mode": "background_virtual_display",
+                "browser_mode": "headless_full",
                 "sii_http_status": response.status if response else None,
                 "final_host": host if host.endswith(".sii.cl") else "other",
                 "authentication": auth_result,
@@ -525,7 +526,7 @@ def _visual_connection_response(status_code=200):
         _session["resume_token"] = secrets.token_urlsafe(32)
     remaining = max(0, int(SESSION_TTL - (time.monotonic() - _session["started"])))
     response = jsonify(status=_session["state"],
-                       browser_mode="background_virtual_display",
+                       browser_mode="headless_full",
                        expires_in_seconds=remaining)
     response.set_cookie("psc_visual_resume", _session["resume_token"],
                         max_age=remaining, secure=True, httponly=True, samesite="Strict")
@@ -550,6 +551,8 @@ def resume():
 
 @app.post("/api/start")
 def start():
+    if _diagnostic_running:
+        return jsonify(error="Diagnóstico de Chromium en curso. Intenta nuevamente en unos minutos."), 503
     body = request.get_json(silent=True) or {}
     ticket = body.get("ticket", "")
     if not isinstance(ticket, str) or len(ticket) > 2048:
@@ -615,3 +618,66 @@ def status():
                    preparation=_session.get("preparation") if _can_resume() else None,
                    connectivity=_session.get("connectivity"),
                    expires_in_seconds=SESSION_TTL if _session.get("started") else 0)
+
+# Temporary, bounded, unauthenticated browser comparison. Removed after diagnosis.
+_diagnostic_running = time.time() < 1793299542
+
+def _compare_browser_modes():
+    marker = "/tmp/psc-browser-comparison-v1"
+    global _diagnostic_running
+    try:
+        fd = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+    except FileExistsError:
+        _diagnostic_running = False
+        return
+    try:
+        with sync_playwright() as p:
+            for mode, options in (
+                ("headless_shell", {"headless": True}),
+                ("headless_full", {"headless": True, "channel": "chromium"}),
+                ("headed_control", {"headless": False}),
+            ):
+                browser = None
+                result = {"mode": mode, "documents": [], "login_ready": False}
+                try:
+                    browser = p.chromium.launch(**options,
+                        args=["--no-sandbox", "--disable-dev-shm-usage",
+                              "--disable-blink-features=AutomationControlled"], timeout=30000)
+                    context = browser.new_context(locale="es-CL", timezone_id="America/Santiago",
+                                                  viewport={"width":1365,"height":768})
+                    page = context.new_page()
+                    def record(response):
+                        if response.request.resource_type == "document":
+                            host = urlparse(response.url).hostname or ""
+                            result["documents"].append({"host": host if host.endswith(".sii.cl") else "other",
+                                                        "status": response.status})
+                    page.on("response", record)
+                    try:
+                        page.goto(TARGET, wait_until="domcontentloaded", timeout=60000)
+                    except PlaywrightTimeoutError:
+                        result["navigation_timeout"] = True
+                    deadline = time.monotonic() + 45
+                    while time.monotonic() < deadline:
+                        if urlparse(page.url).hostname == "clave.w.sii.cl":
+                            if page.locator('input[type="password"]:visible').count():
+                                result["login_ready"] = True
+                                break
+                            if "NO SE ENCONTRÓ LA PÁGINA" in page.locator("body").inner_text(timeout=5000).upper():
+                                result["not_found_page"] = True
+                                break
+                        page.wait_for_timeout(1000)
+                    result["final_host"] = urlparse(page.url).hostname
+                    result["headless_user_agent"] = page.evaluate("navigator.userAgent.includes('HeadlessChrome')")
+                except Exception as exc:
+                    result["error_type"] = type(exc).__name__
+                finally:
+                    if browser:
+                        browser.close()
+                app.logger.warning("SII_BROWSER_COMPARISON %s", json.dumps(result, separators=(",", ":")))
+    finally:
+        _diagnostic_running = False
+
+if _diagnostic_running:
+    threading.Thread(target=_compare_browser_modes, daemon=True,
+                     name="sii-browser-comparison").start()
