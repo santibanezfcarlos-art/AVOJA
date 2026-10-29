@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, request, send_file
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from issue_canary import issue_once
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 4096
@@ -35,6 +36,7 @@ BLOCK_ISSUE_ACTIONS = r"""
   const protect = (event) => {
     const el = event.target?.closest?.("button, input[type=submit], [role=button], a");
     if (el && isIssueAction(el)) {
+      if (window.__pscPermitFinal === el) return;
       if (window.__pscCalculatorAdvance === el) {
         window.__pscCalculatorAdvance = null;
         return;
@@ -50,7 +52,7 @@ BLOCK_ISSUE_ACTIONS = r"""
     const submitter = event.submitter;
     const finalAction = (submitter && isIssueAction(submitter)) ||
       (!submitter && Array.from(event.target.querySelectorAll("button,input[type=submit],[role=button]")).some(isIssueAction));
-    if (finalAction) {
+    if (finalAction && !(submitter && window.__pscPermitFinal === submitter)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       const notice = document.getElementById("__psc_issue_guard");
@@ -248,7 +250,7 @@ def _preview_request_allowed(req):
     return False
 
 
-def _prepare_order_preview(page, order):
+def _prepare_order_preview(page, order, canary=False):
     """Adapt sii_monto_local's keypad and six fields; final issuance never allowed."""
     if not _calculator_ready(page):
         return "calculator_not_ready"
@@ -261,7 +263,8 @@ def _prepare_order_preview(page, order):
             app.logger.warning("SII_PREVIEW_NETWORK_BLOCK method=%s host=%s",
                                route.request.method, urlparse(route.request.url).hostname)
             route.abort()
-    page.context.route("**/*", read_only)
+    if not canary:
+        page.context.route("**/*", read_only)
     display = page.locator("input[readonly]")
     if display.count() == 1:
         initial = re.sub(r"\D", "", display.input_value())
@@ -362,6 +365,19 @@ def _prepare_order_preview(page, order):
             expected = re.sub(r"[.\s-]", "", expected).upper()
         if actual != expected or not field.evaluate("(el) => el.checkValidity() && el.getAttribute('aria-invalid') !== 'true'"):
             return "blocked_receiver_verification"
+    # A canary retains the final button under BLOCK_ISSUE_ACTIONS until a
+    # separate administrator approval and durable claim. Previews remain inert.
+    if canary:
+        body=page.locator("body").inner_text()
+        if not re.search(r"boleta[^\\n]{0,60}(exenta|no afecta)",body,re.I):
+            return "filled_document_type_unverified"
+        with _lock:
+            _session["field_ids"]=ids
+        page.evaluate("""() => {
+          const banner=document.getElementById('__psc_issue_guard');
+          if(banner) banner.textContent='EMISIÓN REAL SUPERVISADA · Requiere confirmar desde el panel PSC antes del último clic.';
+        }""")
+        return "prepared_canary_awaiting_approval"
     # Freeze interaction once the form is complete. No folio/status writes occur.
     page.evaluate("""() => {
         document.querySelectorAll('button,[role=button],input[type=submit]').forEach(el=>{
@@ -407,7 +423,7 @@ def _expire_session(started):
             _session.update(state="expired", started=None)
 
 
-def _browser_owner(started, credentials):
+def _browser_owner(started, credentials, ticket, mode):
     order = credentials.pop("preview_order")
     stage = "chromium_launch"
     try:
@@ -475,11 +491,12 @@ def _browser_owner(started, credentials):
                 with _lock:
                     _session["stage"] = "preparing_order"
                 try:
-                    prepare_result = _prepare_order_preview(page, order)
+                    prepare_result = _prepare_order_preview(page, order, canary=mode=="issue_canary")
                 except Exception as exc:
                     prepare_result = "blocked_" + _session.get("stage", "preparation") + "_" + type(exc).__name__
                 finally:
-                    order.clear()
+                    if mode!="issue_canary":
+                        order.clear()
                 with _lock:
                     _session["preparation"] = prepare_result
                     _session["stage"] = prepare_result
@@ -487,6 +504,24 @@ def _browser_owner(started, credentials):
             else:
                 order.clear()
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
+                if mode=="issue_canary" and _session.get("issue_confirmed"):
+                    with _lock:
+                        _session["issue_confirmed"]=False
+                        _session["stage"]="claiming_canary"
+                        ids=_session.get("field_ids")
+                    try:
+                        if not ids or not order:
+                            raise RuntimeError("canary_fields_missing")
+                        outcome=issue_once(page,order,ids,ticket)
+                    except Exception as exc:
+                        outcome="canary_blocked_"+type(exc).__name__
+                    finally:
+                        order.clear()
+                        ticket=""
+                    with _lock:
+                        _session["stage"]=outcome
+                        _session["preparation"]=outcome
+                    app.logger.warning("SII_ISSUE_CANARY %s",outcome)
                 try:
                     # Memory-only preview; password is masked even if its eye toggle was used.
                     preview = page.screenshot(type="jpeg", quality=65,
@@ -582,19 +617,42 @@ def start():
         app.logger.warning("SII_VISUAL_CREDENTIAL_FETCH_FAILED %s", type(exc).__name__)
         return jsonify(error="No se pudieron obtener las credenciales SII desde la API PSC."), 503
 
+    mode=data.get("mode","preview")
+    if mode not in ("preview","issue_canary"):
+        credentials.clear()
+        return jsonify(error="Tipo de sesión SII inválido."),403
     with _lock:
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
             return _visual_connection_response()
-        _session.update(preparation=None, submitted=False, login_click_attempted=False, preview=None, field_check=None, resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
+        _session.update(preparation=None, submitted=False, login_click_attempted=False,
+                        preview=None, field_check=None, field_ids=None,
+                        mode=mode, issue_confirmed=False,
+                        resume_token=secrets.token_urlsafe(32), state="starting",
+                        error=None, stage="starting", stop=False,
+                        connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
-    threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
+    threading.Thread(target=_browser_owner, args=(started, credentials, ticket, mode), daemon=True,
                      name="sii-visible-chromium").start()
     threading.Thread(target=_expire_session, args=(started,), daemon=True,
                      name="sii-visible-chromium-timeout").start()
     with _lock:
         return _visual_connection_response(202)
+
+
+@app.post("/api/issue")
+def confirm_canary():
+    with _lock:
+        if not _can_resume():
+            return jsonify(error="Sesión no autorizada."),403
+        if (_session.get("mode")!="issue_canary"
+            or _session.get("stage")!="prepared_canary_awaiting_approval"
+            or _session.get("issue_confirmed")):
+            return jsonify(error="La emisión real no está preparada o ya fue solicitada."),409
+        _session["issue_confirmed"]=True
+        _session["stage"]="issue_approved_pending_claim"
+    return jsonify(state="issue_approved_pending_claim"),202
 
 
 @app.post("/api/stop")
@@ -621,6 +679,7 @@ def status():
     if not _can_resume():
         return jsonify(error="Sesión no autorizada."), 403
     return jsonify(status=_session["state"], error=_session.get("error"), stage=_session.get("stage"),
+                   canary=_session.get("mode")=="issue_canary",
                    field_check=_session.get("field_check") if _can_resume() else None,
                    preparation=_session.get("preparation") if _can_resume() else None,
                    connectivity=_session.get("connectivity"),
