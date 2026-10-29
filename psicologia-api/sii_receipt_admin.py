@@ -4,6 +4,7 @@ A receipt is never issued by these routes. They only accept actual, already
 issued folios tied to approved production purchases.
 """
 import io
+import os
 import re
 
 from flask import Blueprint, jsonify, request, send_file
@@ -27,7 +28,11 @@ def statuses():
         rows=con.execute("""SELECT order_id,folio,pdf IS NOT NULL AS has_pdf,
                              sii_state,psc_state
                              FROM sii_receipts ORDER BY updated_at DESC LIMIT 1000""").fetchall()
-    return jsonify(receipts=[dict(r) for r in rows], post_issue_enabled=True)
+        from sii_canary import any_claim
+        claimed=any_claim(con)
+    return jsonify(receipts=[dict(r) for r in rows], post_issue_enabled=True,
+                   first_canary_ready=os.environ.get("SII_CANARY_ENABLED")=="true" and not claimed,
+                   first_canary_claimed=claimed)
 
 
 @bp.post("/admin/boletas/<order>/official-pdf")

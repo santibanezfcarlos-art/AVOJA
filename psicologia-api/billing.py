@@ -366,6 +366,8 @@ def mark_issued(order):
                 return jsonify(error='Esta compra ya tiene una boleta registrada.'), 409
             con.execute("UPDATE billing_orders SET invoice_status='issued',folio=?,issued_date=?,marked_at=? WHERE order_id=?", (folio,issued,now(),order))
             con.execute("UPDATE sii_issuance_queue SET status='issued',updated_at=? WHERE order_id=?", (now(),order))
+            if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sii_first_canary'").fetchone():
+                con.execute("UPDATE sii_first_canary SET state='issued' WHERE order_id=?", (order,))
             con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
                         (order,'marked_issued',now(),request.authorization.username))
         return jsonify(ok=True)

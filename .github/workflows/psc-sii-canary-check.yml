@@ -1,0 +1,18 @@
+name: Validar primera emisión SII supervisada sin emitir
+on:
+  push:
+    branches: [feature/psc-sii-canary-20261029]
+  pull_request:
+    branches: [psicologia-carlos]
+permissions: {contents: read}
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r psicologia-api/requirements.txt
+      - run: python -m compileall -q psicologia-api
+      - run: cd psicologia-api && python -m unittest -v test_sii_canary test_sii_receipt_admin test_billing test_production_checkout test_sii_post_issue
+      - run: node --check psicologia-api/billing_admin.js
