@@ -161,6 +161,60 @@ def complete():
 
 
 
+@bp.post("/sii-visual/internal-sii-delivery")
+def sii_delivery():
+    """Signed one-shot portal-email claim and confirmation for an emitted receipt.
+
+    A claim is persisted before touching the SII mail button. If Chromium
+    crashes or SII's response is ambiguous, delivery is never retried
+    automatically; 'sending'/'unknown' require manual reconciliation.
+    """
+    secret=os.environ.get("SII_VISUAL_TICKET_SECRET","")
+    supplied=request.headers.get("X-PSC-Visual-Bridge","")
+    if len(secret)<32 or not hmac.compare_digest(secret.encode(),supplied.encode()):
+        return jsonify(error="no_autorizado"),403
+    payload=request.get_json(silent=True) or {}
+    d=ticket_data(payload.get("ticket"),claimed_completion=True)
+    if not d or payload.get("action") not in ("claim","complete"):
+        return jsonify(error="ticket_invalido"),403
+    order=d["preview_order"]
+    from sii_post_issue import SCHEMA as receipts_schema
+    with billing.db() as con:
+        any_claim(con)
+        con.executescript(receipts_schema)
+        con.execute("BEGIN IMMEDIATE")
+        issue=con.execute("SELECT * FROM sii_first_canary WHERE id=1").fetchone()
+        receipt=con.execute("SELECT folio,pdf,sii_state,recipient FROM sii_receipts WHERE order_id=?",
+                            (order,)).fetchone()
+        if (not issue or issue["order_id"]!=order or issue["state"]!="issued"
+            or issue["nonce_hash"]!=hashlib.sha256(d["nonce"].encode()).hexdigest()
+            or not receipt or not receipt["pdf"]
+            or str(payload.get("folio"))!=receipt["folio"]):
+            return jsonify(error="documento_no_confirmado"),409
+        if payload["action"]=="claim":
+            if receipt["sii_state"]!="pending":
+                return jsonify(state=receipt["sii_state"],claimed=False),409
+            con.execute("UPDATE sii_receipts SET sii_state='sending',updated_at=? WHERE order_id=?",
+                        (billing.now(),order))
+            con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                        (order,"sii_email_claimed",billing.now(),"sii_browser"))
+            return jsonify(state="sending",claimed=True,recipient=receipt["recipient"])
+        if receipt["sii_state"]!="sending":
+            return jsonify(error="envio_ya_resuelto"),409
+        outcome=payload.get("outcome")
+        if outcome not in ("accepted","unknown"):
+            return jsonify(error="estado_invalido"),400
+        reference="sii-portal-"+receipt["folio"] if outcome=="accepted" else None
+        con.execute("""UPDATE sii_receipts SET sii_state=?,sii_reference=?,updated_at=?
+                       WHERE order_id=?""",(outcome,reference,billing.now(),order))
+        con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                    (order,"sii_email_"+outcome,billing.now(),"sii_browser"))
+        return jsonify(state=outcome)
+
+
+
+
+
 def _visual_service():
     base=os.environ.get("SII_VISUAL_BROWSER_URL","").strip().rstrip("/")
     parsed=urlparse(base)
