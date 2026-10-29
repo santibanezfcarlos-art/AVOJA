@@ -141,10 +141,38 @@ class RecoveryTests(unittest.TestCase):
         from sii_one_time_recovery import dispatch_authorized_once
         self.assertEqual(recover_once(),"unblocked")
         with (patch.dict(os.environ,{"PSC_SII_DISPATCH_APPROVED_ORDER":OID}),
+              patch("time.sleep"),
               patch("sii_canary.start_emission",return_value=(main.app.response_class('{}',mimetype='application/json'),503)) as start):
             dispatch_authorized_once(main.app)
             dispatch_authorized_once(main.app)
             self.assertEqual(start.call_count,1)
+
+    def test_can_rearm_only_failed_credentials_before_any_sii_claim(self):
+        import main
+        from sii_one_time_recovery import dispatch_authorized_once
+        self.assertEqual(recover_once(),"unblocked")
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET status='processing' WHERE order_id=?",(OID,))
+        with (patch.dict(os.environ,{"PSC_SII_DISPATCH_APPROVED_ORDER":OID}),
+              patch("time.sleep"),
+              patch("sii_one_time_recovery.sii_canary._server_request",return_value=(200,{"state":"failed","stage":"credential_fetch"})),
+              patch("sii_canary.start_emission",return_value=(main.app.response_class('{}',mimetype='application/json'),503)) as start):
+            dispatch_authorized_once(main.app)
+            self.assertEqual(start.call_count,1)
+        self.assertEqual(self.state()[1]["status"],"awaiting_issuer")
+
+    def test_never_rearms_failure_after_chromium_launch(self):
+        import main
+        from sii_one_time_recovery import dispatch_authorized_once
+        self.assertEqual(recover_once(),"unblocked")
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET status='processing' WHERE order_id=?",(OID,))
+        with (patch.dict(os.environ,{"PSC_SII_DISPATCH_APPROVED_ORDER":OID}),
+              patch("sii_one_time_recovery.sii_canary._server_request",return_value=(200,{"state":"failed","stage":"waiting_sii_receipt"})),
+              patch("sii_canary.start_emission") as start):
+            dispatch_authorized_once(main.app)
+            start.assert_not_called()
+        self.assertEqual(self.state()[1]["status"],"processing")
 
     def test_archives_the_full_previous_claim(self):
         import json

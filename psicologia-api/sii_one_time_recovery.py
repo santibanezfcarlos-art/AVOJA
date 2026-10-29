@@ -159,15 +159,29 @@ def dispatch_authorized_once(app):
     logger=logging.getLogger("sii_invoice_recovery")
     if os.environ.get("PSC_SII_DISPATCH_APPROVED_ORDER")!=TARGET_ORDER:
         return
+    # A failed credentials fetch happened before Chromium launched, so it
+    # cannot have emitted. Never use this recovery for any later browser stage.
+    base,secret=sii_canary._visual_service()
+    _,browser=sii_canary._server_request(base+"/api/internal/status?"+
+        urlencode({"order_id":TARGET_ORDER}),secret)
     with billing.db() as con:
         con.executescript(SCHEMA)
         con.executescript(RECEIPT_SCHEMA)
         con.execute("BEGIN IMMEDIATE")
+        queue=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(TARGET_ORDER,)).fetchone()
+        if (queue and queue["status"]=="processing" and browser.get("state")=="failed"
+            and browser.get("stage")=="credential_fetch"
+            and not sii_canary.recorded_attempt(con,TARGET_ORDER)
+            and not con.execute("SELECT 1 FROM sii_receipts WHERE order_id=?",(TARGET_ORDER,)).fetchone()):
+            con.execute("UPDATE sii_issuance_queue SET status='awaiting_issuer',updated_at=? WHERE order_id=?",
+                        (billing.now(),TARGET_ORDER))
+            con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                        (TARGET_ORDER,"sii_preflight_failed_rearmed",billing.now(),"operator_authorized_20261029"))
         if not con.execute("SELECT 1 FROM sii_issue_recovery_audit WHERE recovery_key=? AND order_id=?",
                            (RECOVERY_KEY,TARGET_ORDER)).fetchone():
             logger.warning("PSC_SII_APPROVED_DISPATCH state=recovery_not_confirmed")
             return
-        if con.execute("SELECT 1 FROM billing_audit WHERE order_id=? AND action='operator_sii_dispatch_claimed'",
+        if con.execute("SELECT 1 FROM billing_audit WHERE order_id=? AND action='operator_sii_dispatch_claimed_after_preflight_v2'",
                        (TARGET_ORDER,)).fetchone():
             logger.warning("PSC_SII_APPROVED_DISPATCH state=already_requested_no_retry")
             return
@@ -179,7 +193,11 @@ def dispatch_authorized_once(app):
             logger.warning("PSC_SII_APPROVED_DISPATCH state=not_eligible")
             return
         con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
-                    (TARGET_ORDER,"operator_sii_dispatch_claimed",billing.now(),"operator_authorized_20261029"))
+                    (TARGET_ORDER,"operator_sii_dispatch_claimed_after_preflight_v2",billing.now(),"operator_authorized_20261029"))
+    # Wait for Render's public route to settle after a disk-backed restart.
+    # The earlier startup callback was rejected by the edge before reaching PSC.
+    import time
+    time.sleep(45)
     with app.app_context():
         response,status=sii_canary.start_emission(TARGET_ORDER,"operator_authorized_20261029")
     logger.warning("PSC_SII_APPROVED_DISPATCH http=%d started=%s",status,
