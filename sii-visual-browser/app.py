@@ -35,6 +35,10 @@ BLOCK_ISSUE_ACTIONS = r"""
   const protect = (event) => {
     const el = event.target?.closest?.("button, input[type=submit], [role=button], a");
     if (el && isIssueAction(el)) {
+      if (window.__pscCalculatorAdvance === el) {
+        window.__pscCalculatorAdvance = null;
+        return;
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
       const notice = document.getElementById("__psc_issue_guard");
@@ -116,13 +120,16 @@ def _fetch_sii_credentials(ticket):
     )
     try:
         with urllib.request.urlopen(req, timeout=12) as response:
-            data = json.loads(response.read(4096).decode("utf-8"))
+            data = json.loads(response.read(16384).decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise RuntimeError("SII credentials could not be retrieved") from exc
     rut, password = data.get("rut"), data.get("password")
     if not isinstance(rut, str) or not rut or not isinstance(password, str) or not password:
         raise RuntimeError("SII credentials are not configured in the PSC API")
-    return {"rut": rut, "password": password}
+    order = data.get("preview_order")
+    if not isinstance(order, dict) or type(order.get("amount")) is not int or order["amount"] <= 0:
+        raise RuntimeError("preview order unavailable")
+    return {"rut": rut, "password": password, "preview_order": order}
 
 
 def _fill_login_only(page, credentials):
@@ -196,11 +203,139 @@ def _calculator_ready(page):
         return False
     try:
         # Match real calculator controls, never the injected EMITIR warning banner.
-        controls = page.locator("button, input[type=button], [role=button]")
-        return all(controls.filter(has_text=re.compile("^" + label + "$")).first.is_visible()
-                   for label in ("7", "8", "0", "EMITIR"))
+        return all(page.get_by_text(re.compile(r"^\s*" + label + r"\s*$", re.I)).first.is_visible()
+                   for label in ("7", "8", "0", "emitir"))
     except Exception:
         return False
+
+
+
+def _one_visible(locator):
+    found = [locator.nth(i) for i in range(min(locator.count(), 100)) if locator.nth(i).is_visible()]
+    if len(found) != 1:
+        raise RuntimeError("ambiguous_control")
+    return found[0]
+
+
+def _digit(page, digit):
+    # Reuse the local agent's accessible-first, exact-text fallback.
+    buttons = page.get_by_role("button", name=digit, exact=True)
+    if sum(buttons.nth(i).is_visible() for i in range(buttons.count())) == 1:
+        return _one_visible(buttons)
+    return _one_visible(page.get_by_text(digit, exact=True))
+
+
+def _prepare_order_preview(page, order):
+    """Adapt sii_monto_local's keypad and six fields; final issuance never allowed."""
+    if not _calculator_ready(page):
+        return "calculator_not_ready"
+    # Block all state-changing network calls after authentication, including issuance.
+    def read_only(route):
+        if route.request.method.upper() not in ("GET", "HEAD", "OPTIONS"):
+            route.abort()
+        else:
+            route.continue_()
+    page.context.route("**/*", read_only)
+    display = page.locator("input[readonly]")
+    if display.count() == 1:
+        initial = re.sub(r"\D", "", display.input_value())
+        if initial not in ("", "0"):
+            return "blocked_existing_amount"
+    else:
+        amounts = re.findall(r"\$\s*([0-9][0-9.,]*)", page.locator("body").inner_text())
+        if not amounts or any(re.sub(r"\D", "", v).strip("0") for v in amounts):
+            return "blocked_initial_amount_unverified"
+    for digit in str(order["amount"]):
+        if _session.get("stop"):
+            return "stopped"
+        _digit(page, digit).click()
+        page.wait_for_timeout(120)
+    page.wait_for_timeout(800)
+    amounts = [int(re.sub(r"\D", "", v)) for v in
+               re.findall(r"\$\s*([0-9][0-9.,]*)", page.locator("body").inner_text())]
+    if amounts != [order["amount"]]:
+        return "blocked_amount_unverified"
+    _update_preview(page)
+    controls = page.locator("button, [role=button], input[type=button], input[type=submit]")
+    matches = []
+    for i in range(min(controls.count(), 100)):
+        el = controls.nth(i)
+        if el.is_visible() and el.is_enabled():
+            label = el.get_attribute("value") or el.inner_text()
+            if re.fullmatch(r"\s*emitir\s*", label, re.I):
+                matches.append(el)
+    if len(matches) != 1 or not _calculator_ready(page):
+        return "blocked_calculator_advance"
+    # Permit exactly this one calculator control, then immediately consume permission.
+    matches[0].evaluate("(el) => { window.__pscCalculatorAdvance = el; }")
+    try:
+        matches[0].click(timeout=10000)
+    finally:
+        page.evaluate("() => { window.__pscCalculatorAdvance = null; }")
+    # No further EMITIR is allowed, including Enter and native submit.
+    page.evaluate("""() => {
+        document.addEventListener('submit', e => {e.preventDefault();e.stopImmediatePropagation();}, true);
+        document.addEventListener('keydown', e => {
+            if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();}
+        },true);
+    }""")
+    page.get_by_text("Receptor", exact=True).first.wait_for(state="visible", timeout=30000)
+    for label in ("Receptor", "Detalle"):
+        visible_label = _one_visible(page.get_by_text(label, exact=True))
+        checkbox = page.get_by_role("checkbox", name=label, exact=True)
+        if checkbox.count() == 1:
+            if not checkbox.is_checked():
+                checkbox.check(timeout=5000)
+        else:
+            checkbox = visible_label.locator("xpath=..").locator("input[type=checkbox]")
+            if checkbox.count() != 1:
+                return "blocked_switch_unrecognized"
+            if not checkbox.is_checked():
+                visible_label.click(timeout=5000)
+    page.wait_for_timeout(700)
+    fields = {"RUT con DV receptor": "rut", "Nombre receptor": "nombre",
+              "Dirección receptor": "direccion", "E-mail receptor": "email",
+              "Teléfono receptor": "telefono", "Detalle": "detalle"}
+    ids = {}
+    for label, key in fields.items():
+        if _session.get("stop"):
+            return "stopped"
+        loc = page.get_by_label(label, exact=True)
+        if key == "detalle":
+            loc = loc.and_(page.locator('input[type="text"], textarea'))
+        field = _one_visible(loc)
+        field_id = field.get_attribute("id")
+        if not field_id or field.evaluate("(el) => !['INPUT','TEXTAREA'].includes(el.tagName)"):
+            return "blocked_field_unrecognized"
+        ids[key] = field_id
+        stable = page.locator("[id=" + json.dumps(field_id) + "]")
+        stable.fill(order[key], timeout=7000)
+        stable.press("Tab")
+        page.wait_for_timeout(900)
+        _update_preview(page)
+    # Validate the same nodes after all blur handlers; RUT formatting is harmless.
+    for key, field_id in ids.items():
+        field = page.locator("[id=" + json.dumps(field_id) + "]")
+        actual, expected = field.input_value(), order[key]
+        if key == "rut":
+            actual = re.sub(r"[.\s-]", "", actual).upper()
+            expected = re.sub(r"[.\s-]", "", expected).upper()
+        if actual != expected or not field.evaluate("(el) => el.checkValidity() && el.getAttribute('aria-invalid') !== 'true'"):
+            return "blocked_receiver_verification"
+    # Freeze interaction once the form is complete. No folio/status writes occur.
+    page.evaluate("""() => {
+        document.querySelectorAll('button,[role=button],input[type=submit]').forEach(el=>{
+            if(/^emitir$/i.test((el.innerText||el.value||'').trim())){
+                el.disabled=true;el.setAttribute('aria-disabled','true');
+            }
+        });
+        document.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();},true);
+        document.addEventListener('keydown',e=>{e.preventDefault();e.stopImmediatePropagation();},true);
+    }""")
+    body = page.locator("body").inner_text()
+    if not re.search(r"boleta[^\\n]{0,60}(exenta|no afecta)", body, re.I):
+        return "filled_document_type_unverified"
+    return "prepared_not_issued"
 
 
 def _update_preview(page):
@@ -233,6 +368,7 @@ def _expire_session(started):
 
 
 def _browser_owner(started, credentials):
+    order = credentials.pop("preview_order")
     stage = "chromium_launch"
     try:
         with sync_playwright() as p:
@@ -287,6 +423,21 @@ def _browser_owner(started, credentials):
                     _session["state"] = "open"
                     _session["stage"] = "calculator_ready" if calculator else "sii_page_open"
             app.logger.warning("SII_VISUAL_DIRECT_LOGIN %s", json.dumps(safe_result, separators=(",", ":")))
+            if calculator:
+                with _lock:
+                    _session["stage"] = "preparing_order"
+                try:
+                    prepare_result = _prepare_order_preview(page, order)
+                except Exception as exc:
+                    prepare_result = "blocked_" + type(exc).__name__
+                finally:
+                    order.clear()
+                with _lock:
+                    _session["preparation"] = prepare_result
+                    _session["stage"] = prepare_result
+                app.logger.warning("SII_VISUAL_PREPARATION %s", prepare_result)
+            else:
+                order.clear()
             page.bring_to_front()
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 try:
@@ -388,7 +539,7 @@ def start():
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
             return _visual_connection_response()
-        _session.update(submitted=False, login_click_attempted=False, preview=None, field_check=None, resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
+        _session.update(preparation=None, submitted=False, login_click_attempted=False, preview=None, field_check=None, resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
     threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
@@ -420,7 +571,10 @@ def preview():
 
 @app.get("/api/status")
 def status():
+    if not _can_resume():
+        return jsonify(error="Sesión no autorizada."), 403
     return jsonify(status=_session["state"], error=_session.get("error"), stage=_session.get("stage"),
                    field_check=_session.get("field_check") if _can_resume() else None,
+                   preparation=_session.get("preparation") if _can_resume() else None,
                    connectivity=_session.get("connectivity"),
                    expires_in_seconds=SESSION_TTL if _session.get("started") else 0)
