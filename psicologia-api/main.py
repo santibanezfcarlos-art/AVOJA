@@ -358,6 +358,8 @@ def _recover_giovanni_unissued_sii_once():
     from sii_one_time_recovery import dispatch_authorized_once, log_selected_state
     log_selected_state()
     dispatch_authorized_once(app)
+    from sii_one_time_recovery import diagnose_authorized_once
+    diagnose_authorized_once()
     _logging.getLogger("sii_invoice_recovery").warning(
         "PSC_SII_GIOVANNI_RECOVERY status=%s",status)
 

@@ -13,7 +13,7 @@ import sii_canary
 from sii_post_issue import SCHEMA as RECEIPT_SCHEMA
 
 TARGET_ORDER="PSCP0282F8088E27155ECB"
-RECOVERY_KEY="sii_approved_order_unissued_20261029_v2"
+RECOVERY_KEY="sii_approved_order_unissued_20261029_v3"
 SCHEMA="""CREATE TABLE IF NOT EXISTS sii_issue_recovery_audit (
  recovery_key TEXT PRIMARY KEY,
  order_id TEXT NOT NULL,
@@ -234,3 +234,26 @@ def log_selected_state():
             FROM billing_orders o LEFT JOIN sii_issuance_queue q ON q.order_id=o.order_id
             WHERE o.order_id=?""",(TARGET_ORDER,)).fetchone()
     logging.getLogger("sii_invoice_recovery").warning("PSC_SII_APPROVED_STATE %s",dict(row) if row else "missing")
+
+
+def diagnose_authorized_once():
+    """Read-only, network-blocked browser diagnosis, never issue mode."""
+    if os.environ.get("PSC_SII_DIAGNOSE_APPROVED_ORDER")!=TARGET_ORDER:
+        return
+    import time,json,hmac,hashlib,secrets,logging
+    logger=logging.getLogger("sii_invoice_recovery")
+    time.sleep(45)
+    from sii_visual_admin import _b64
+    base,secret=sii_canary._visual_service()
+    payload=_b64(json.dumps({"exp":int(time.time())+600,"nonce":secrets.token_urlsafe(24),
+        "preview_order":TARGET_ORDER,"mode":"diagnostic"},separators=(",",":")).encode())
+    signature=_b64(hmac.new(secret.encode(),payload.encode("ascii"),hashlib.sha256).digest())
+    code,_=sii_canary._server_request(base+"/api/internal/start",secret,{"ticket":payload+"."+signature})
+    logger.warning("PSC_SII_DIAGNOSE http=%d",code)
+    for _ in range(90):
+        time.sleep(5)
+        _,status=sii_canary._server_request(base+"/api/internal/status?"+urlencode({"order_id":TARGET_ORDER}),secret)
+        stage=status.get("stage","unknown")
+        logger.warning("PSC_SII_DIAGNOSE state=%s stage=%s",status.get("state"),stage)
+        if stage.startswith(("diagnostic_","blocked_")) or status.get("state") in ("failed","blocked","prepared"):
+            break
