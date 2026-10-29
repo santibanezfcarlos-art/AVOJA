@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, send_file
+from flask import Blueprint, jsonify, redirect, request, send_file
 import billing
 
 bp = Blueprint("sii_visual_admin", __name__, url_prefix="/admin")
@@ -54,11 +54,10 @@ def create_sii_visual_session():
         # A short-lived bearer ticket is still safe to issue if the audit store is
         # temporarily unavailable; never log or persist the ticket itself.
         pass
-    return jsonify(
-        url=base + "/#ticket=" + ticket,
-        expires_in_seconds=600,
-        message="Enlace de un solo uso; no incluye credenciales del SII.",
-    )
+    response = redirect(base + "/#ticket=" + ticket, code=303)
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 def request_actor():
