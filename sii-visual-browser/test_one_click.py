@@ -47,7 +47,7 @@ class OneClickBrowserTests(unittest.TestCase):
             self.assertNotIn('password',status.text)
             rejected=self.client.post('/api/internal/start',json={'ticket':'another-fixture'},
                                       headers={'X-PSC-Visual-Bridge':SECRET})
-            self.assertEqual(rejected.status_code,409)
+            self.assertEqual(rejected.status_code,403)  # Replay ticket rejected before second session
 
     def test_preview_cannot_use_privileged_background_start(self):
         value=self.data();value['mode']='preview'
