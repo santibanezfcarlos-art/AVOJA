@@ -8,44 +8,46 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 #screen{height:72vh;min-height:440px;background:#17231e;border-radius:12px;overflow:hidden}.status{min-height:1.5em;color:#435d52}#screen canvas{width:100%;height:100%}
 </style></head><body><main>
 <section class="card"><h1>Prueba visual e-Boleta SII</h1>
-<p>Esta sesión abre Chromium en Render a través de Decodo. Escribe tu RUT y Clave Tributaria directamente en la ventana; PSC no los recibe ni los guarda.</p>
+<p>Esta sesión abre Chromium visible en Render con conexión directa, sin Decodo ni otro proxy. Escribe tu RUT y Clave Tributaria directamente en la ventana; PSC no los recibe ni los guarda.</p>
 <p class="warning">Sesión de prueba. No ingreses datos de receptores reales y no intentes emitir. El botón EMITIR está bloqueado. La sesión se cierra automáticamente a los 15 minutos.</p>
-<button id="start" type="button">Iniciar Chromium con Decodo</button>
+<button id="start" type="button">Iniciar Chromium</button>
 <button id="stop" type="button" hidden>Cerrar sesión</button>
 <p id="status" class="status" role="status" aria-live="polite">Esperando inicio autorizado desde el panel PSC…</p></section>
 <section class="card"><div id="screen" aria-label="Pantalla remota de Chromium"></div></section>
 </main>
 <script type="module">
 import RFB from "/novnc/core/rfb.js";
-const start=document.getElementById("start"), stop=document.getElementById("stop");
+const launch=document.getElementById("start"), stop=document.getElementById("stop");
 const status=document.getElementById("status"), screen=document.getElementById("screen");
 let rfb=null, ticket=new URLSearchParams(location.hash.slice(1)).get("ticket"), pollTimer=null;
 history.replaceState(null,"",location.pathname);
 async function refreshStatus(){
  try{
   const response=await fetch("/api/status",{cache:"no-store"}), data=await response.json();
-  if(data.status==="failed"){status.textContent="La sesión falló al abrir el portal ("+(data.error||"error")+").";return}
+  if(data.status==="failed"){status.textContent="Chromium no pudo iniciar ("+(data.error||"error")+"). Vuelve al panel y prueba otra vez.";return}
   if(data.status==="expired"){status.textContent="La sesión terminó.";return}
   if(data.connectivity){
    const c=data.connectivity;
-   status.textContent="Decodo · país de salida: "+c.country+" · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host;
+   status.textContent="Conexión directa (sin Decodo) · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host;
   }
  }catch{}
 }
-start.onclick=async()=>{
- if(!ticket){status.textContent="Abre esta prueba desde el panel privado PSC para autorizar una sesión.";return}
- start.disabled=true;status.textContent="Validando el enlace y preparando Decodo…";
+async function startBrowser(){
+ if(!ticket){status.textContent="Abre esta prueba desde el panel privado PSC.";return}
+ launch.disabled=true;status.textContent="Abriendo Chromium en Render con conexión directa…";
  try{
   const response=await fetch("/api/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});
   const data=await response.json();ticket=null;
-  if(!response.ok) throw new Error(data.error||"No se pudo iniciar la sesión.");
-  status.textContent="Chromium está iniciándose con Decodo. Espera unos segundos.";
+  if(!response.ok)throw new Error(data.error||"No se pudo iniciar la sesión.");
+  status.textContent="Conectando con la pantalla remota…";
   const scheme=location.protocol==="https:"?"wss":"ws";
   rfb=new RFB(screen,scheme+"://"+location.host+"/websockify",{credentials:{password:data.vnc_password}});
   rfb.scaleViewport=true;rfb.resizeSession=false;rfb.clipViewport=true;
-  rfb.addEventListener("connect",()=>{status.textContent="Chromium conectado. Comprobando salida Decodo y portal SII…";stop.hidden=false;refreshStatus();pollTimer=setInterval(refreshStatus,2000)});
-  rfb.addEventListener("disconnect",()=>{if(pollTimer)clearInterval(pollTimer);status.textContent="La conexión visual se cerró.";});
- }catch(e){status.textContent=e.message;start.disabled=false}
-};
-stop.onclick=async()=>{await fetch("/api/stop",{method:"POST"});if(rfb)rfb.disconnect();status.textContent="Sesión cerrada."};
+  rfb.addEventListener("connect",()=>{status.textContent="Chromium conectado. Abriendo e-Boleta SII directamente…";stop.hidden=false;refreshStatus();pollTimer=setInterval(refreshStatus,2000)});
+  rfb.addEventListener("disconnect",()=>{if(pollTimer)clearInterval(pollTimer);status.textContent="La conexión visual se cerró. Puedes volver al panel e iniciar otra sesión."});
+ }catch(e){status.textContent=e.message;launch.hidden=false;launch.disabled=false}
+}
+launch.addEventListener("click",startBrowser);
+stop.onclick=async()=>{await fetch("/api/stop",{method:"POST"});if(rfb)rfb.disconnect();if(pollTimer)clearInterval(pollTimer);status.textContent="Sesión cerrada."};
+if(ticket){launch.hidden=true;startBrowser()}else{status.textContent="Inicia esta prueba desde el panel privado PSC."}
 </script></body></html>
