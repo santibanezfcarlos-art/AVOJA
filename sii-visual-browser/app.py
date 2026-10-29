@@ -156,7 +156,7 @@ def _start_browser(proxy):
             args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
             timeout=30000,
         )
-    context = browser.new_context(locale="es-CL", timezone_id="America/Santiago", viewport={"width":1365,"height":768})
+    context = browser.new_context(locale="es-CL", timezone_id="America/Santiago", viewport={"width":1364,"height":768})
     context.add_init_script(BLOCK_ISSUE_ACTIONS)
     page = context.new_page()
     page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
