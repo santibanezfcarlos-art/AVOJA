@@ -327,20 +327,25 @@ def emit_from_panel(order):
     try:
         base,secret=_visual_service()
         with billing.db() as con:
-            if any_claim(con):
-                return jsonify(error="Ya existe un intento real. Primero revisa el resultado SII."),409
+            any_claim(con,order)
+            con.execute("BEGIN IMMEDIATE")
+            if recorded_attempt(con,order):
+                return jsonify(error="Ya existe un intento de emisión para este pago. Revisar SII."),409
             row=con.execute("""SELECT name,environment,payment_status,invoice_status,folio
                                FROM billing_orders WHERE order_id=?""",(order,)).fetchone()
             if (not row or row["environment"]!="production" or row["payment_status"]!="approved"
                 or row["invoice_status"]!="pending" or row["folio"]):
                 return jsonify(error="La compra no tiene una boleta pendiente válida."),409
-            if "giovanni" not in row["name"].casefold() or "salas" not in row["name"].casefold():
-                return jsonify(error="La primera emisión desde Render está reservada para Giovanni Salas."),409
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order,)).fetchone()
             if queued is None:
                 billing._queue_sii_after_approved(con,order)
             elif queued["status"]!="awaiting_issuer":
                 return jsonify(error="Emisión iniciada o pendiente de conciliación. No repetir."),409
+            changed=con.execute("""UPDATE sii_issuance_queue SET status='processing',updated_at=?
+                                  WHERE order_id=? AND status='awaiting_issuer'""",
+                                (billing.now(),order))
+            if changed.rowcount!=1:
+                return jsonify(error="Emisión ya en curso. No repetir."),409
         from sii_visual_admin import _b64
         payload=_b64(json.dumps({"exp":int(time.time())+600,
                "nonce":secrets.token_urlsafe(24),"preview_order":order,
