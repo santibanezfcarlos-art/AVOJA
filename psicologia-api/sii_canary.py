@@ -28,6 +28,11 @@ SCHEMA="""CREATE TABLE IF NOT EXISTS sii_first_canary (
  order_id TEXT NOT NULL, nonce_hash TEXT NOT NULL UNIQUE,
  state TEXT NOT NULL CHECK(state IN ('reconciliation','issued')),
  claimed_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sii_issuance_attempts (
+ order_id TEXT PRIMARY KEY REFERENCES billing_orders(order_id),
+ nonce_hash TEXT NOT NULL UNIQUE,
+ state TEXT NOT NULL CHECK(state IN ('reconciliation','issued')),
+ claimed_at TEXT NOT NULL);
 """
 
 
