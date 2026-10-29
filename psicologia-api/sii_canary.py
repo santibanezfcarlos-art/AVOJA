@@ -184,6 +184,65 @@ def _server_request(url,secret,body=None):
         return response.status,json.loads(response.read(4096))
 
 
+
+@bp.post("/boletas/<order>/prepare-render")
+@billing.private
+def prepare_render(order):
+    """Run a silent read-only SII preparation, never issue a document."""
+    if not re.fullmatch(r"PSCP[0-9A-F]{18}",order):
+        return jsonify(error="Compra inválida."),400
+    try:
+        base,secret=_visual_service()
+        with billing.db() as con:
+            row=con.execute("""SELECT environment,payment_status,invoice_status,folio
+                               FROM billing_orders WHERE order_id=?""",(order,)).fetchone()
+            if (not row or row["environment"]!="production"
+                or row["payment_status"]!="approved"
+                or row["invoice_status"]!="pending" or row["folio"]):
+                return jsonify(error="Compra no elegible para preparar una boleta."),409
+            queue=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order,)).fetchone()
+            if queue and queue["status"] in ("processing","reconciliation"):
+                return jsonify(error="Primero hay que conciliar la emisión anterior; no iniciar otra sesión."),409
+        from sii_visual_admin import _b64
+        payload=_b64(json.dumps({"exp":int(time.time())+600,
+            "nonce":secrets.token_urlsafe(24),"preview_order":order,
+            "mode":"preview"},separators=(",",":")).encode())
+        signature=_b64(hmac.new(secret.encode(),payload.encode("ascii"),hashlib.sha256).digest())
+        status,_data=_server_request(base+"/api/internal/start",secret,
+                                     {"ticket":payload+"."+signature})
+        if status!=202:
+            return jsonify(error="Chromium no confirmó el inicio de la preparación."),503
+        with billing.db() as con:
+            con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                        (order,"render_sii_preview_started",billing.now(),request.authorization.username))
+        return jsonify(started=True,state="starting",order_id=order,issuance=False),202
+    except urllib.error.HTTPError as exc:
+        return jsonify(error="Chromium está ocupado. Cierra la sesión visual anterior antes de volver a preparar."),409 if exc.code==409 else 503
+    except (RuntimeError,ValueError,urllib.error.URLError,TimeoutError,OSError):
+        return jsonify(error="No se pudo confirmar el inicio de Chromium. Revisa el estado antes de reintentar."),503
+
+
+@bp.get("/boletas/<order>/prepare-status")
+@billing.private
+def prepare_status(order):
+    if not re.fullmatch(r"PSCP[0-9A-F]{18}",order):
+        return jsonify(error="Compra inválida."),400
+    with billing.db() as con:
+        row=con.execute("SELECT environment,payment_status,invoice_status,folio FROM billing_orders WHERE order_id=?",(order,)).fetchone()
+    if not row or row["environment"]!="production" or row["payment_status"]!="approved":
+        return jsonify(error="Compra no encontrada."),404
+    if row["invoice_status"]=="issued" or row["folio"]:
+        return jsonify(state="issued",stage="issued")
+    try:
+        base,secret=_visual_service()
+        _,result=_server_request(base+"/api/internal/status?"+urlencode({"order_id":order}),secret)
+        return jsonify(state=result.get("state","unknown"),
+                       stage=result.get("stage","unknown"),
+                       preparation=result.get("preparation"))
+    except Exception:
+        return jsonify(state="unavailable",stage="render_unavailable")
+
+
 @bp.post("/boletas/<order>/emit")
 @billing.private
 def emit_from_panel(order):

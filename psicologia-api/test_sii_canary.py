@@ -158,6 +158,35 @@ class CanaryTests(unittest.TestCase):
                                           auth=self.auth,headers={"X-Billing-Action":"manual-invoice"}).status_code,409)
         self.assertEqual(self.client.get("/admin/boletas/"+OID+"/issue-status",auth=self.auth).status_code,200)
 
+    def test_silent_preview_starts_chromium_without_tax_claim(self):
+        with patch("sii_canary._server_request",return_value=(202,{"status":"starting"})) as request_start:
+            response=self.client.post("/admin/boletas/"+OID+"/prepare-render",auth=self.auth,
+                                      headers={"X-Billing-Action":"manual-invoice"})
+        self.assertEqual(response.status_code,202,response.text)
+        self.assertFalse(response.json["issuance"])
+        args=request_start.call_args.args
+        self.assertTrue(args[0].endswith("/api/internal/start"))
+        from sii_canary import ticket_data
+        import base64,json
+        unsigned=args[2]["ticket"].split(".")[0]
+        doc=json.loads(base64.urlsafe_b64decode(unsigned+"="*(-len(unsigned)%4)))
+        self.assertEqual(doc["mode"],"preview")
+        self.assertIsNone(ticket_data(args[2]["ticket"]))
+        with billing.db() as con:
+            import sii_canary
+            self.assertFalse(sii_canary.any_claim(con))
+            self.assertEqual(con.execute("SELECT count(*) FROM sii_first_canary").fetchone()[0],0)
+            self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
+
+    def test_preview_status_reports_exact_safe_chromium_stage(self):
+        ready={"state":"prepared","stage":"prepared_not_issued","preparation":"prepared_not_issued"}
+        with patch("sii_canary._server_request",return_value=(200,ready)):
+            response=self.client.get("/admin/boletas/"+OID+"/prepare-status",auth=self.auth)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json["stage"],"prepared_not_issued")
+        self.assertEqual(self.client.get("/admin/boletas/"+OID+"/prepare-status").status_code,401)
+        self.assertEqual(self.client.post("/admin/boletas/"+OID+"/prepare-render",auth=self.auth).status_code,403)
+
     def test_disabled_canary_stays_unavailable(self):
         with patch.dict(os.environ,{"SII_CANARY_ENABLED":"false"}):
             r=self.client.post("/admin/sii-visual/session",auth=self.auth,
