@@ -1,7 +1,7 @@
 name: Validar primera emisión SII supervisada sin emitir
 on:
   push:
-    branches: [feature/psc-sii-canary-20261029, fix/psc-sii-preview-inline-20261029, fix/psc-sii-preview-error-message-20261029, feature/sii-postissue-dual-delivery-20261029, fix/psc-sii-emit-no-external-tab-20261029, fix/psc-sii-stable-polling-reconciliation-20261029]
+    branches: [feature/psc-sii-canary-20261029, fix/psc-sii-preview-inline-20261029, fix/psc-sii-preview-error-message-20261029, feature/sii-postissue-dual-delivery-20261029, fix/psc-sii-emit-no-external-tab-20261029, fix/psc-sii-stable-polling-reconciliation-20261029, fix/psc-sii-90s-inline-status-20261029]
   pull_request:
     branches: [psicologia-carlos]
 permissions: {contents: read}
