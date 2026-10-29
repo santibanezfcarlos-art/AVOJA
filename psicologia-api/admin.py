@@ -255,3 +255,8 @@ def payments_paused():
 # Website copy shares the existing private admin and its authentication.
 from site_content import register as register_site_content
 register_site_content(admin_bp)
+
+
+# SII visual Chromium session routes.
+from sii_visual_admin import bp as sii_visual_admin_bp
+admin_bp.register_blueprint(sii_visual_admin_bp)
