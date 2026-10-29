@@ -173,6 +173,8 @@ class CanaryTests(unittest.TestCase):
         self.assertEqual(doc["mode"],"preview")
         self.assertIsNone(ticket_data(args[2]["ticket"]))
         with billing.db() as con:
+            import sii_canary
+            self.assertFalse(sii_canary.any_claim(con))
             self.assertEqual(con.execute("SELECT count(*) FROM sii_first_canary").fetchone()[0],0)
             self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
 
