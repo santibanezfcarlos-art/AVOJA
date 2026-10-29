@@ -120,7 +120,37 @@ def report_complete(ticket, snapshot):
     return data
 
 
-def issue_once(page, order, ids, ticket):
+
+def wait_for_official_receipt(page, expected_amount, *, timeout_seconds=90,
+                              poll_interval_ms=1500):
+    """Wait up to 90 seconds for the existing SII receipt screen.
+
+    This function is READ-ONLY: no form submit, no second issue click.
+    Transient DOM changes during SII navigation are normal, so keep polling.
+    """
+    deadline=time.monotonic()+timeout_seconds
+    folio_only=None
+    while True:
+        try:
+            snapshot=official_snapshot(page,expected_amount)
+        except Exception:
+            # The SII view may be navigating/re-rendering after submission.
+            snapshot=None
+        if snapshot:
+            # The folio may appear before the PDF is ready. Prefer to keep
+            # waiting for the PDF so it can be stored and emailed immediately.
+            if snapshot.get("pdf"):
+                return snapshot
+            folio_only=snapshot
+        remaining=deadline-time.monotonic()
+        if remaining<=0:
+            # Preserve a verified folio even if PDF generation was delayed.
+            return folio_only
+        page.wait_for_timeout(min(poll_interval_ms,max(1,int(remaining*1000))))
+
+
+
+def issue_once(page, order, ids, ticket, on_submitted=None):
     """A verified claim survives crashes and forbids automated reissue."""
     first=verify(page,ids,order)
     claim(ticket)
@@ -136,13 +166,18 @@ def issue_once(page, order, ids, ticket):
         }""")
         try:
             page.locator('[data-psc-issue-final=yes]').click(timeout=10000)
-            page.wait_for_timeout(7000)
-            snapshot=None
-            for _ in range(10):
-                snapshot=official_snapshot(page,order["amount"])
-                if snapshot:
-                    break
-                page.wait_for_timeout(1200)
+            # Update the administrator's inline status without triggering
+            # another submit. No callback failure may cause a second click.
+            if on_submitted is not None:
+                try:
+                    on_submitted("waiting_sii_receipt")
+                except Exception:
+                    pass
+            # Exactly one SII click. The portal can take significantly longer
+            # than the old ~19-second window to display the official receipt.
+            # Keep waiting for up to 90 seconds, never press Emitir again.
+            snapshot=wait_for_official_receipt(page,order["amount"],
+                                               timeout_seconds=90)
             if snapshot:
                 try:
                     result=report_complete(ticket,snapshot)
