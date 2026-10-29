@@ -217,7 +217,11 @@ def prepare_render(order):
                         (order,"render_sii_preview_started",billing.now(),request.authorization.username))
         return jsonify(started=True,state="starting",order_id=order,issuance=False),202
     except urllib.error.HTTPError as exc:
-        return jsonify(error="Chromium está ocupado. Cierra la sesión visual anterior antes de volver a preparar."),409 if exc.code==409 else 503
+        if exc.code==409:
+            return jsonify(error="Hay otra operación SII todavía activa. Solo se liberan automáticamente las vistas previas finalizadas; no se emitió una boleta."),409
+        if exc.code in (401,403):
+            return jsonify(error="Render rechazó la autorización privada de la preparación. No se emitió una boleta."),503
+        return jsonify(error="El navegador de Render no pudo cargar la compra desde PSC. Revisa la conexión SII; no se emitió una boleta."),503
     except (RuntimeError,ValueError,urllib.error.URLError,TimeoutError,OSError):
         return jsonify(error="No se pudo confirmar el inicio de Chromium. Revisa el estado antes de reintentar."),503
 
