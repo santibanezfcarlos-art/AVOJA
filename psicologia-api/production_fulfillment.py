@@ -85,6 +85,9 @@ def receipt_mail():
         from demo_notifications import send_payload
         order,folio=d.get('order'),d.get('folio')
         data=d.get('mail')
+        attempt=d.get('resend_attempt',0)
+        if type(attempt) is not int or not 0<=attempt<=100:
+            raise ValueError()
         if (not isinstance(order,str) or not re.fullmatch(r'PSCP[0-9A-F]{18}',order)
             or not isinstance(folio,str) or not re.fullmatch(r'[1-9][0-9]{0,9}',folio)
             or not isinstance(data,dict) or set(data) != {'from','to','subject','html','text','attachments'}):
@@ -108,7 +111,9 @@ def receipt_mail():
             raise ValueError()
         if not all(isinstance(data.get(k),str) and 1<=len(data[k])<=50000 for k in ('subject','html','text')):
             raise ValueError()
-        provider_id=send_payload(data,'psc-receipt-'+hashlib.sha256((order+':'+folio+':psc').encode()).hexdigest())
+        suffix=':resend:'+str(attempt) if attempt else ''
+        provider_id=send_payload(
+            data,'psc-receipt-'+hashlib.sha256((order+':'+folio+':psc'+suffix).encode()).hexdigest())
         return jsonify(state='SENT',reference=provider_id)
     except ValueError:
         return jsonify(state='INVALID'),400
