@@ -75,7 +75,7 @@ def claim():
             con.execute("BEGIN IMMEDIATE")
             if con.execute("SELECT 1 FROM sii_first_canary WHERE id=1").fetchone():
                 return jsonify(error="canary_ya_reclamado_revisar_sii"),409
-            order=con.execute("""SELECT environment,payment_status,invoice_status,folio,amount
+            order=con.execute("""SELECT environment,payment_status,invoice_status,folio,amount,name
                                  FROM billing_orders WHERE order_id=?""",(oid,)).fetchone()
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(oid,)).fetchone()
             if (not order or order["environment"]!="production"
