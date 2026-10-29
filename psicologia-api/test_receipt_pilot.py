@@ -12,7 +12,7 @@ import pilot_app
 
 PDF=b'%PDF-1.4\\n'+b'x'*120+b'\\n%%EOF\\n'
 ORDER='PSCP'+'A'*18
-SECRET='test-shared-api-secret-very-long'
+SECRET='test-shared-api-secret-long-enough-for-hmac-valid'
 
 
 class ReceiptMailTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class ReceiptMailTests(unittest.TestCase):
         self.env=patch.dict(os.environ, {
             'PSICOLOGIA_PRODUCTION_FULFILLMENT_ENABLED':'true',
             'PSICOLOGIA_PUBLIC_DEMO_BRIDGE_ENABLED':'true',
-            'PSICOLOGIA_DEMO_BRIDGE_SECRET':SECRET,
+            'PSICOLOGIA_DEMO_BRIDGE_KEY':SECRET,
             'PSICOLOGIA_PILOT_RESEND_API_KEY':'fake-resend-no-send',
         })
         self.env.start()
