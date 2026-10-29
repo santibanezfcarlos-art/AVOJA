@@ -27,9 +27,9 @@ TARGET = "https://eboleta.sii.cl/emitir/"
 
 BLOCK_ISSUE_ACTIONS = r"""
 (() => {
-  const blocked = new Set(["EMITIR", "EMITIR BOLETA", "EMITIR DOCUMENTO"]);
   const label = (el) => (el?.innerText || el?.value || el?.getAttribute("aria-label") || "")
     .replace(/\s+/g, " ").trim().toUpperCase();
+  const isIssueAction = (el) => label(el).startsWith("EMITIR");
   const protect = (event) => {
     const el = event.target?.closest?.("button, input[type=submit], [role=button], a");
     if (el && isIssueAction(el)) {
