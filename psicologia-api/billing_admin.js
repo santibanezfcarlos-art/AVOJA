@@ -32,7 +32,7 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  if(r.environment==='production'){
   if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
    section.append(node('p','Emisión SII con resultado por conciliar. NO volver a emitir. Primero comprueba si existe folio real en SII.','warning'));
-  }else if(firstCanaryReady){
+  }else if(firstCanaryReady&&firstCanaryOrderId===r.order_id){
    const issueForm=node('form',undefined,'actions');
    issueForm.action='/admin/sii-visual/session';issueForm.method='post';issueForm.target='_blank';
    const oid=node('input');oid.type='hidden';oid.name='order_id';oid.value=r.order_id;
