@@ -5,7 +5,7 @@ import json
 import tempfile
 import unittest
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import billing
@@ -30,6 +30,17 @@ class BillingTests(unittest.TestCase):
                          billing_name='Persona de prueba', billing_address='Dirección ficticia 123',
                          billing_email='prueba@example.invalid', billing_phone='+56912345678')
         self.person = billing.receiver(self.form)
+        # Current checkout requires a real-looking future slot and email consent.
+        from admin import DEFAULT, allowed_slot
+        now_local = datetime.now(ZoneInfo('America/Santiago')).date()
+        for delta in range(1, 14):
+            day = now_local + timedelta(days=delta)
+            if allowed_slot(DEFAULT, 'psicoterapia', day.isoformat(), '10:00'):
+                self.form.update(date=day.isoformat(), time='10:00',
+                                 test_email_ownership='1')
+                break
+        else:
+            raise AssertionError('No future test slot in defaults')
     def tearDown(self):
         self.env.stop()
         self.tmp.cleanup()
@@ -58,7 +69,10 @@ class BillingTests(unittest.TestCase):
                 return {'token':token,'url':webpay.CHECKOUT_URL}
             return {'session_id':sent['session_id'],'buy_order':sent['buy_order'],
                     'amount':30000,'status':'AUTHORIZED','response_code':0,'payment_type_code':'VD'}
-        with patch.object(webpay, '_send', side_effect=send):
+        with (patch.object(webpay, '_send', side_effect=send),
+              patch('webpay_demo.bridge.enabled', return_value=True),
+              patch('webpay_demo.bridge.preflight', return_value='READY'),
+              patch('webpay_demo.bridge.complete', return_value='CONFIRMED')):
             r = self.client.post('/api/webpay-demo/start',data=self.form,headers={'Origin':webpay.SITE})
             self.assertEqual(r.status_code,200)
             self.assertNotIn(self.person['email'],str(sent))
@@ -144,7 +158,8 @@ class BillingTests(unittest.TestCase):
     def test_unconfigured_stops_payment(self):
         with patch.dict(os.environ, {'PSICOLOGIA_BILLING_ADMIN_PASSWORD':''}):
             self.assertFalse(self.client.get('/api/billing/config').json['ready'])
-            with patch.object(webpay,'_send') as send:
+            with (patch.object(webpay,'_send') as send,
+                  patch('webpay_demo.bridge.enabled', return_value=True)):
                 self.assertEqual(self.client.post('/api/webpay-demo/start',data=self.form,headers={'Origin':webpay.SITE}).status_code,503)
                 send.assert_not_called()
     def test_export_and_persistence(self):
