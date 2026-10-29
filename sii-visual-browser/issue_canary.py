@@ -34,7 +34,7 @@ def verify(page, ids, order):
       }
       if(!scope)return {ok:false,reason:'no_common_form'};
       const controls=[...scope.querySelectorAll('button,[role=button],input[type=button],input[type=submit]')];
-      const matches=controls.filter(e=>visible(e)&&/^\s*emitir\s*$/i.test((e.innerText||e.value||'').trim()));
+      const matches=controls.filter(e=>visible(e)&&/^\s*emitir(?:\s+boleta)?\s*$/i.test((e.innerText||e.value||'').trim()));
       if(matches.length!==1 || matches[0].disabled || matches[0].getAttribute('aria-disabled')==='true')
         return {ok:false,reason:'final_button_ambiguous'};
       const text=scope.innerText;
