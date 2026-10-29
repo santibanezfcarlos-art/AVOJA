@@ -86,6 +86,8 @@ def create_sii_visual_session():
             return jsonify(error="No hay compras reales pagadas pendientes de boleta."), 409
         order_id = row["order_id"]
         if mode=="issue_canary":
+            if "giovanni" not in row["name"].casefold() or "salas" not in row["name"].casefold():
+                return jsonify(error="La primera emisión supervisada está reservada para Giovanni."),409
             from sii_canary import any_claim
             if any_claim(con):
                 return jsonify(error="Ya existe un primer intento de emisión real. Debe conciliarse en SII."),409
