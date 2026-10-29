@@ -63,7 +63,7 @@ def create_sii_visual_session():
 @bp.post("/sii-visual/internal-credentials")
 def sii_visual_internal_credentials():
     """Server-only bridge for the visual browser; never used by client JavaScript."""
-    bridge_secret = os.environ.get("SII_VISUAL_BRIDGE_SECRET", "")
+    bridge_secret = os.environ.get("SII_VISUAL_TICKET_SECRET", "")
     supplied = request.headers.get("X-PSC-Visual-Bridge", "")
     if len(bridge_secret) < 32 or not hmac.compare_digest(
         supplied.encode("utf-8"), bridge_secret.encode("utf-8")
