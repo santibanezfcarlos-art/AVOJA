@@ -1,0 +1,21 @@
+server {
+    listen ${PORT};
+    server_name _;
+    client_max_body_size 16k;
+    location = /healthz { proxy_pass http://127.0.0.1:5000/healthz; }
+    location /api/ {
+        proxy_pass http://127.0.0.1:5000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /websockify {
+        proxy_pass http://127.0.0.1:6080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+    location /novnc/ { alias /usr/share/novnc/; }
+    location / { proxy_pass http://127.0.0.1:5000/; }
+}
