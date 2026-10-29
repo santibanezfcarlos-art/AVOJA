@@ -125,6 +125,16 @@ class CanaryTests(unittest.TestCase):
         with billing.db() as con:
             self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
 
+    def test_pre_queue_purchase_like_giovanni_can_start_first_canary(self):
+        with billing.db() as con:
+            con.execute("DELETE FROM sii_issuance_queue WHERE order_id=?",(OID,))
+        response=self.client.post("/admin/sii-visual/session",auth=self.auth,
+                                  data={"order_id":OID,"mode":"issue_canary"})
+        self.assertEqual(response.status_code,303,response.text)
+        with billing.db() as con:
+            current=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(OID,)).fetchone()
+        self.assertEqual(current["status"],"awaiting_issuer")
+
     def test_disabled_canary_stays_unavailable(self):
         with patch.dict(os.environ,{"SII_CANARY_ENABLED":"false"}):
             r=self.client.post("/admin/sii-visual/session",auth=self.auth,
