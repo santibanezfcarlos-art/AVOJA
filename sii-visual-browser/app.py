@@ -180,7 +180,20 @@ def _browser_owner(proxy, started):
                                           viewport={"width":1365,"height":768})
             context.add_init_script(BLOCK_ISSUE_ACTIONS)
             page = context.new_page()
-            page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
+            country_response = page.goto("https://ipinfo.io/country", wait_until="domcontentloaded", timeout=20000)
+            country = (page.locator("body").inner_text(timeout=5000) or "").strip().upper()
+            if country not in ("CL", "DE", "US", "GB", "FR", "SG", "NL"):
+                country = "unknown"
+            response = page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
+            host = urlparse(page.url).hostname or ""
+            safe_result = {"country": country,
+                           "sii_http_status": response.status if response else None,
+                           "final_host": host if host.endswith(".sii.cl") else "other"}
+            with _lock:
+                if _session.get("started") == started:
+                    _session["connectivity"] = safe_result
+                    _session["state"] = "open"
+            app.logger.warning("SII_VISUAL_CONNECTIVITY %s", json.dumps(safe_result, separators=(",", ":")))
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 time.sleep(1)
             browser.close()
@@ -258,5 +271,5 @@ def stop():
 
 @app.get("/api/status")
 def status():
-    return jsonify(status=_session["state"], error=_session.get("error"),
+    return jsonify(status=_session["state"], error=_session.get("error"), connectivity=_session.get("connectivity"),
                    expires_in_seconds=SESSION_TTL if _session.get("started") else 0)
