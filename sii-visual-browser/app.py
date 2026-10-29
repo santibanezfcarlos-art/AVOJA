@@ -269,6 +269,35 @@ def home():
     return send_file("/srv/index.html", mimetype="text/html")
 
 
+
+def _visual_connection_response(status_code=200):
+    if not _session.get("resume_token"):
+        _session["resume_token"] = secrets.token_urlsafe(32)
+    remaining = max(0, int(SESSION_TTL - (time.monotonic() - _session["started"])))
+    response = jsonify(status=_session["state"],
+                       vnc_password=os.environ["SII_VISUAL_VNC_PASSWORD"],
+                       expires_in_seconds=remaining)
+    response.set_cookie("psc_visual_resume", _session["resume_token"],
+                        max_age=remaining, secure=True, httponly=True, samesite="Strict")
+    return response, status_code
+
+
+def _can_resume():
+    expected = _session.get("resume_token") or ""
+    supplied = request.cookies.get("psc_visual_resume", "")
+    return bool(expected and supplied and secrets.compare_digest(expected, supplied))
+
+
+@app.post("/api/resume")
+def resume():
+    with _lock:
+        if not _can_resume():
+            return jsonify(error="Vuelve al panel privado PSC para recuperar la sesión."), 403
+        if _session.get("state") not in ("starting", "open"):
+            return jsonify(error="La sesión terminó. Abre otra desde el panel PSC."), 410
+        return _visual_connection_response()
+
+
 @app.post("/api/start")
 def start():
     body = request.get_json(silent=True) or {}
@@ -283,7 +312,8 @@ def start():
         if data["nonce"] in _used_nonces:
             return jsonify(error="Este enlace ya fue utilizado."), 403
         if _session.get("state") in ("starting", "open"):
-            return jsonify(error="Ya hay una sesión visual activa. Espera a que termine."), 409
+            _used_nonces.add(data["nonce"])
+            return _visual_connection_response()
         _used_nonces.add(data["nonce"])
 
     try:
@@ -295,21 +325,23 @@ def start():
     with _lock:
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
-            return jsonify(error="Ya hay una sesión visual activa. Espera a que termine."), 409
-        _session.update(state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
+            return _visual_connection_response()
+        _session.update(resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
     threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
                      name="sii-visible-chromium").start()
     threading.Thread(target=_expire_session, args=(started,), daemon=True,
                      name="sii-visible-chromium-timeout").start()
-    return jsonify(status="starting", vnc_password=os.environ["SII_VISUAL_VNC_PASSWORD"],
-                   expires_in_seconds=SESSION_TTL), 202
+    with _lock:
+        return _visual_connection_response(202)
 
 
 @app.post("/api/stop")
 def stop():
     with _lock:
+        if not _can_resume():
+            return jsonify(error="Sesión no autorizada."), 403
         _session["stop"] = True
     return jsonify(status="stopping")
 
