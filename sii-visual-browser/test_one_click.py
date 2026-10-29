@@ -69,8 +69,8 @@ class OneClickBrowserTests(unittest.TestCase):
         self.assertEqual(status.status_code,200)
         self.assertEqual(thread.call_count,2)
 
-    def test_preview_cannot_use_privileged_background_start(self):
-        value=self.data();value['mode']='preview'
+    def test_unknown_mode_cannot_use_privileged_background_start(self):
+        value=self.data();value['mode']='issue_unrestricted'
         with patch('app._decode_ticket',return_value=value):
             response=self.client.post('/api/internal/start',json={'ticket':'fixture'},
                          headers={'X-PSC-Visual-Bridge':SECRET})
