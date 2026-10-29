@@ -500,6 +500,10 @@ def _browser_owner(started, credentials, ticket, mode):
                 with _lock:
                     _session["preparation"] = prepare_result
                     _session["stage"] = prepare_result
+                    if (mode=="issue_canary" and _session.get("auto_issue")
+                        and prepare_result=="prepared_canary_awaiting_approval"):
+                        _session["issue_confirmed"]=True
+                        _session["stage"]="issue_approved_pending_claim"
                 app.logger.warning("SII_VISUAL_PREPARATION %s", prepare_result)
             else:
                 order.clear()
@@ -593,10 +597,7 @@ def resume():
         return _visual_connection_response()
 
 
-@app.post("/api/start")
-def start():
-    body = request.get_json(silent=True) or {}
-    ticket = body.get("ticket", "")
+def _start_ticket(ticket, *, automatic=False):
     if not isinstance(ticket, str) or len(ticket) > 2048:
         return jsonify(error="Enlace de sesión inválido."), 400
     data = _decode_ticket(ticket)
@@ -607,8 +608,8 @@ def start():
         if data["nonce"] in _used_nonces:
             return jsonify(error="Este enlace ya fue utilizado."), 403
         if _session.get("state") in ("starting", "open"):
-            _used_nonces.add(data["nonce"])
-            return _visual_connection_response()
+            return jsonify(error="Otro proceso SII está ejecutándose. No se inició otra emisión."),409
+        _used_nonces.add(data["nonce"])
         _used_nonces.add(data["nonce"])
 
     try:
@@ -624,10 +625,12 @@ def start():
     with _lock:
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
-            return _visual_connection_response()
+            return jsonify(error="La emisión SII ya está ejecutándose."),409
+        selected_order=credentials["preview_order"]["order_id"]
         _session.update(preparation=None, submitted=False, login_click_attempted=False,
                         preview=None, field_check=None, field_ids=None,
                         mode=mode, issue_confirmed=False,
+                        order_id=selected_order, auto_issue=bool(automatic),
                         resume_token=secrets.token_urlsafe(32), state="starting",
                         error=None, stage="starting", stop=False,
                         connectivity=None, started=time.monotonic(), browser=None)
@@ -639,6 +642,45 @@ def start():
                      name="sii-visible-chromium-timeout").start()
     with _lock:
         return _visual_connection_response(202)
+
+
+@app.post("/api/start")
+def start():
+    body=request.get_json(silent=True) or {}
+    return _start_ticket(body.get("ticket", ""), automatic=False)
+
+
+def _bridge_authorized():
+    secret=os.environ.get("SII_VISUAL_TICKET_SECRET","")
+    supplied=request.headers.get("X-PSC-Visual-Bridge","")
+    return len(secret)>=32 and secrets.compare_digest(secret,supplied)
+
+
+@app.post("/api/internal/start")
+def internal_start():
+    """Single administrative click starts Chromium entirely on Render."""
+    if not _bridge_authorized():
+        return jsonify(error="No autorizado."),403
+    body=request.get_json(silent=True) or {}
+    ticket=body.get("ticket","")
+    decoded=_decode_ticket(ticket)
+    if not decoded or decoded.get("mode")!="issue_canary":
+        return jsonify(error="Solicitud SII inválida."),403
+    return _start_ticket(ticket, automatic=True)
+
+
+@app.get("/api/internal/status")
+def internal_status():
+    if not _bridge_authorized():
+        return jsonify(error="No autorizado."),403
+    order_id=request.args.get("order_id","")
+    if not re.fullmatch(r"PSCP[0-9A-F]{18}",order_id):
+        return jsonify(error="Orden inválida."),400
+    with _lock:
+        if order_id!=_session.get("order_id"):
+            return jsonify(state="not_running",stage="not_running")
+        return jsonify(state=_session.get("state","unknown"),stage=_session.get("stage","unknown"),
+                       preparation=_session.get("preparation"))
 
 
 @app.post("/api/issue")
