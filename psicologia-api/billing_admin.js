@@ -65,7 +65,9 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  }
  if(r.environment==='production'){
   if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
-   section.append(node('p','Emisión SII con resultado por conciliar. NO volver a emitir. Primero comprueba si existe folio real en SII.','warning'));
+   section.append(node('p',r.issuance_state==='processing'
+     ?'Solicitud de emisión en curso o inicio incierto. No vuelvas a pulsar Emitir hasta revisar el resultado.'
+     :'Emisión con resultado por conciliar. Comprueba el folio real en SII antes de cualquier otro intento.','warning'));
   }else{
    // Never navigate to SII: ALL real issuance starts only through the
    // authenticated PSC backend -> Render Chromium. If this purchase is not
