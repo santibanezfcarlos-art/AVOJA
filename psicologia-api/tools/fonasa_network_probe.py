@@ -1340,3 +1340,8 @@ def _start_mi_fonasa_probe():
 
 
 
+
+
+# Additive private bridge for the separate SII visual browser; Fonasa flow unchanged.
+from sii_visual_proxy_bridge import bp as sii_visual_proxy_bridge_bp
+app.register_blueprint(sii_visual_proxy_bridge_bp)
