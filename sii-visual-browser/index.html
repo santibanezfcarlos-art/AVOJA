@@ -28,7 +28,10 @@ async function refreshStatus(){
   if(data.status==="expired"){status.textContent="La sesión terminó.";return}
   if(data.connectivity){
    const c=data.connectivity;
-   status.textContent="Conexión directa (sin Decodo) · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host;
+   const authLabels={signed_in:"Ingreso automático completado",already_authenticated:"Sesión SII activa",login_form_not_recognized:"Formulario de acceso no reconocido",login_submit_not_recognized:"No se identificó el botón de ingreso",login_not_completed:"SII aún no confirmó el ingreso",unexpected_auth_host:"Redirección SII inesperada"};
+   const auth=authLabels[c.authentication]||"Autenticación pendiente";
+   const calculator=c.calculator_ready?"Calculadora cargada":"Calculadora pendiente";
+   status.textContent="Conexión directa (sin Decodo) · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host+" · "+auth+" · "+calculator;
   }
  }catch{}
 }
