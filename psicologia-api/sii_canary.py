@@ -4,6 +4,7 @@ Does not click SII, create a folio, or automatically retry. A claim is persisted
 *before* any irreversible SII action; failure requires manual reconciliation.
 """
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -11,6 +12,7 @@ import os
 import re
 import sqlite3
 import time
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
@@ -25,7 +27,7 @@ SCHEMA="""CREATE TABLE IF NOT EXISTS sii_first_canary (
 """
 
 
-def ticket_data(token):
+def ticket_data(token, *, claimed_completion=False):
     if not isinstance(token,str) or not 20<len(token)<=2048:
         return None
     secret=os.environ.get("SII_VISUAL_TICKET_SECRET","")
@@ -40,7 +42,8 @@ def ticket_data(token):
         valid=(hmac.compare_digest(expected,received) and isinstance(value,dict)
                and value.get("mode")=="issue_canary"
                and type(value.get("exp")) is int
-               and int(time.time())<=value["exp"]<=int(time.time())+600
+               and (int(time.time())-900<=value["exp"]<=int(time.time())+600
+                    if claimed_completion else int(time.time())<=value["exp"]<=int(time.time())+600)
                and isinstance(value.get("nonce"),str)
                and len(value["nonce"])>=20
                and isinstance(value.get("preview_order"),str)
@@ -92,3 +95,61 @@ def claim():
         return jsonify(claimed=True,order_id=oid)
     except sqlite3.IntegrityError:
         return jsonify(error="canary_ya_reclamado"),409
+
+@bp.post("/sii-visual/internal-canary-complete")
+def complete():
+    """Persist official SII folio before attempting PDF or PSC email."""
+    secret=os.environ.get("SII_VISUAL_TICKET_SECRET","")
+    supplied=request.headers.get("X-PSC-Visual-Bridge","")
+    if len(secret)<32 or not hmac.compare_digest(secret.encode(),supplied.encode()):
+        return jsonify(error="no_autorizado"),403
+    if (request.content_length or 0)>7_100_000:
+        return jsonify(error="documento_demasiado_grande"),413
+    body=request.get_json(silent=True) or {}
+    d=ticket_data(body.get("ticket"),claimed_completion=True)
+    if not d:return jsonify(error="ticket_invalido"),403
+    oid=d["preview_order"]
+    with billing.db() as con:
+        any_claim(con)
+        record=con.execute("SELECT * FROM sii_first_canary WHERE id=1").fetchone()
+        if (not record or record["order_id"]!=oid
+            or record["nonce_hash"]!=hashlib.sha256(d["nonce"].encode()).hexdigest()):
+            return jsonify(error="intento_no_reconocido"),409
+        row=con.execute("SELECT amount FROM billing_orders WHERE order_id=?",(oid,)).fetchone()
+        if not row:return jsonify(error="compra_no_encontrada"),404
+        amount=row["amount"]
+    snap=body.get("snapshot")
+    if (not isinstance(snap,dict) or snap.get("dte")!=41
+        or type(snap.get("amount")) is not int or snap["amount"]!=amount
+        or not re.fullmatch(r"[1-9][0-9]{0,9}",str(snap.get("folio","")))):
+        return jsonify(error="folio_tipo_o_monto_no_verificados"),409
+    pdf=None
+    encoded=snap.get("pdf")
+    if isinstance(encoded,str) and len(encoded)<=7_000_000:
+        if encoded.startswith("data:application/pdf;base64,"):
+            encoded=encoded.split(",",1)[1]
+        try:
+            data=base64.b64decode(encoded,validate=True)
+            from sii_post_issue import validate_pdf
+            validate_pdf(data)
+            pdf=data
+        except (ValueError,binascii.Error):
+            pdf=None
+    from sii_post_issue import record_issued,store_pdf
+    try:
+        today=datetime.now(billing.TZ).date().isoformat()
+        record_issued(oid,str(snap["folio"]),today,amount,dte=41)
+        if pdf:
+            store_pdf(oid,pdf)
+    except (RuntimeError,ValueError,sqlite3.IntegrityError):
+        return jsonify(error="registro_requiere_conciliacion"),409
+    psc="pending"
+    if pdf:
+        try:
+            from sii_receipt_admin import dispatch_psc
+            psc=dispatch_psc(oid)
+        except Exception:
+            psc="unknown"
+    return jsonify(state="issued",folio_recorded=True,pdf_stored=bool(pdf),
+                   psc_delivery=psc)
+
