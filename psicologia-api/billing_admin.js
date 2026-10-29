@@ -14,7 +14,7 @@ if(r.environment==='integration')section.append(node('p','Simulación de Webpay.
 const fields=node('div',undefined,'fields');const pairs=[['Monto',r.amount],['Tipo de documento','Boleta exenta'],['Método de pago',r.payment_method],['RUT receptor',r.rut],['Nombre receptor',r.name],['Dirección receptor',r.address],['E-mail receptor',r.email],['Teléfono receptor',r.phone],['Detalle',r.detail]];
 for(const [label,value] of pairs)field(fields,label,value,['Dirección receptor','Detalle'].includes(label));section.append(fields);
 const actions=node('div',undefined,'actions'),all=node('button','Copiar ficha completa');all.onclick=()=>copy(pairs.map(([k,v])=>k+': '+v).join('\n'));actions.append(all);
-const sii=node('a','Abrir e-Boleta SII');sii.href='https://eboleta.sii.cl/emitir/';sii.target='_blank';sii.rel='noopener noreferrer';actions.append(sii);
+
 if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.invoice_status==='pending')||(r.environment==='integration'&&r.invoice_status==='test'))){
  const jobs=siiJobs.filter(j=>j.order_id===r.order_id);
  const active=jobs.find(j=>['queued','running','reconciliation'].includes(j.status));
@@ -27,8 +27,15 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
   formSii.append(id,open);actions.append(formSii);
   section.append(node('p',r.issuance_state==='awaiting_issuer'?'Compra aprobada vinculada a solicitud de boleta. Emisor automático aún no habilitado.':'Compra aprobada pendiente de gestión en SII.','meta'));
  }
- const emit=node('button','Emitir boleta SII');emit.disabled=true;
- emit.title='Pendiente de validar la respuesta real del SII. Por ahora usa Preparar en mi computador.';actions.append(emit);
+ if(r.environment==='production'){
+  const emit=node('button','Emitir','primary');emit.type='button';
+  emit.title='Abrir el portal oficial SII para efectuar una emisión real. El registro requiere folio verdadero.';
+  emit.onclick=async()=>{
+   const portal=window.open('https://eboleta.sii.cl/emitir/','_blank','noopener,noreferrer');
+   if(!portal){$('notice').textContent='Autoriza ventanas emergentes para abrir e-Boleta SII.';return}
+   $('notice').textContent='SII abierto. Utiliza la ficha de esta compra para completar la emisión real y después registra el folio y guarda su PDF aquí. La preparación automática continúa sin permiso de emisión.';
+  };actions.append(emit);
+ }
  if(active&&active.mode==='preview'){
   const close=node('button','Cerrar preparación interrumpida');close.type='button';
   close.onclick=async()=>{
@@ -52,7 +59,7 @@ if(r.invoice_status==='issued'){
  if(r.environment==='production'){
   const receipt=receiptMap[r.order_id];
   const hasPdf=!!(receipt&&receipt.has_pdf);
-  section.append(node('p',hasPdf?'PDF oficial guardado. Envío PSC: '+(receipt.psc_state||'pendiente'):'Pendiente de adjuntar el PDF oficial emitido en SII.','meta'));
+  section.append(node('p',hasPdf?'Boleta emitida · PDF guardado · Correo PSC: '+(receipt.psc_state==='accepted'?'Aceptado':receipt.psc_state==='unknown'?'Resultado incierto, revisar':receipt.psc_state==='sending'?'En proceso, no reenviar':'Pendiente'):'Boleta emitida · PDF pendiente de guardar','meta'));
   if(hasPdf){
    const download=node('a','Descargar boleta PDF');download.href='/admin/boletas/'+encodeURIComponent(r.order_id)+'/official-pdf';
    actions.append(download);
