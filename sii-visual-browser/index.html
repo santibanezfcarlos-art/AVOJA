@@ -8,7 +8,7 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 #screen{height:72vh;min-height:440px;background:#17231e;border-radius:12px;overflow:hidden}.status{min-height:1.5em;color:#435d52}#screen canvas{width:100%;height:100%}
 </style></head><body><main>
 <section class="card"><h1>Prueba visual e-Boleta SII</h1>
-<p>Esta sesión abre Chromium visible en Render con conexión directa, sin Decodo ni otro proxy. Rellena RUT y clave con las credenciales SII guardadas en Render, sin pulsar INGRESAR. La clave permanece oculta en el formulario.</p>
+<p>Esta sesión abre Chromium visible en Render con conexión directa, sin Decodo ni otro proxy. Rellena y verifica RUT y clave guardados en Render, espera cinco segundos y pulsa INGRESAR una sola vez. Se detiene al cargar la calculadora. La clave permanece oculta en el formulario.</p>
 <p class="warning">Sesión de prueba. No ingreses datos de receptores reales y no intentes emitir. El botón EMITIR está bloqueado. La sesión se cierra automáticamente a los 15 minutos.</p>
 <p><a href="https://psicologia-carlos-calendar-api.onrender.com/admin/sii-visual">Volver al panel privado PSC</a></p>
 <button id="start" type="button">Iniciar Chromium</button>
@@ -40,12 +40,13 @@ async function refreshStatus(){
   const response=await fetch("/api/status",{cache:"no-store"}), data=await response.json();
   if(data.status==="failed"){status.textContent="Chromium se detuvo durante "+(data.stage||"el inicio")+" ("+(data.error||"error")+"). Vuelve al panel y prueba otra vez.";return}
   if(data.status==="expired"){status.textContent="La sesión terminó.";return}
+  if(!data.connectivity){const stages={waiting_before_login:"RUT y clave verificados. Esperando cinco segundos antes de INGRESAR…",waiting_calculator:"INGRESAR solicitado una vez. Esperando la calculadora…"};if(stages[data.stage])status.textContent=stages[data.stage];}
   if(data.connectivity){
    const c=data.connectivity;
    const authLabels={fields_filled_not_submitted:"RUT y clave rellenados y verificados. INGRESAR no fue pulsado",field_verification_failed:"No se pudo verificar el relleno",signed_in:"Ingreso automático completado",already_authenticated:"Sesión SII activa",login_form_not_recognized:"Formulario de acceso no reconocido",login_submit_not_recognized:"No se identificó el botón de ingreso",login_not_completed:"SII aún no confirmó el ingreso",login_form_not_loaded:"Esperando el formulario de acceso",unexpected_auth_host:"Redirección SII inesperada"};
-   const auth=authLabels[c.authentication]||"Autenticación pendiente";
+   const auth=c.calculator_ready?"Ingreso confirmado: calculadora cargada":(authLabels[c.authentication]||"Autenticación pendiente");
    const check=data.field_check;
-   const calculator=check?("RUT "+(check.rut_matches?"verificado":"no coincide")+" · Clave "+(check.password_matches?"verificada":"no coincide")+" · Sin pulsar INGRESAR"):"Prueba de relleno únicamente";
+   const calculator=check?("RUT "+(check.rut_matches?"verificado":"no coincide")+" · Clave "+(check.password_matches?"verificada":"no coincide")+" · "+(c.submitted?"INGRESAR pulsado una vez":"INGRESAR aún no pulsado")+""):"Prueba de ingreso hasta la calculadora";
    status.textContent="Conexión directa (sin Decodo) · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host+" · "+auth+" · "+calculator;
   }
  }catch{}
