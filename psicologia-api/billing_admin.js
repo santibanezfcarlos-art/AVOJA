@@ -3,8 +3,7 @@ const $=id=>document.getElementById(id);
 let generation=0;
 let siiJobs=[];
 let receiptMap={};
-let firstCanaryReady=false;
-let firstCanaryOrderId=null;
+let issuanceEnabled=false;
 const issueProgress=Object.create(null);
 const issueTimers=Object.create(null);
 const issueRunning=Object.create(null);
@@ -72,7 +71,7 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
    // authenticated PSC backend -> Render Chromium. If this purchase is not
    // authorized for issuance, the backend returns a visible inline error.
    const emit=node('button','Emitir','primary');emit.type='button';
-   emit.disabled=!!issueRunning[r.order_id]||!!previewRunning[r.order_id];
+   emit.disabled=!issuanceEnabled||!!issueRunning[r.order_id]||!!previewRunning[r.order_id];
    emit.title='Inicia la emisión real en Chromium de Render, sin abrir pestañas.';
    emit.onclick=async()=>{
     if(issueRunning[r.order_id]||previewRunning[r.order_id])return;
@@ -98,11 +97,7 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
    issueState.setAttribute('role','status');
    issueState.setAttribute('aria-live','polite');
    actions.append(issueState);
-   if(!firstCanaryReady||firstCanaryOrderId!==r.order_id){
-    section.append(node('p',
-      'La primera emisión automática desde Render está reservada a la compra pendiente de Giovanni. Para esta compra se informará el bloqueo aquí, sin abrir páginas externas.',
-      'meta'));
-   }
+
   }
  }
  if(r.environment==='integration'&&active&&active.mode==='preview'){
@@ -271,6 +266,6 @@ async function pollIssue(order){
  issueTimers[order]=true;await step();
 }
 
-async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));firstCanaryReady=!!rd.first_canary_ready;firstCanaryOrderId=rd.first_canary_order_id||null;for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
+async function refresh(){const seq=++generation;$('notice').textContent='Cargando historial…';$('orders').replaceChildren();$('count').textContent='';try{const res=await fetch('/admin/boletas/data?'+query(),{cache:'no-store'});if(!res.ok)throw Error('No se pudo cargar el historial. Revisa el acceso y vuelve a intentar.');const data=await res.json();const jr=await fetch('/admin/boletas/sii-jobs',{cache:'no-store'});if(!jr.ok)throw Error('No se pudo verificar el estado del agente SII.');const jd=await jr.json();const rr=await fetch('/admin/boletas/receipts',{cache:'no-store'});if(!rr.ok)throw Error('No se pudo comprobar el historial de PDFs.');const rd=await rr.json();if(seq!==generation)return;siiJobs=jd.jobs;receiptMap=Object.fromEntries(rd.receipts.map(x=>[x.order_id,x]));issuanceEnabled=!!rd.issuance_enabled;for(const r of data.orders)$('orders').append(card(r));$('count').textContent=data.orders.length+' compras';$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.'}catch(err){if(seq===generation)$('notice').textContent=err.message}}
 $('environment').onchange=()=>{$('status').replaceChildren();for(const [value,label] of ($('environment').value==='integration'?[['test','Pruebas aprobadas'],['all','Todos los pagos de prueba']]:[['pending','Pendientes de emisión'],['issued','Emitidas'],['all','Todos los pagos']])){const o=node('option',label);o.value=value;$('status').append(o)}refresh()};
 $('refresh').onclick=refresh;$('status').onchange=refresh;$('export').onclick=()=>{location.href='/admin/boletas/export.csv?'+query()};refresh();
