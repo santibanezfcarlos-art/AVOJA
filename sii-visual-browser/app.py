@@ -225,16 +225,39 @@ def _digit(page, digit):
     return _one_visible(page.get_by_text(digit, exact=True))
 
 
+
+def _preview_request_allowed(req):
+    """Only read-only requests plus the exact configuration/session RPCs."""
+    url = urlparse(req.url)
+    if req.method.upper() in ("GET", "HEAD", "OPTIONS"):
+        return True
+    if req.method.upper() != "POST" or url.scheme != "https":
+        return False
+    if (url.hostname == "lambda.us-east-1.amazonaws.com"
+            and url.path == "/2015-03-31/functions/eboleta-configuracionesEmision-prod/invocations"
+            and not url.query):
+        return True
+    if url.hostname == "cognito-identity.us-east-1.amazonaws.com" and url.path in ("", "/"):
+        return req.headers.get("x-amz-target", "") in (
+            "AWSCognitoIdentityService.GetId",
+            "AWSCognitoIdentityService.GetCredentialsForIdentity",
+        )
+    return False
+
+
 def _prepare_order_preview(page, order):
     """Adapt sii_monto_local's keypad and six fields; final issuance never allowed."""
     if not _calculator_ready(page):
         return "calculator_not_ready"
     # Block all state-changing network calls after authentication, including issuance.
     def read_only(route):
-        if route.request.method.upper() not in ("GET", "HEAD", "OPTIONS"):
-            route.abort()
-        else:
+        if _preview_request_allowed(route.request):
             route.continue_()
+        else:
+            # Never log payload, query strings, tokens, or recipient identifiers.
+            app.logger.warning("SII_PREVIEW_NETWORK_BLOCK method=%s host=%s",
+                               route.request.method, urlparse(route.request.url).hostname)
+            route.abort()
     page.context.route("**/*", read_only)
     display = page.locator("input[readonly]")
     if display.count() == 1:
@@ -279,7 +302,21 @@ def _prepare_order_preview(page, order):
             if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();}
         },true);
     }""")
-    page.get_by_text("Receptor", exact=True).first.wait_for(state="visible", timeout=30000)
+    with _lock:
+        _session["stage"] = "waiting_receiver_form"
+    deadline_form = time.monotonic() + 90
+    while time.monotonic() < deadline_form:
+        if _session.get("stop"):
+            return "stopped"
+        labels = page.get_by_text("Receptor", exact=True)
+        if any(labels.nth(i).is_visible() for i in range(min(labels.count(), 10))):
+            break
+        _update_preview(page)
+        page.wait_for_timeout(1000)
+    else:
+        return "blocked_receiver_form_timeout"
+    with _lock:
+        _session["stage"] = "filling_receiver"
     for label in ("Receptor", "Detalle"):
         visible_label = _one_visible(page.get_by_text(label, exact=True))
         checkbox = page.get_by_role("checkbox", name=label, exact=True)
@@ -429,7 +466,7 @@ def _browser_owner(started, credentials):
                 try:
                     prepare_result = _prepare_order_preview(page, order)
                 except Exception as exc:
-                    prepare_result = "blocked_" + type(exc).__name__
+                    prepare_result = "blocked_" + _session.get("stage", "preparation") + "_" + type(exc).__name__
                 finally:
                     order.clear()
                 with _lock:
