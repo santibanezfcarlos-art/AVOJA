@@ -146,8 +146,19 @@ def issue_once(page, order, ids, ticket):
             if snapshot:
                 try:
                     result=report_complete(ticket,snapshot)
-                    return ("canary_issued_pdf_saved" if result.get("pdf_stored")
-                            else "canary_issued_pdf_pending")
+                    if not result.get("pdf_stored"):
+                        return "canary_issued_pdf_pending"
+                    # After PSC persists folio and PDF (and dispatches the
+                    # corporate email), the same official SII page can send
+                    # its original receipt mail once. A failed/ambiguous
+                    # send never triggers another issuance or a mail retry.
+                    from sii_email_after_issue import send_once
+                    try:
+                        state=send_once(page,ticket,order["email"],
+                                        snapshot["folio"],order["amount"])
+                    except Exception:
+                        state="unknown"
+                    return "canary_issued_pdf_saved_sii_"+state
                 except Exception:
                     return "canary_issued_report_reconciliation"
             return "canary_clicked_reconciliation"

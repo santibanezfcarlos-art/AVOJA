@@ -53,9 +53,11 @@ class Canaries(unittest.TestCase):
                        {"ok":True,"amount":30000,"form_id":"btn","text_length":100},
                        {"folio":"615","dte":41,"amount":30000,"pdf":"fake-b64-pdf"}])
         with (patch("issue_canary.claim",return_value=True),
-              patch("issue_canary.report_complete",return_value={"state":"issued","pdf_stored":True}) as send):
+              patch("issue_canary.report_complete",return_value={"state":"issued","pdf_stored":True}) as send,
+              patch("sii_email_after_issue.send_once",return_value="accepted") as sii_mail):
             result=issue_canary.issue_once(page,ORDER,IDS,"signed-canary-ticket")
-        self.assertEqual(result,"canary_issued_pdf_saved")
+        self.assertEqual(result,"canary_issued_pdf_saved_sii_accepted")
+        sii_mail.assert_called_once_with(page,"signed-canary-ticket",ORDER["email"],"615",30000)
         self.assertEqual(page.clicks,1)
         send.assert_called_once()
         self.assertEqual(send.call_args.args[1]["folio"],"615")
