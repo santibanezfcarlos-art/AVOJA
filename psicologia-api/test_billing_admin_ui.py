@@ -33,6 +33,12 @@ class EmitButtonUiTests(unittest.TestCase):
         self.assertNotIn("$('orders').replaceChildren();",refresh)
         self.assertIn("document.createDocumentFragment()",refresh)
 
+    def test_90_second_sii_receipt_status_stays_inline(self):
+        script=SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("waiting_sii_receipt:'Esperando comprobante oficial del SII (hasta 90 segundos)…'",script)
+        self.assertIn("issueMessage(order,message)",script)
+        self.assertIn("await refresh({quiet:true});",script)
+
     def test_preview_does_not_issue(self):
         script=SCRIPT.read_text(encoding="utf-8")
         self.assertIn("'/prepare-render'",script)
