@@ -40,6 +40,11 @@ SCHEMA = '''CREATE TABLE IF NOT EXISTS billing_orders (
  sales_enabled INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
  CREATE UNIQUE INDEX IF NOT EXISTS unique_invoice_folio
  ON billing_orders(folio) WHERE folio IS NOT NULL;
+ CREATE TABLE IF NOT EXISTS sii_issuance_queue (
+ order_id TEXT PRIMARY KEY REFERENCES billing_orders(order_id),
+ status TEXT NOT NULL DEFAULT 'awaiting_issuer'
+ CHECK(status IN ('awaiting_issuer','processing','reconciliation','issued','blocked')),
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS billing_audit (
  id INTEGER PRIMARY KEY, order_id TEXT NOT NULL, action TEXT NOT NULL,
  created_at TEXT NOT NULL, actor TEXT NOT NULL);
@@ -168,6 +173,17 @@ def cancelled(token):
                     (hashlib.sha256(token.encode()).hexdigest(),))
 
 
+def _queue_sii_after_approved(con, order):
+    """One durable SII request per verified production purchase; no SII side effects.
+
+    The issuer is NOT yet connected. The waiting state must never be reported
+    as a real tax document, a folio, or a completed dispatch.
+    """
+    con.execute("""INSERT OR IGNORE INTO sii_issuance_queue
+                   (order_id,status,created_at,updated_at)
+                   VALUES (?,'awaiting_issuer',?,?)""", (order,now(),now()))
+
+
 def record_result(order, token, amount, approved, payment_type):
     if not configured():
         return False
@@ -178,12 +194,16 @@ def record_result(order, token, amount, approved, payment_type):
         if row['amount'] != amount or row['token_hash'] != hashlib.sha256(token.encode()).hexdigest():
             raise ValueError('Billing transaction mismatch')
         if row['payment_status'] == 'approved':
+            if row['environment'] == 'production' and row['invoice_status'] == 'pending':
+                _queue_sii_after_approved(con, order)
             return True  # Idempotent, cannot downgrade or reset an issued invoice.
         invoice = ('test' if row['environment'] == 'integration' else 'pending') if approved else 'not_applicable'
         method = 'Tarjeta de débito' if payment_type == 'VD' else 'Tarjeta de prepago' if payment_type == 'VP' else 'Tarjeta de crédito'
         con.execute('''UPDATE billing_orders SET payment_status=?, invoice_status=?, paid_at=?, payment_method=?
                        WHERE order_id=?''', ('approved' if approved else 'rejected', invoice,
                        now() if approved else None, method, order))
+        if approved and row['environment'] == 'production':
+            _queue_sii_after_approved(con, order)
     return True
 
 
@@ -247,7 +267,7 @@ def filtered_rows():
     status = request.args.get('status', 'pending')
     if environment not in ('production', 'integration') or status not in ('pending','issued','test','all'):
         raise ValueError('Filtro inválido')
-    sql = 'SELECT * FROM billing_orders WHERE environment=?'
+    sql = 'SELECT billing_orders.*, (SELECT status FROM sii_issuance_queue q WHERE q.order_id=billing_orders.order_id) AS issuance_state FROM billing_orders WHERE environment=?'
     params = [environment]
     if status != 'all':
         sql += ' AND invoice_status=?'
@@ -345,6 +365,7 @@ def mark_issued(order):
                     return jsonify(ok=True)
                 return jsonify(error='Esta compra ya tiene una boleta registrada.'), 409
             con.execute("UPDATE billing_orders SET invoice_status='issued',folio=?,issued_date=?,marked_at=? WHERE order_id=?", (folio,issued,now(),order))
+            con.execute("UPDATE sii_issuance_queue SET status='issued',updated_at=? WHERE order_id=?", (now(),order))
             con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
                         (order,'marked_issued',now(),request.authorization.username))
         return jsonify(ok=True)
