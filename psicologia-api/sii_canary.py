@@ -62,9 +62,21 @@ def ticket_data(token, *, claimed_completion=False):
         return None
 
 
-def any_claim(con):
+def any_claim(con, order_id=None):
     con.executescript(SCHEMA)
-    return bool(con.execute("SELECT 1 FROM sii_first_canary WHERE id=1").fetchone())
+    if order_id is None:
+        return bool(con.execute("SELECT 1 FROM sii_first_canary LIMIT 1").fetchone()
+                    or con.execute("SELECT 1 FROM sii_issuance_attempts LIMIT 1").fetchone())
+    return bool(con.execute("SELECT 1 FROM sii_first_canary WHERE order_id=?",(order_id,)).fetchone()
+                or con.execute("SELECT 1 FROM sii_issuance_attempts WHERE order_id=?",
+                               (order_id,)).fetchone())
+
+
+def recorded_attempt(con, order_id):
+    return (con.execute("SELECT order_id,nonce_hash,state FROM sii_issuance_attempts WHERE order_id=?",
+                        (order_id,)).fetchone()
+            or con.execute("SELECT order_id,nonce_hash,state FROM sii_first_canary WHERE order_id=?",
+                           (order_id,)).fetchone())
 
 
 @bp.post("/sii-visual/internal-canary-claim")
