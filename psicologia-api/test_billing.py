@@ -1,5 +1,7 @@
 """Offline integration checks: never contacts Transbank or uses real patient data."""
 import os
+import base64
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -100,6 +102,25 @@ class BillingTests(unittest.TestCase):
         self.assertEqual(self.mark('prod-paid').status_code, 200)
         with billing.db() as con:
             self.assertEqual(con.execute("SELECT status FROM sii_issuance_queue WHERE order_id='prod-paid'").fetchone()[0], 'issued')
+
+    def test_visual_sii_session_targets_requested_purchase_not_oldest(self):
+        for order in ('earlier-real', 'giovanni-fixture'):
+            token = self.order(order, 'production')
+            billing.record_result(order, token, 30000, True, 'VD')
+        with patch.dict(os.environ, {
+            'SII_VISUAL_BROWSER_URL': 'https://psc-sii-test.onrender.com',
+            'SII_VISUAL_TICKET_SECRET': 'offline-only-' * 5
+        }):
+            response = self.client.post('/admin/sii-visual/session',
+                                        data={'order_id': 'giovanni-fixture'}, auth=self.auth)
+            self.assertEqual(response.status_code, 303)
+            signed = response.location.split('#ticket=', 1)[1]
+            encoded = signed.split('.', 1)[0]
+            ticket = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
+            self.assertEqual(ticket['preview_order'], 'giovanni-fixture')
+            invalid = self.client.post('/admin/sii-visual/session',
+                                       data={'order_id': 'not-found'}, auth=self.auth)
+            self.assertEqual(invalid.status_code, 409)
 
     def test_no_issuance_request_for_test_or_rejected_payment(self):
         for order, env, approved in [('sandbox', 'integration', True),
