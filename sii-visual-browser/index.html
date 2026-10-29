@@ -10,6 +10,7 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 <section class="card"><h1>Prueba visual e-Boleta SII</h1>
 <p>Esta sesión abre Chromium visible en Render con conexión directa, sin Decodo ni otro proxy. Rellena RUT y clave con las credenciales SII guardadas en Render, sin pulsar INGRESAR. La clave permanece oculta en el formulario.</p>
 <p class="warning">Sesión de prueba. No ingreses datos de receptores reales y no intentes emitir. El botón EMITIR está bloqueado. La sesión se cierra automáticamente a los 15 minutos.</p>
+<p><a href="https://psicologia-carlos-calendar-api.onrender.com/admin/sii-visual">Volver al panel privado PSC</a></p>
 <button id="start" type="button">Iniciar Chromium</button>
 <button id="stop" type="button" hidden>Cerrar sesión</button>
 <p id="status" class="status" role="status" aria-live="polite">Esperando inicio autorizado desde el panel PSC…</p></section>
@@ -36,10 +37,10 @@ async function refreshStatus(){
  }catch{}
 }
 async function startBrowser(){
- if(!ticket){status.textContent="Abre esta prueba desde el panel privado PSC.";return}
+
  launch.disabled=true;status.textContent="Abriendo Chromium en Render con conexión directa…";
  try{
-  const response=await fetch("/api/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});
+  const response=await fetch(ticket?"/api/start":"/api/resume",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(ticket?{ticket}:{})});
   const data=await response.json();ticket=null;
   if(!response.ok)throw new Error(data.error||"No se pudo iniciar la sesión.");
   status.textContent="Conectando con la pantalla remota…";
@@ -52,5 +53,5 @@ async function startBrowser(){
 }
 launch.addEventListener("click",startBrowser);
 stop.onclick=async()=>{await fetch("/api/stop",{method:"POST"});if(rfb)rfb.disconnect();if(pollTimer)clearInterval(pollTimer);status.textContent="Sesión cerrada."};
-if(ticket){launch.hidden=true;startBrowser()}else{status.textContent="Inicia esta prueba desde el panel privado PSC."}
+launch.hidden=true;startBrowser();
 </script></body></html>
