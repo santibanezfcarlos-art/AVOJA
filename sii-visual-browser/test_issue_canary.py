@@ -87,15 +87,31 @@ class Canaries(unittest.TestCase):
 
     def test_receipt_seen_early_returns_without_waiting_more(self):
         page=FakePage([])
-        with patch("issue_canary.official_snapshot",side_effect=[None,None,{"folio":"615","dte":41,"amount":30000}]):
+        with patch("issue_canary.official_snapshot",side_effect=[None,None,{"folio":"615","dte":41,"amount":30000,"pdf":"b64"}]):
             result=issue_canary.wait_for_official_receipt(page,30000)
         self.assertEqual(result["folio"],"615")
         self.assertEqual(page.clicks,0)
 
+    def test_folio_without_pdf_is_retained_after_ninety_seconds(self):
+        class Clock:
+            now=400.0
+        clock=Clock()
+        class Page(FakePage):
+            def wait_for_timeout(self,ms):
+                clock.now+=ms/1000.0
+        page=Page([])
+        with (patch("issue_canary.time.monotonic",side_effect=lambda:clock.now),
+              patch("issue_canary.official_snapshot",return_value={
+                   "folio":"615","amount":30000,"dte":41,"pdf":None})):
+            receipt=issue_canary.wait_for_official_receipt(page,30000)
+        self.assertEqual(receipt["folio"],"615")
+        self.assertIsNone(receipt["pdf"])
+        self.assertLessEqual(clock.now-400.0,90.02)
+
     def test_transient_sii_dom_error_is_tolerated_until_receipt_appears(self):
         page=FakePage([])
         with patch("issue_canary.official_snapshot",
-                   side_effect=[RuntimeError("navigation"),None,{"folio":"615","amount":30000}]):
+                   side_effect=[RuntimeError("navigation"),None,{"folio":"615","amount":30000,"pdf":"b64"}]):
             result=issue_canary.wait_for_official_receipt(page,30000)
         self.assertEqual(result["folio"],"615")
 
