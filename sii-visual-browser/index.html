@@ -12,6 +12,7 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 <p class="warning">Sesión de prueba. Se usan los datos guardados de la compra pendiente. No pulses EMITIR. El botón EMITIR está bloqueado. La sesión se cierra automáticamente a los 15 minutos.</p>
 <p><a href="https://psicologia-carlos-calendar-api.onrender.com/admin/sii-visual">Volver al panel privado PSC</a></p>
 <button id="start" type="button">Iniciar Chromium</button>
+<button id="issue" type="button" hidden>Confirmar emisión real de esta compra</button>
 <button id="stop" type="button" hidden>Cerrar sesión</button>
 <p id="status" class="status" role="status" aria-live="polite">Esperando inicio autorizado desde el panel PSC…</p></section>
 <section class="card"><p>Captura del proceso ejecutado en segundo plano. La clave está tapada.</p><img id="preview" alt="Esperando imagen de Chromium…" style="width:100%;height:auto" hidden></section>
@@ -19,7 +20,7 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 </main>
 <script type="module">
 
-const launch=document.getElementById("start"), stop=document.getElementById("stop");
+const launch=document.getElementById("start"), stop=document.getElementById("stop"), issue=document.getElementById("issue");
 const status=document.getElementById("status");
 let ticket=new URLSearchParams(location.hash.slice(1)).get("ticket"), pollTimer=null;
 history.replaceState(null,"",location.pathname);
@@ -38,8 +39,21 @@ async function refreshPreview(){
 async function refreshStatus(){
  try{
   const response=await fetch("/api/status",{cache:"no-store"}), data=await response.json();
-  if(data.status==="failed"){status.textContent="Chromium se detuvo durante "+(data.stage||"el inicio")+" ("+(data.error||"error")+"). Vuelve al panel y prueba otra vez.";return}
-  if(data.status==="expired"){status.textContent="La sesión terminó.";return}
+  if(data.status==="failed"){issue.hidden=true;status.textContent="Chromium se detuvo durante "+(data.stage||"el inicio")+" ("+(data.error||"error")+"). Vuelve al panel y prueba otra vez.";return}
+  if(data.status==="expired"){issue.hidden=true;status.textContent="La sesión terminó.";return}
+  if(data.canary){
+    document.querySelector(".warning").textContent="EMISIÓN SUPERVISADA: El botón EMITIR del SII sigue protegido. Solo se intentará una emisión real después de tu autorización explícita. Si el SII no confirma el folio, NO repitas el intento: revisa el resultado en el portal.";
+    if(data.stage==="prepared_canary_awaiting_approval"){
+      issue.hidden=false;issue.disabled=false;
+      status.textContent="Formulario real preparado. Revisa la captura y confirma la emisión única de esta compra si todos los datos coinciden.";
+      return;
+    }
+    issue.hidden=true;
+    if((data.stage||"").includes("canary")){
+      status.textContent="Resultado supervisado: "+data.stage+". Comprueba el folio real en SII; nunca repitas la emisión si el resultado es incierto.";
+      return;
+    }
+  }
   if(!data.connectivity){const stages={waiting_before_login:"RUT y clave verificados. Esperando cinco segundos antes de INGRESAR…",waiting_calculator:"INGRESAR solicitado una vez. Esperando la calculadora…"};if(stages[data.stage])status.textContent=stages[data.stage];}
   if(data.preparation){
    const labels={prepared_not_issued:"Formulario completo y verificado. NO se emitió una boleta.",filled_document_type_unverified:"Campos completos; falta verificar el tipo exento. NO se emitió.",blocked_receiver_verification:"El SII modificó o rechazó un campo. Se detuvo sin emitir."};
@@ -71,6 +85,15 @@ async function startBrowser(){
  }catch(e){status.textContent=e.message;launch.hidden=false;launch.disabled=false}
 }
 launch.addEventListener("click",startBrowser);
+issue.onclick=async()=>{
+ if(!window.confirm("VAS A EMITIR UNA BOLETA ELECTRÓNICA REAL EN EL SII para la compra visible. La operación tributaria no se puede deshacer desde PSC. ¿Confirmas que quieres realizar exactamente un intento de emisión?"))return;
+ issue.disabled=true;issue.hidden=true;status.textContent="Confirmación recibida. Registrando intento único ANTES del clic final en SII…";
+ try{
+  const r=await fetch("/api/issue",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+  const j=await r.json();if(!r.ok)throw Error(j.error||"No autorizado");
+  status.textContent="Intento único solicitado. Revisando el resultado oficial del SII…";
+ }catch(e){status.textContent=e.message;issue.hidden=false;issue.disabled=false}
+};
 stop.onclick=async()=>{await fetch("/api/stop",{method:"POST"});if(pollTimer)clearInterval(pollTimer);status.textContent="Sesión cerrada."};
 launch.hidden=true;startBrowser();
 </script></body></html>
