@@ -132,7 +132,7 @@ def complete():
     oid=d["preview_order"]
     with billing.db() as con:
         any_claim(con)
-        record=con.execute("SELECT * FROM sii_first_canary WHERE id=1").fetchone()
+        record=recorded_attempt(con,oid)
         if (not record or record["order_id"]!=oid
             or record["nonce_hash"]!=hashlib.sha256(d["nonce"].encode()).hexdigest()):
             return jsonify(error="intento_no_reconocido"),409
@@ -198,7 +198,7 @@ def sii_delivery():
         any_claim(con)
         con.executescript(receipts_schema)
         con.execute("BEGIN IMMEDIATE")
-        issue=con.execute("SELECT * FROM sii_first_canary WHERE id=1").fetchone()
+        issue=recorded_attempt(con,order)
         receipt=con.execute("SELECT folio,pdf,sii_state,recipient FROM sii_receipts WHERE order_id=?",
                             (order,)).fetchone()
         if (not issue or issue["order_id"]!=order or issue["state"]!="issued"
