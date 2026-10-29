@@ -275,6 +275,8 @@ from sii_cloud import bp as sii_cloud_bp
 app.register_blueprint(sii_cloud_bp)
 from sii_receipt_admin import bp as sii_receipt_admin_bp
 app.register_blueprint(sii_receipt_admin_bp)
+from sii_canary import bp as sii_canary_bp
+app.register_blueprint(sii_canary_bp)
 from admin import admin_bp
 app.register_blueprint(admin_bp)
 from reschedules import reschedules_bp
