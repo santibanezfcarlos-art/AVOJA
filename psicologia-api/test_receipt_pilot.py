@@ -61,6 +61,24 @@ class ReceiptMailTests(unittest.TestCase):
         self.assertEqual(send.call_count,1)
         self.assertTrue(send.call_args.args[1].startswith('psc-receipt-'))
 
+    def test_explicit_resend_uses_distinct_stable_provider_keys(self):
+        d=self.data()
+        with (patch('public_demo_bridge._enabled',return_value=True),
+              patch('demo_notifications.send_payload',return_value='resend-provider-id') as sender):
+            raw,headers=self.signed(d)
+            a=self.client.post('/internal/psicologia/production/receipt-mail',
+                               data=raw,headers=headers)
+            self.assertEqual(a.status_code,200,a.text)
+            key_initial=sender.call_args.args[1]
+            d['resend_attempt']=1
+            raw,headers=self.signed(d)
+            b=self.client.post('/internal/psicologia/production/receipt-mail',
+                               data=raw,headers=headers)
+            self.assertEqual(b.status_code,200,b.text)
+            key_resend=sender.call_args.args[1]
+            self.assertNotEqual(key_resend,key_initial)
+            self.assertTrue(key_resend.startswith('psc-receipt-'))
+
     def test_invalid_pdf_and_unsigned_requests_blocked(self):
         data=self.data();data['mail']['attachments'][0]['content']=base64.b64encode(b'bad').decode()
         raw,headers=self.signed(data)
