@@ -1,0 +1,33 @@
+name: Verificar integracion de boletas Transbank (sin emitir)
+on:
+  push:
+    branches:
+      - feature/psc-boletas-transbank-20261029
+  pull_request:
+    branches:
+      - psicologia-carlos
+    paths:
+      - "psicologia-api/**"
+      - ".github/workflows/psc-boletas-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias del API
+        run: pip install -r psicologia-api/requirements.txt
+      - name: Compilar modulos sin ejecutar servicios
+        run: python -m compileall -q psicologia-api
+      - name: Ejecutar pruebas sin Transbank ni SII reales
+        run: |
+          cd psicologia-api
+          python -m unittest -v test_billing test_production_checkout test_sii_post_issue test_sii_jobs test_admin
+      - name: Validar JavaScript del panel
+        run: node --check psicologia-api/billing_admin.js

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import time
 from pathlib import Path
@@ -61,13 +62,19 @@ def create_sii_visual_session():
     if len(secret) < 32:
         return jsonify(error="Falta la clave de autorización temporal del servicio visual."), 503
 
-    # Pin the oldest eligible real payment in the signed ticket.
+    # Bind the signed SII session to the EXACT paid order chosen in the panel.
+    # An omitted ID retains the old 'first pending' diagnostic behavior.
+    selected_order = (request.form.get("order_id") or "").strip()
+    if selected_order and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", selected_order):
+        return jsonify(error="Identificador de compra inválido."), 400
     with billing.db() as con:
-        row = con.execute(
-            "SELECT * FROM billing_orders WHERE environment='production' "
-            "AND payment_status='approved' AND invoice_status='pending' "
-            "AND (folio IS NULL OR folio='') ORDER BY COALESCE(paid_at,created_at),created_at,order_id LIMIT 1"
-        ).fetchone()
+        sql = ("SELECT * FROM billing_orders WHERE environment='production' "
+               "AND payment_status='approved' AND invoice_status='pending' "
+               "AND (folio IS NULL OR folio='')")
+        if selected_order:
+            sql += " AND order_id=?"
+        sql += " ORDER BY COALESCE(paid_at,created_at),created_at,order_id LIMIT 1"
+        row = con.execute(sql, (selected_order,) if selected_order else ()).fetchone()
         if row is None:
             return jsonify(error="No hay compras reales pagadas pendientes de boleta."), 409
         order_id = row["order_id"]
@@ -82,7 +89,7 @@ def create_sii_visual_session():
         with billing.db() as con:
             con.execute(
                 "INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
-                ("sii_visual", "visual_session_created", billing.now(),
+                (order_id, "visual_session_created", billing.now(),
                  request_actor()),
             )
     except Exception:

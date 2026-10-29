@@ -1,9 +1,11 @@
 """Offline integration checks: never contacts Transbank or uses real patient data."""
 import os
+import base64
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import billing
@@ -28,6 +30,17 @@ class BillingTests(unittest.TestCase):
                          billing_name='Persona de prueba', billing_address='Dirección ficticia 123',
                          billing_email='prueba@example.invalid', billing_phone='+56912345678')
         self.person = billing.receiver(self.form)
+        # Current checkout requires a real-looking future slot and email consent.
+        from admin import DEFAULT, allowed_slot
+        now_local = datetime.now(ZoneInfo('America/Santiago')).date()
+        for delta in range(1, 14):
+            day = now_local + timedelta(days=delta)
+            if allowed_slot(DEFAULT, 'psicoterapia', day.isoformat(), '10:00'):
+                self.form.update(date=day.isoformat(), time='10:00',
+                                 test_email_ownership='1')
+                break
+        else:
+            raise AssertionError('No future test slot in defaults')
     def tearDown(self):
         self.env.stop()
         self.tmp.cleanup()
@@ -56,7 +69,10 @@ class BillingTests(unittest.TestCase):
                 return {'token':token,'url':webpay.CHECKOUT_URL}
             return {'session_id':sent['session_id'],'buy_order':sent['buy_order'],
                     'amount':30000,'status':'AUTHORIZED','response_code':0,'payment_type_code':'VD'}
-        with patch.object(webpay, '_send', side_effect=send):
+        with (patch.object(webpay, '_send', side_effect=send),
+              patch('webpay_demo.bridge.enabled', return_value=True),
+              patch('webpay_demo.bridge.preflight', return_value='READY'),
+              patch('webpay_demo.bridge.complete', return_value='CONFIRMED')):
             r = self.client.post('/api/webpay-demo/start',data=self.form,headers={'Origin':webpay.SITE})
             self.assertEqual(r.status_code,200)
             self.assertNotIn(self.person['email'],str(sent))
@@ -88,6 +104,46 @@ class BillingTests(unittest.TestCase):
             self.assertEqual(row['invoice_status'],'issued')
             self.assertEqual(row['payment_status'],'approved')
             self.assertEqual(con.execute('SELECT count(*) FROM billing_audit').fetchone()[0],1)
+    def test_approved_real_payment_creates_one_durable_issue_request(self):
+        token = self.order('prod-paid', 'production')
+        billing.record_result('prod-paid', token, 30000, True, 'VD')
+        billing.record_result('prod-paid', token, 30000, True, 'VD')
+        with billing.db() as con:
+            queue = con.execute("SELECT * FROM sii_issuance_queue WHERE order_id=?", ('prod-paid',)).fetchall()
+            self.assertEqual(len(queue), 1)
+            self.assertEqual(queue[0]['status'], 'awaiting_issuer')
+            self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id='prod-paid'").fetchone()[0], 'pending')
+        self.assertEqual(self.mark('prod-paid').status_code, 200)
+        with billing.db() as con:
+            self.assertEqual(con.execute("SELECT status FROM sii_issuance_queue WHERE order_id='prod-paid'").fetchone()[0], 'issued')
+
+    def test_visual_sii_session_targets_requested_purchase_not_oldest(self):
+        for order in ('earlier-real', 'giovanni-fixture'):
+            token = self.order(order, 'production')
+            billing.record_result(order, token, 30000, True, 'VD')
+        with patch.dict(os.environ, {
+            'SII_VISUAL_BROWSER_URL': 'https://psc-sii-test.onrender.com',
+            'SII_VISUAL_TICKET_SECRET': 'offline-only-' * 5
+        }):
+            response = self.client.post('/admin/sii-visual/session',
+                                        data={'order_id': 'giovanni-fixture'}, auth=self.auth)
+            self.assertEqual(response.status_code, 303)
+            signed = response.location.split('#ticket=', 1)[1]
+            encoded = signed.split('.', 1)[0]
+            ticket = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
+            self.assertEqual(ticket['preview_order'], 'giovanni-fixture')
+            invalid = self.client.post('/admin/sii-visual/session',
+                                       data={'order_id': 'not-found'}, auth=self.auth)
+            self.assertEqual(invalid.status_code, 409)
+
+    def test_no_issuance_request_for_test_or_rejected_payment(self):
+        for order, env, approved in [('sandbox', 'integration', True),
+                                     ('rejected-real', 'production', False)]:
+            token = self.order(order, env)
+            billing.record_result(order, token, 30000, approved, 'VD')
+        with billing.db() as con:
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM sii_issuance_queue').fetchone()[0], 0)
+
     def test_rejected_cancelled_and_mismatch(self):
         token=self.order()
         with self.assertRaises(ValueError):
@@ -102,7 +158,8 @@ class BillingTests(unittest.TestCase):
     def test_unconfigured_stops_payment(self):
         with patch.dict(os.environ, {'PSICOLOGIA_BILLING_ADMIN_PASSWORD':''}):
             self.assertFalse(self.client.get('/api/billing/config').json['ready'])
-            with patch.object(webpay,'_send') as send:
+            with (patch.object(webpay,'_send') as send,
+                  patch('webpay_demo.bridge.enabled', return_value=True)):
                 self.assertEqual(self.client.post('/api/webpay-demo/start',data=self.form,headers={'Origin':webpay.SITE}).status_code,503)
                 send.assert_not_called()
     def test_export_and_persistence(self):
