@@ -410,7 +410,7 @@ def _browser_owner(started, credentials):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False,
+                headless=True,
                 args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
                 timeout=30000,
             )
@@ -447,6 +447,7 @@ def _browser_owner(started, credentials):
             host = urlparse(page.url).hostname or ""
             safe_result = {
                 "connection": "direct",
+                "browser_mode": "headless",
                 "sii_http_status": response.status if response else None,
                 "final_host": host if host.endswith(".sii.cl") else "other",
                 "authentication": auth_result,
@@ -475,7 +476,6 @@ def _browser_owner(started, credentials):
                 app.logger.warning("SII_VISUAL_PREPARATION %s", prepare_result)
             else:
                 order.clear()
-            page.bring_to_front()
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 try:
                     # Memory-only preview; password is masked even if its eye toggle was used.
@@ -525,7 +525,7 @@ def _visual_connection_response(status_code=200):
         _session["resume_token"] = secrets.token_urlsafe(32)
     remaining = max(0, int(SESSION_TTL - (time.monotonic() - _session["started"])))
     response = jsonify(status=_session["state"],
-                       vnc_password=os.environ["SII_VISUAL_VNC_PASSWORD"],
+                       browser_mode="headless",
                        expires_in_seconds=remaining)
     response.set_cookie("psc_visual_resume", _session["resume_token"],
                         max_age=remaining, secure=True, httponly=True, samesite="Strict")
