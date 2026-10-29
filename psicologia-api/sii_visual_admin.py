@@ -62,6 +62,13 @@ def create_sii_visual_session():
     if len(secret) < 32:
         return jsonify(error="Falta la clave de autorización temporal del servicio visual."), 503
 
+    # The canary is manually approved in the private visual browser.
+    mode=(request.form.get("mode") or "preview").strip()
+    if mode not in ("preview","issue_canary"):
+        return jsonify(error="Acción SII inválida."),400
+    if mode=="issue_canary" and os.environ.get("SII_CANARY_ENABLED")!="true":
+        return jsonify(error="Emisión real supervisada aún no habilitada."),503
+
     # Bind the signed SII session to the EXACT paid order chosen in the panel.
     # An omitted ID retains the old 'first pending' diagnostic behavior.
     selected_order = (request.form.get("order_id") or "").strip()
@@ -78,9 +85,16 @@ def create_sii_visual_session():
         if row is None:
             return jsonify(error="No hay compras reales pagadas pendientes de boleta."), 409
         order_id = row["order_id"]
+        if mode=="issue_canary":
+            from sii_canary import any_claim
+            if any_claim(con):
+                return jsonify(error="Ya existe un primer intento de emisión real. Debe conciliarse en SII."),409
+            queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order_id,)).fetchone()
+            if not queued or queued["status"]!="awaiting_issuer":
+                return jsonify(error="La compra no está disponible para la primera emisión."),409
     now = int(time.time())
     payload = _b64(json.dumps(
-        {"exp": now + 600, "nonce": secrets.token_urlsafe(24), "preview_order": order_id},
+        {"exp": now + 600, "nonce": secrets.token_urlsafe(24), "preview_order": order_id, "mode":mode},
         separators=(",", ":"),
     ).encode("utf-8"))
     signature = _b64(hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest())
