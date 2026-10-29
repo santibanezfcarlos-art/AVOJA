@@ -66,7 +66,7 @@ def recover_once():
                     o.folio IS NOT NULL AS has_folio,q.status AS queue_status,
                     COUNT(*) AS count
                     FROM billing_orders o LEFT JOIN sii_issuance_queue q ON q.order_id=o.order_id
-                    WHERE instr(lower(o.name),'giovanni')>0
+                    WHERE instr(lower(o.name),'giov')>0
                     GROUP BY o.environment,o.payment_status,o.invoice_status,
                              o.folio IS NOT NULL,q.status""").fetchall()
                 logging.getLogger("sii_invoice_recovery").warning(
