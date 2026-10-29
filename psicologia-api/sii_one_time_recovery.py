@@ -60,7 +60,6 @@ def recover_once():
                 return "already_recovered"
             matches=_candidate(con)
             if len(matches)!=1:
-                _encrypted_diagnostic(con)
                 return "no_unique_pending_match"
             target=matches[0]
             order_id=target["order_id"]
@@ -142,34 +141,3 @@ def recover_once():
             return "unblocked"
     except (sqlite3.Error,RuntimeError,OSError):
         return "recovery_failed"
-
-def _encrypted_diagnostic(con):
-    """Temporary private diagnostic. Only the operator's ephemeral key decrypts it."""
-    import base64
-    import json
-    import logging
-    import subprocess
-    import tempfile
-    rows=con.execute("""SELECT o.order_id,o.name,o.environment,o.amount,
-        o.payment_status,o.invoice_status,o.folio,q.status AS queue_status,q.updated_at,
-        (SELECT COUNT(*) FROM sii_receipts r WHERE r.order_id=o.order_id) AS receipts,
-        (SELECT group_concat(action || ':' || created_at, '|') FROM billing_audit a
-         WHERE a.order_id=o.order_id AND action LIKE '%sii%') AS audit
-        FROM billing_orders o LEFT JOIN sii_issuance_queue q ON q.order_id=o.order_id
-        WHERE o.environment='production' AND o.amount=30000 LIMIT 20""").fetchall()
-    raw=json.dumps([dict(r) for r in rows],ensure_ascii=True).encode()
-    try:
-        with tempfile.NamedTemporaryFile(mode="w") as key:
-            key.write("-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtf7yHT+EeXmXii0wrNKw\nwWSCdWu66qAfeFx6IFKd/2jmVdFlBK2d82cjWyYYVqK6ZKbstZYipoSF4HMTXaIB\nLw6kSgqd8tp9dGxm7sEtDMkXovnO3VSZ0YmPUY1lM+Ah0cdh9FuDKAoBg0y9oJ5X\njuL+OUp76t+dR403vkuoBz24fy1SZouS4XD8KvvNaNeFlYT+ZnbP+/3sqzv72G/F\nJzb9qVCV8I37+hGDNMGIvwLZyXPRmW4VnCgSZ9e54nlG24FQ6G6ywuV4jyUHstUi\n5PgO+4DGkqiIWwNkCpPxPrvaxxWjqcaOaktIf0Jj36vMbcU6tJtqM2k7OqBA5MsJ\n1QIDAQAB\n-----END PUBLIC KEY-----\n")
-            key.flush()
-            for i,start in enumerate(range(0,len(raw),180)):
-                result=subprocess.run(["openssl","pkeyutl","-encrypt","-pubin",
-                    "-inkey",key.name,"-pkeyopt","rsa_padding_mode:oaep",
-                    "-pkeyopt","rsa_oaep_md:sha256"],input=raw[start:start+180],
-                    capture_output=True,timeout=5,check=True)
-                logging.getLogger("sii_invoice_recovery").warning(
-                    "PSC_SII_PRIVATE_DIAG_V1 part=%d cipher=%s",
-                    i,base64.b64encode(result.stdout).decode())
-    except Exception:
-        logging.getLogger("sii_invoice_recovery").warning(
-            "PSC_SII_PRIVATE_DIAG_V1 unavailable")
