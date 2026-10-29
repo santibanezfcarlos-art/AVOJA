@@ -19,6 +19,13 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  const active=jobs.find(j=>['queued','running','reconciliation'].includes(j.status));
  const latest=jobs[0];
  if(latest)section.append(node('p','Agente SII: '+(siiLabels[latest.status]||latest.status)));
+ if(r.environment==='production'){
+  const formSii=node('form',undefined,'actions');formSii.action='/admin/sii-visual/session';formSii.method='post';formSii.target='_blank';formSii.rel='noopener';
+  const id=node('input');id.type='hidden';id.name='order_id';id.value=r.order_id;
+  const open=node('button','Abrir esta compra en SII (sin emitir)','primary');open.type='submit';
+  formSii.append(id,open);actions.append(formSii);
+  section.append(node('p',r.issuance_state==='awaiting_issuer'?'Compra aprobada vinculada a solicitud de boleta. Emisor automático aún no habilitado.':'Compra aprobada pendiente de gestión en SII.','meta'));
+ }
  const emit=node('button','Emitir boleta SII');emit.disabled=true;
  emit.title='Pendiente de validar la respuesta real del SII. Por ahora usa Preparar en mi computador.';actions.append(emit);
  if(active&&active.mode==='preview'){
