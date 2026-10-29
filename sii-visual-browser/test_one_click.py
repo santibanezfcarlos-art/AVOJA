@@ -151,6 +151,15 @@ class OneClickBrowserTests(unittest.TestCase):
         self.assertEqual(browser._session['stage'],'credential_fetch')
         self.assertEqual(browser._session['error'],'credential_bridge_missing_purchase')
 
+    def test_read_only_preview_only_has_the_blanket_submit_blocker(self):
+        from pathlib import Path
+        source=Path(__file__).with_name("app.py").read_text(encoding="utf-8")
+        self.assertIn("if not canary:\n        page.evaluate",source)
+        self.assertIn("document.addEventListener('submit', e => {",source)
+        self.assertIn("if(e.key==='Enter'){e.preventDefault()",source)
+        self.assertIn("if (finalAction && !(submitter && window.__pscPermitFinal === submitter))",source)
+        self.assertNotIn("document.addEventListener('submit', e => {e.preventDefault();e.stopImmediatePropagation();}, true);",source)
+
     def test_unknown_mode_cannot_use_privileged_background_start(self):
         value=self.data();value['mode']='issue_unrestricted'
         with patch('app._decode_ticket',return_value=value):
