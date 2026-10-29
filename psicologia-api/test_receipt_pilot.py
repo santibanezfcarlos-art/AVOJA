@@ -53,7 +53,7 @@ class ReceiptMailTests(unittest.TestCase):
         data=self.data()
         raw,headers=self.signed(data)
         with (patch('public_demo_bridge._enabled',return_value=True),
-              patch('production_fulfillment.send_payload',return_value='resend-fixture-001') as send):
+              patch('demo_notifications.send_payload',return_value='resend-fixture-001') as send):
             result=self.client.post('/internal/psicologia/production/receipt-mail',
                                     data=raw,headers=headers)
         self.assertEqual(result.status_code,200,result.text)
