@@ -1075,7 +1075,7 @@ def _sii_probe_once():
     from playwright.sync_api import sync_playwright
     import fonasa_live_bridge
 
-    result = {"status":"started", "credentials_used":False, "submitted":False,
+    result = {"status":"started", "entry_mode":"direct_login", "credentials_used":False, "submitted":False,
               "emitted":False, "country_before":"unknown", "country_after":"unknown",
               "same_exit_ip":None, "login_user_visible":False, "login_password_visible":False,
               "navigation":[], "errors":[]}
@@ -1158,7 +1158,8 @@ def _sii_probe_once():
                             "server":headers.get("server","")[:70],
                             "content_type":headers.get("content-type","")[:70]})
                 page.on("response",response_seen)
-                for label,url in (("home","https://www.sii.cl/"),("eboleta","https://eboleta.sii.cl/emitir/")):
+                # Public login URL and client parameters from e-Boleta app.25f745ac.js.
+                for label,url in (("direct_login","https://clave.w.sii.cl/oauthsii-v1/?response_type=code&client_id=e0378e96-4014-4a47-b852-9d9246797f5c&redirect_uri=https://eboleta.sii.cl/emitir/&scope=user_info&state=730b12d3-0586-42cb-8d8e-57c15125a8a9"),):
                     if busy():
                         result["status"]="stopped_for_fonasa"
                         return result
