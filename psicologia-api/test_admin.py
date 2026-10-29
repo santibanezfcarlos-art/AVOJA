@@ -43,8 +43,10 @@ class AdminTests(unittest.TestCase):
    r=self.post('/admin/transbank',{'paused':True});self.assertTrue(r.json['paused']);self.assertNotIn('never-expose-test-secret',r.get_data(as_text=True))
    r=self.client.post('/api/webpay-demo/start',headers={'Origin':webpay_demo.SITE},data={'service':'psicoterapia'})
    self.assertEqual(r.status_code,503);self.assertIn('pausados',r.get_data(as_text=True))
- def test_bridge_price_lock(self):
+ def test_bridge_keeps_admin_price_edits_valid(self):
   with patch('webpay_demo_bridge.enabled',return_value=True):
    d=copy.deepcopy(admin.DEFAULT);d['services']['psicoterapia']['price']=1000
-   self.assertEqual(self.post('/admin/settings',{'settings':d,'version':0}).status_code,400)
+   r=self.post('/admin/settings',{'settings':d,'version':0})
+   self.assertEqual(r.status_code,200,r.get_data(as_text=True))
+   self.assertEqual(self.client.get('/api/booking-config').json['settings']['services']['psicoterapia']['price'],1000)
 if __name__=='__main__':unittest.main()
