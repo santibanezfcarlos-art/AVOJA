@@ -7,6 +7,13 @@ let firstCanaryReady=false;
 let firstCanaryOrderId=null;
 const issueProgress=Object.create(null);
 const issueTimers=Object.create(null);
+const issueRunning=Object.create(null);
+function issueMessage(order,message){
+ issueProgress[order]=message;
+ const box=Array.from(document.querySelectorAll('[data-issue-order]'))
+                .find(e=>e.dataset.issueOrder===order);
+ if(box)box.textContent=message;
+}
 const previewProgress=Object.create(null);
 const previewRunning=Object.create(null);
 const previewTimers=Object.create(null);
@@ -60,38 +67,42 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
  if(r.environment==='production'){
   if(r.issuance_state==='reconciliation'||r.issuance_state==='processing'){
    section.append(node('p','Emisión SII con resultado por conciliar. NO volver a emitir. Primero comprueba si existe folio real en SII.','warning'));
-  }else if(firstCanaryReady&&firstCanaryOrderId===r.order_id){
+  }else{
+   // Never navigate to SII: ALL real issuance starts only through the
+   // authenticated PSC backend -> Render Chromium. If this purchase is not
+   // authorized for issuance, the backend returns a visible inline error.
    const emit=node('button','Emitir','primary');emit.type='button';
-   emit.disabled=!!issueProgress[r.order_id]||!!previewRunning[r.order_id];
-   emit.title='Un clic inicia Chromium en Render y la emisión real del SII en segundo plano.';
+   emit.disabled=!!issueRunning[r.order_id]||!!previewRunning[r.order_id];
+   emit.title='Inicia la emisión real en Chromium de Render, sin abrir pestañas.';
    emit.onclick=async()=>{
-    emit.disabled=true;
-    issueProgress[r.order_id]='Conectando Chromium en Render…';
-    $('notice').textContent='Ejecutando la emisión de esta compra directamente en Render…';
+    if(issueRunning[r.order_id]||previewRunning[r.order_id])return;
+    issueRunning[r.order_id]=true;emit.disabled=true;
+    issueProgress[r.order_id]='Solicitando emisión al servicio interno de Render…';
+    issueMessage(r.order_id,issueProgress[r.order_id]);
     try{
      const res=await fetch('/admin/boletas/'+encodeURIComponent(r.order_id)+'/emit',{
        method:'POST',headers:{'X-Billing-Action':'manual-invoice'}});
      const data=await res.json();
-     if(!res.ok)throw Error(data.error||'Render no confirmó el inicio.');
-     issueProgress[r.order_id]='Chromium iniciado; SII preparando boleta…';
+     if(!res.ok)throw Error(data.error||'Render no confirmó el inicio de emisión.');
+     issueMessage(r.order_id,'Chromium iniciado. Preparando la boleta real en SII…');
      await refresh();
      pollIssue(r.order_id);
     }catch(err){
-     issueProgress[r.order_id]='Revisar estado antes de intentar nuevamente: '+err.message;
-     $('notice').textContent=issueProgress[r.order_id];
+     issueRunning[r.order_id]=false;
+     issueMessage(r.order_id,'No se inició una nueva emisión: '+err.message);
      await refresh();
     }
    };actions.append(emit);
    const issueState=node('p',issueProgress[r.order_id]||'','sii-progress');
-   issueState.dataset.issueOrder=r.order_id;issueState.setAttribute('role','status');
-   issueState.setAttribute('aria-live','polite');actions.append(issueState);
-  }else{
-   const emit=node('button','Emitir','primary');emit.type='button';
-   emit.title='Abrir e-Boleta SII oficial. Completa y confirma la emisión directamente en el portal.';
-   emit.onclick=()=>{
-    window.open('https://eboleta.sii.cl/emitir/','_blank','noopener,noreferrer');
-    $('notice').textContent='SII oficial abierto. Completa la emisión real con esta ficha y registra el folio y PDF aquí. No hay autoemisión habilitada para esta compra.';
-   };actions.append(emit);
+   issueState.dataset.issueOrder=r.order_id;
+   issueState.setAttribute('role','status');
+   issueState.setAttribute('aria-live','polite');
+   actions.append(issueState);
+   if(!firstCanaryReady||firstCanaryOrderId!==r.order_id){
+    section.append(node('p',
+      'La primera emisión automática desde Render está reservada a la compra pendiente de Giovanni. Para esta compra se informará el bloqueo aquí, sin abrir páginas externas.',
+      'meta'));
+   }
   }
  }
  if(r.environment==='integration'&&active&&active.mode==='preview'){
@@ -244,6 +255,7 @@ async function pollIssue(order){
    issueProgress[order]=label[stage]||stage;
    if(status.state==='issued'||status.state==='reconciliation'
       ||terminal.has(status.state)||stage.startsWith('canary_')||stage.startsWith('blocked_')){
+    issueRunning[order]=false;
     delete issueTimers[order];
     await refresh();return;
    }
@@ -251,6 +263,7 @@ async function pollIssue(order){
    issueTimers[order]=setTimeout(step,3500);
   }catch(err){
    issueProgress[order]='No se pudo consultar Render. Revisar antes de repetir la emisión.';
+   issueRunning[order]=false;
    delete issueTimers[order];
    await refresh();
   }
