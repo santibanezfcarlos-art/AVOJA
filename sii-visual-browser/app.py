@@ -769,6 +769,35 @@ def internal_status():
                        preparation=_session.get("preparation"))
 
 
+@app.post("/api/internal/release-finished")
+def release_finished_issue():
+    """Stop only a terminal, unconfirmed SII attempt for manual reconciliation.
+
+    Does not change PSC billing, authorize another issuance, or touch other
+    concurrent/active orders. A final SII result must be checked externally.
+    """
+    if not _bridge_authorized():
+        return jsonify(error="No autorizado."),403
+    body=request.get_json(silent=True) or {}
+    order_id=body.get("order_id")
+    if not isinstance(order_id,str) or not re.fullmatch(r"PSCP[0-9A-F]{18}",order_id):
+        return jsonify(error="Orden inválida."),400
+    with _lock:
+        if _session.get("order_id")!=order_id:
+            return jsonify(ready=True,state="no_matching_session")
+        if _session.get("mode")!="issue_canary":
+            return jsonify(error="Sesión no corresponde a emisión."),409
+        stage=_session.get("stage","")
+        if stage not in ("canary_clicked_reconciliation","canary_attempt_reconciliation"):
+            return jsonify(error="Emisión no finalizada o ya confirmada; no se puede liberar."),409
+        if _session.get("state") in ("starting","open"):
+            _session["stop"]=True
+            return jsonify(ready=False,state="closing"),202
+        if _session.get("state") in ("expired","failed","idle"):
+            return jsonify(ready=True,state="stopped")
+        return jsonify(error="Estado del navegador por conciliar."),409
+
+
 @app.post("/api/issue")
 def confirm_canary():
     with _lock:
