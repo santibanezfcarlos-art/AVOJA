@@ -1,13 +1,14 @@
 """Short-lived, visible SII Chromium session over noVNC.
 
 Credentials are fetched server-to-server from the PSC API and used only in
-memory to fill the login form without submitting. The browser blocks the final EMITIR action.
+memory to sign in and stop at the calculator. The browser blocks the final EMITIR action.
 """
 import base64
 import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -153,19 +154,64 @@ def _fill_login_only(page, credentials):
                 with _lock:
                     _session["field_check"] = {"rut_matches": rut_matches, "password_matches": password_matches}
                 verified = rut_matches and password_matches
-                return "fields_filled_not_submitted" if verified else "field_verification_failed"
+                if not verified:
+                    return "field_verification_failed"
+                with _lock:
+                    _session["stage"] = "waiting_before_login"
+                _update_preview(page)
+                page.wait_for_timeout(5000)
+                if _session.get("stop", False):
+                    return "stopped"
+                # Check again after the pause; never send modified or incomplete fields.
+                if (normalize_rut(rut.input_value()) != normalize_rut(credentials["rut"])
+                        or password.input_value() != credentials["password"]):
+                    return "field_verification_failed"
+                if urlparse(frame.url).hostname != "clave.w.sii.cl":
+                    return "unexpected_auth_host"
+                submit = frame.get_by_role("button", name=re.compile(r"^Ingresar$", re.I))
+                if submit.count() != 1 or not submit.is_visible() or not submit.is_enabled():
+                    return "login_submit_not_recognized"
+                with _lock:
+                    _session["stage"] = "waiting_calculator"
+                    _session["login_click_attempted"] = True
+                # One attempt only: no retry if the response is slow.
+                submit.click(timeout=10000)
+                with _lock:
+                    _session["submitted"] = True
+                deadline_login = time.monotonic() + 120
+                while time.monotonic() < deadline_login:
+                    if _session.get("stop", False):
+                        return "stopped"
+                    if _calculator_ready(page):
+                        return "signed_in"
+                    _update_preview(page)
+                    page.wait_for_timeout(1000)
+                return "login_not_completed"
         page.wait_for_timeout(500)
     return "login_form_not_loaded"
 
 
 def _calculator_ready(page):
-    if (urlparse(page.url).hostname or "") != "eboleta.sii.cl":
+    if urlparse(page.url).hostname != "eboleta.sii.cl":
         return False
     try:
-        page.get_by_text("EMITIR", exact=False).first.wait_for(state="visible", timeout=1000)
-        return True
+        # Match real calculator controls, never the injected EMITIR warning banner.
+        controls = page.locator("button, input[type=button], [role=button]")
+        return all(controls.filter(has_text=re.compile("^" + label + "$")).first.is_visible()
+                   for label in ("7", "8", "0", "EMITIR"))
     except Exception:
         return False
+
+
+def _update_preview(page):
+    try:
+        preview = page.screenshot(type="jpeg", quality=65,
+                                 mask=[page.locator('input[type="password"], input[autocomplete="current-password"], input[data-psc-secret]')],
+                                 timeout=5000)
+        with _lock:
+            _session["preview"] = preview
+    except Exception:
+        pass
 
 
 def _close_browser():
@@ -224,21 +270,22 @@ def _browser_owner(started, credentials):
                 auth_result = _fill_login_only(page, credentials)
             finally:
                 credentials.clear()
-            calculator = False
+            calculator = auth_result == "signed_in" and _calculator_ready(page)
             host = urlparse(page.url).hostname or ""
             safe_result = {
                 "connection": "direct",
                 "sii_http_status": response.status if response else None,
                 "final_host": host if host.endswith(".sii.cl") else "other",
                 "authentication": auth_result,
-                "submitted": False,
+                "submitted": _session.get("submitted", False),
+                "login_click_attempted": _session.get("login_click_attempted", False),
                 "calculator_ready": calculator,
             }
             with _lock:
                 if _session.get("started") == started:
                     _session["connectivity"] = safe_result
                     _session["state"] = "open"
-                    _session["stage"] = "fields_filled" if auth_result == "fields_filled_not_submitted" else "sii_page_open"
+                    _session["stage"] = "calculator_ready" if calculator else "sii_page_open"
             app.logger.warning("SII_VISUAL_DIRECT_LOGIN %s", json.dumps(safe_result, separators=(",", ":")))
             page.bring_to_front()
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
@@ -341,7 +388,7 @@ def start():
         if _session.get("state") in ("starting", "open"):
             credentials.clear()
             return _visual_connection_response()
-        _session.update(preview=None, field_check=None, resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
+        _session.update(submitted=False, login_click_attempted=False, preview=None, field_check=None, resume_token=secrets.token_urlsafe(32), state="starting", error=None, stage="starting", stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
     threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
