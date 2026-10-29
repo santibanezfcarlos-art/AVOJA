@@ -62,6 +62,12 @@ class Canaries(unittest.TestCase):
         send.assert_called_once()
         self.assertEqual(send.call_args.args[1]["folio"],"615")
 
+    def test_final_button_match_is_limited_to_emitir_or_emitir_boleta(self):
+        from pathlib import Path
+        source=Path(__file__).with_name('issue_canary.py').read_text(encoding='utf-8')
+        self.assertIn(r'emitir(?:\\s+boleta)?',source)
+        self.assertNotIn(r'emitir.*',source)
+
     def test_never_clicks_if_any_form_check_fails(self):
         p=FakePage([{"ok":False,"reason":"amount_not_confirmed"}])
         with patch("issue_canary.claim") as claim:
