@@ -410,7 +410,7 @@ def _browser_owner(started, credentials):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,
+                headless=False,
                 args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
                 timeout=30000,
             )
@@ -447,7 +447,7 @@ def _browser_owner(started, credentials):
             host = urlparse(page.url).hostname or ""
             safe_result = {
                 "connection": "direct",
-                "browser_mode": "headless",
+                "browser_mode": "background_virtual_display",
                 "sii_http_status": response.status if response else None,
                 "final_host": host if host.endswith(".sii.cl") else "other",
                 "authentication": auth_result,
@@ -525,7 +525,7 @@ def _visual_connection_response(status_code=200):
         _session["resume_token"] = secrets.token_urlsafe(32)
     remaining = max(0, int(SESSION_TTL - (time.monotonic() - _session["started"])))
     response = jsonify(status=_session["state"],
-                       browser_mode="headless",
+                       browser_mode="background_virtual_display",
                        expires_in_seconds=remaining)
     response.set_cookie("psc_visual_resume", _session["resume_token"],
                         max_age=remaining, secure=True, httponly=True, samesite="Strict")
