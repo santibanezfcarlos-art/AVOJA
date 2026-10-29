@@ -78,7 +78,9 @@ def claim():
             order=con.execute("""SELECT environment,payment_status,invoice_status,folio,amount,name
                                  FROM billing_orders WHERE order_id=?""",(oid,)).fetchone()
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(oid,)).fetchone()
-            if (not order or order["environment"]!="production"
+            if (not order or "giovanni" not in order["name"].casefold()
+                or "salas" not in order["name"].casefold()
+                or order["environment"]!="production"
                 or order["payment_status"]!="approved" or order["invoice_status"]!="pending"
                 or order["folio"] or type(order["amount"]) is not int or order["amount"]<=0
                 or not queued or queued["status"]!="awaiting_issuer"):
