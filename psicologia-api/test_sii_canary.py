@@ -66,7 +66,7 @@ class CanaryTests(unittest.TestCase):
         with billing.db() as con:
             current=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(OID,)).fetchone()
             self.assertEqual(current["status"],"reconciliation")
-            n=con.execute("SELECT count(*) FROM sii_first_canary").fetchone()[0]
+            n=con.execute("SELECT count(*) FROM sii_issuance_attempts").fetchone()[0]
             self.assertEqual(n,1)
             b=con.execute("SELECT invoice_status,folio FROM billing_orders WHERE order_id=?",(OID,)).fetchone()
             self.assertEqual(b["invoice_status"],"pending")
@@ -80,7 +80,7 @@ class CanaryTests(unittest.TestCase):
             headers={"X-Billing-Action":"manual-invoice"})
         self.assertEqual(marked.status_code,200,marked.text)
         with billing.db() as con:
-            self.assertEqual(con.execute("SELECT state FROM sii_first_canary").fetchone()[0],"issued")
+            self.assertEqual(con.execute("SELECT state FROM sii_issuance_attempts").fetchone()[0],"issued")
             self.assertEqual(con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(OID,)).fetchone()[0],"issued")
 
     def test_issue_launch_is_order_specific_and_gated(self):
@@ -113,7 +113,7 @@ class CanaryTests(unittest.TestCase):
             row=con.execute("SELECT folio,pdf,psc_state FROM sii_receipts WHERE order_id=?",(OID,)).fetchone()
             self.assertEqual(row["folio"],"716")
             self.assertEqual(row["pdf"],pdf)
-            self.assertEqual(con.execute("SELECT state FROM sii_first_canary").fetchone()[0],"issued")
+            self.assertEqual(con.execute("SELECT state FROM sii_issuance_attempts").fetchone()[0],"issued")
 
     def test_sii_email_claim_only_after_official_pdf_and_once_per_purchase(self):
         self.assertEqual(self.claim().status_code,200)
@@ -217,7 +217,7 @@ class CanaryTests(unittest.TestCase):
         with billing.db() as con:
             import sii_canary
             self.assertFalse(sii_canary.any_claim(con))
-            self.assertEqual(con.execute("SELECT count(*) FROM sii_first_canary").fetchone()[0],0)
+            self.assertEqual(con.execute("SELECT count(*) FROM sii_issuance_attempts").fetchone()[0],0)
             self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
 
     def test_preview_503_bridge_error_is_not_misreported_as_busy(self):
