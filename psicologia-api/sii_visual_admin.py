@@ -60,6 +60,49 @@ def create_sii_visual_session():
     return response
 
 
+@bp.post("/sii-visual/internal-credentials")
+def sii_visual_internal_credentials():
+    """Server-only bridge for the visual browser; never used by client JavaScript."""
+    bridge_secret = os.environ.get("SII_VISUAL_BRIDGE_SECRET", "")
+    supplied = request.headers.get("X-PSC-Visual-Bridge", "")
+    if len(bridge_secret) < 32 or not hmac.compare_digest(
+        supplied.encode("utf-8"), bridge_secret.encode("utf-8")
+    ):
+        return jsonify(error="Solicitud no autorizada"), 401
+
+    body = request.get_json(silent=True) or {}
+    ticket = body.get("ticket", "")
+    signing_secret = os.environ.get("SII_VISUAL_TICKET_SECRET", "")
+    if not isinstance(ticket, str) or len(ticket) > 2048 or len(signing_secret) < 32:
+        return jsonify(error="Enlace de sesión inválido"), 403
+    try:
+        payload, signature = ticket.split(".", 1)
+        expected = hmac.new(signing_secret.encode(), payload.encode("ascii"), hashlib.sha256).digest()
+        received = base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4))
+        raw = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        data = json.loads(raw)
+        now = int(time.time())
+        if (
+            not hmac.compare_digest(expected, received)
+            or not isinstance(data, dict)
+            or not isinstance(data.get("nonce"), str)
+            or type(data.get("exp")) is not int
+            or not now <= data["exp"] <= now + 600
+        ):
+            return jsonify(error="Enlace de sesión inválido"), 403
+    except Exception:
+        return jsonify(error="Enlace de sesión inválido"), 403
+
+    rut = os.environ.get("SII_RUT", "")
+    password = os.environ.get("SII_PASSWORD", "")
+    if not rut or not password:
+        return jsonify(error="Credenciales SII no configuradas"), 503
+    response = jsonify(rut=rut, password=password)
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def request_actor():
     from flask import request
     return request.authorization.username if request.authorization else "admin"
