@@ -68,6 +68,8 @@ def record_issued(order_id, folio, issued_date, amount, dte=41):
                     (billing.now(),order_id))
         if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sii_first_canary'").fetchone():
             con.execute("UPDATE sii_first_canary SET state='issued' WHERE order_id=?", (order_id,))
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sii_issuance_attempts'").fetchone():
+            con.execute("UPDATE sii_issuance_attempts SET state='issued' WHERE order_id=?", (order_id,))
         con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
                     (order_id,'sii_receipt_recorded',billing.now(),'sii_post_issue'))
 
