@@ -8,8 +8,8 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 #screen{height:72vh;min-height:440px;background:#17231e;border-radius:12px;overflow:hidden}.status{min-height:1.5em;color:#435d52}#screen canvas{width:100%;height:100%}
 </style></head><body><main>
 <section class="card"><h1>Prueba visual e-Boleta SII</h1>
-<p>Esta sesión abre Chromium visible en Render con conexión directa, sin Decodo ni otro proxy. Rellena y verifica RUT y clave guardados en Render, espera cinco segundos y pulsa INGRESAR una sola vez. Se detiene al cargar la calculadora. La clave permanece oculta en el formulario.</p>
-<p class="warning">Sesión de prueba. No ingreses datos de receptores reales y no intentes emitir. El botón EMITIR está bloqueado. La sesión se cierra automáticamente a los 15 minutos.</p>
+<p>Esta sesión abre Chromium visible en Render con conexión directa, sin Decodo ni otro proxy. Rellena y verifica RUT y clave guardados en Render, espera cinco segundos y pulsa INGRESAR una sola vez. Después prepara el monto y los seis campos de la primera compra real pendiente, sin emitir. La clave permanece oculta en el formulario.</p>
+<p class="warning">Sesión de prueba. Se usan los datos guardados de la compra pendiente. No pulses EMITIR. El botón EMITIR está bloqueado. La sesión se cierra automáticamente a los 15 minutos.</p>
 <p><a href="https://psicologia-carlos-calendar-api.onrender.com/admin/sii-visual">Volver al panel privado PSC</a></p>
 <button id="start" type="button">Iniciar Chromium</button>
 <button id="stop" type="button" hidden>Cerrar sesión</button>
@@ -41,6 +41,12 @@ async function refreshStatus(){
   if(data.status==="failed"){status.textContent="Chromium se detuvo durante "+(data.stage||"el inicio")+" ("+(data.error||"error")+"). Vuelve al panel y prueba otra vez.";return}
   if(data.status==="expired"){status.textContent="La sesión terminó.";return}
   if(!data.connectivity){const stages={waiting_before_login:"RUT y clave verificados. Esperando cinco segundos antes de INGRESAR…",waiting_calculator:"INGRESAR solicitado una vez. Esperando la calculadora…"};if(stages[data.stage])status.textContent=stages[data.stage];}
+  if(data.preparation){
+   const labels={prepared_not_issued:"Formulario completo y verificado. NO se emitió una boleta.",filled_document_type_unverified:"Campos completos; falta verificar el tipo exento. NO se emitió.",blocked_receiver_verification:"El SII modificó o rechazó un campo. Se detuvo sin emitir."};
+   status.textContent=labels[data.preparation]||("Preparación detenida sin emitir: "+data.preparation);
+   return;
+  }
+  if(data.stage==="preparing_order"){status.textContent="Preparando monto y datos de la compra pendiente. Emisión final bloqueada.";return;}
   if(data.connectivity){
    const c=data.connectivity;
    const authLabels={fields_filled_not_submitted:"RUT y clave rellenados y verificados. INGRESAR no fue pulsado",field_verification_failed:"No se pudo verificar el relleno",signed_in:"Ingreso automático completado",already_authenticated:"Sesión SII activa",login_form_not_recognized:"Formulario de acceso no reconocido",login_submit_not_recognized:"No se identificó el botón de ingreso",login_not_completed:"SII aún no confirmó el ingreso",login_form_not_loaded:"Esperando el formulario de acceso",unexpected_auth_host:"Redirección SII inesperada"};
