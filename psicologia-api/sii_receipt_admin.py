@@ -40,18 +40,8 @@ def statuses():
                               WHERE order_id=r.order_id ORDER BY sequence DESC LIMIT 1)
                                AS resend_state
                              FROM sii_receipts r ORDER BY r.updated_at DESC LIMIT 1000""").fetchall()
-        from sii_canary import any_claim
-        claimed=any_claim(con)
-        targets=con.execute("""SELECT order_id FROM billing_orders
-                               WHERE environment='production' AND payment_status='approved'
-                               AND invoice_status='pending' AND (folio IS NULL OR folio='')
-                               AND instr(lower(name),'giovanni')>0
-                               AND instr(lower(name),'salas')>0""").fetchall()
-        selected=targets[0]['order_id'] if len(targets)==1 else None
     return jsonify(receipts=[dict(r) for r in rows], post_issue_enabled=True,
-                   first_canary_ready=os.environ.get("SII_CANARY_ENABLED")=="true" and not claimed and bool(selected),
-                   first_canary_order_id=selected if not claimed else None,
-                   first_canary_claimed=claimed)
+                   issuance_enabled=os.environ.get("SII_CANARY_ENABLED")=="true")
 
 
 @bp.post("/admin/boletas/<order>/official-pdf")
