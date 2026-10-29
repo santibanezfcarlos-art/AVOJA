@@ -368,6 +368,8 @@ def mark_issued(order):
             con.execute("UPDATE sii_issuance_queue SET status='issued',updated_at=? WHERE order_id=?", (now(),order))
             if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sii_first_canary'").fetchone():
                 con.execute("UPDATE sii_first_canary SET state='issued' WHERE order_id=?", (order,))
+            if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sii_issuance_attempts'").fetchone():
+                con.execute("UPDATE sii_issuance_attempts SET state='issued' WHERE order_id=?", (order,))
             con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
                         (order,'marked_issued',now(),request.authorization.username))
         return jsonify(ok=True)

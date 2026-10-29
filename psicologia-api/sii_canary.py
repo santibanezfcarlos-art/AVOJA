@@ -28,6 +28,11 @@ SCHEMA="""CREATE TABLE IF NOT EXISTS sii_first_canary (
  order_id TEXT NOT NULL, nonce_hash TEXT NOT NULL UNIQUE,
  state TEXT NOT NULL CHECK(state IN ('reconciliation','issued')),
  claimed_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sii_issuance_attempts (
+ order_id TEXT PRIMARY KEY REFERENCES billing_orders(order_id),
+ nonce_hash TEXT NOT NULL UNIQUE,
+ state TEXT NOT NULL CHECK(state IN ('reconciliation','issued')),
+ claimed_at TEXT NOT NULL);
 """
 
 
@@ -57,9 +62,21 @@ def ticket_data(token, *, claimed_completion=False):
         return None
 
 
-def any_claim(con):
+def any_claim(con, order_id=None):
     con.executescript(SCHEMA)
-    return bool(con.execute("SELECT 1 FROM sii_first_canary WHERE id=1").fetchone())
+    if order_id is None:
+        return bool(con.execute("SELECT 1 FROM sii_first_canary LIMIT 1").fetchone()
+                    or con.execute("SELECT 1 FROM sii_issuance_attempts LIMIT 1").fetchone())
+    return bool(con.execute("SELECT 1 FROM sii_first_canary WHERE order_id=?",(order_id,)).fetchone()
+                or con.execute("SELECT 1 FROM sii_issuance_attempts WHERE order_id=?",
+                               (order_id,)).fetchone())
+
+
+def recorded_attempt(con, order_id):
+    return (con.execute("SELECT order_id,nonce_hash,state FROM sii_issuance_attempts WHERE order_id=?",
+                        (order_id,)).fetchone()
+            or con.execute("SELECT order_id,nonce_hash,state FROM sii_first_canary WHERE order_id=?",
+                           (order_id,)).fetchone())
 
 
 @bp.post("/sii-visual/internal-canary-claim")
@@ -77,22 +94,20 @@ def claim():
         with billing.db() as con:
             any_claim(con)
             con.execute("BEGIN IMMEDIATE")
-            if con.execute("SELECT 1 FROM sii_first_canary WHERE id=1").fetchone():
-                return jsonify(error="canary_ya_reclamado_revisar_sii"),409
+            if recorded_attempt(con,oid):
+                return jsonify(error="Este pago ya tiene una emisión iniciada. Verifica el folio del SII."),409
             order=con.execute("""SELECT environment,payment_status,invoice_status,folio,amount,name
                                  FROM billing_orders WHERE order_id=?""",(oid,)).fetchone()
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(oid,)).fetchone()
-            if (not order or "giovanni" not in order["name"].casefold()
-                or "salas" not in order["name"].casefold()
-                or order["environment"]!="production"
+            if (not order or order["environment"]!="production"
                 or order["payment_status"]!="approved" or order["invoice_status"]!="pending"
                 or order["folio"] or type(order["amount"]) is not int or order["amount"]<=0
-                or not queued or queued["status"]!="awaiting_issuer"):
+                or not queued or queued["status"] not in ("awaiting_issuer","processing")):
                 return jsonify(error="orden_no_elegible"),409
             nonce_hash=hashlib.sha256(d["nonce"].encode()).hexdigest()
-            con.execute("""INSERT INTO sii_first_canary
-                           (id,order_id,nonce_hash,state,claimed_at)
-                           VALUES (1,?,?,'reconciliation',?)""",
+            con.execute("""INSERT INTO sii_issuance_attempts
+                           (order_id,nonce_hash,state,claimed_at)
+                           VALUES (?,?,'reconciliation',?)""",
                         (oid,nonce_hash,billing.now()))
             con.execute("UPDATE sii_issuance_queue SET status='reconciliation',updated_at=? WHERE order_id=?",
                         (billing.now(),oid))
@@ -117,7 +132,7 @@ def complete():
     oid=d["preview_order"]
     with billing.db() as con:
         any_claim(con)
-        record=con.execute("SELECT * FROM sii_first_canary WHERE id=1").fetchone()
+        record=recorded_attempt(con,oid)
         if (not record or record["order_id"]!=oid
             or record["nonce_hash"]!=hashlib.sha256(d["nonce"].encode()).hexdigest()):
             return jsonify(error="intento_no_reconocido"),409
@@ -183,7 +198,7 @@ def sii_delivery():
         any_claim(con)
         con.executescript(receipts_schema)
         con.execute("BEGIN IMMEDIATE")
-        issue=con.execute("SELECT * FROM sii_first_canary WHERE id=1").fetchone()
+        issue=recorded_attempt(con,order)
         receipt=con.execute("SELECT folio,pdf,sii_state,recipient FROM sii_receipts WHERE order_id=?",
                             (order,)).fetchone()
         if (not issue or issue["order_id"]!=order or issue["state"]!="issued"
@@ -312,20 +327,25 @@ def emit_from_panel(order):
     try:
         base,secret=_visual_service()
         with billing.db() as con:
-            if any_claim(con):
-                return jsonify(error="Ya existe un intento real. Primero revisa el resultado SII."),409
+            any_claim(con,order)
+            con.execute("BEGIN IMMEDIATE")
+            if recorded_attempt(con,order):
+                return jsonify(error="Ya existe un intento de emisión para este pago. Revisar SII."),409
             row=con.execute("""SELECT name,environment,payment_status,invoice_status,folio
                                FROM billing_orders WHERE order_id=?""",(order,)).fetchone()
             if (not row or row["environment"]!="production" or row["payment_status"]!="approved"
                 or row["invoice_status"]!="pending" or row["folio"]):
                 return jsonify(error="La compra no tiene una boleta pendiente válida."),409
-            if "giovanni" not in row["name"].casefold() or "salas" not in row["name"].casefold():
-                return jsonify(error="La primera emisión desde Render está reservada para Giovanni Salas."),409
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order,)).fetchone()
             if queued is None:
                 billing._queue_sii_after_approved(con,order)
             elif queued["status"]!="awaiting_issuer":
                 return jsonify(error="Emisión iniciada o pendiente de conciliación. No repetir."),409
+            changed=con.execute("""UPDATE sii_issuance_queue SET status='processing',updated_at=?
+                                  WHERE order_id=? AND status='awaiting_issuer'""",
+                                (billing.now(),order))
+            if changed.rowcount!=1:
+                return jsonify(error="Emisión ya en curso. No repetir."),409
         from sii_visual_admin import _b64
         payload=_b64(json.dumps({"exp":int(time.time())+600,
                "nonce":secrets.token_urlsafe(24),"preview_order":order,
