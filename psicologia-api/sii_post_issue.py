@@ -64,6 +64,8 @@ def record_issued(order_id, folio, issued_date, amount, dte=41):
             (order_id,str(folio),issued_date,amount,order['email'],order['name'],order['detail'],billing.now()))
         con.execute("UPDATE billing_orders SET invoice_status='issued',folio=?,issued_date=?,marked_at=? WHERE order_id=?",
                     (str(folio),issued_date,billing.now(),order_id))
+        con.execute("UPDATE sii_issuance_queue SET status='issued',updated_at=? WHERE order_id=?",
+                    (billing.now(),order_id))
         con.execute('INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)',
                     (order_id,'sii_receipt_recorded',billing.now(),'sii_post_issue'))
 
