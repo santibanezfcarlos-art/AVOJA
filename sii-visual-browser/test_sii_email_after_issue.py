@@ -42,6 +42,31 @@ class MailTests(unittest.TestCase):
         api.assert_not_called()
         self.assertEqual(b.clicks,0)
 
+    def test_one_sii_mail_click_after_claim_and_success_confirmation(self):
+        button=Button()
+        page=FakePage(button)
+        class Response:
+            ok=True
+        class Pending:
+            value=Response()
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+        class Snackbar:
+            def wait_for(self,**kwargs):return True
+        page.expect_response=lambda predicate,timeout: Pending()
+        page.locator=lambda selector: Snackbar()
+        requests=[]
+        def api(ticket,folio,action,outcome=None):
+            requests.append((action,outcome))
+            if action=="claim":return {"claimed":True,"recipient":"client@example.invalid"}
+            return {"state":outcome}
+        with (patch("sii_email_after_issue.official_snapshot",return_value={"folio":"615"}),
+              patch("sii_email_after_issue._api",side_effect=api)):
+            state=email.send_once(page,"ticket","client@example.invalid","615",30000)
+        self.assertEqual(state,"accepted")
+        self.assertEqual(requests,[("claim",None),("complete","accepted")])
+        self.assertEqual(button.clicks,1)
+
     def test_missing_button_never_claims(self):
         class InvalidButton(Button):
             def count(self):return 0
