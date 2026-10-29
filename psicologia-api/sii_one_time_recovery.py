@@ -60,6 +60,18 @@ def recover_once():
                 return "already_recovered"
             matches=_candidate(con)
             if len(matches)!=1:
+                # Non-identifying diagnostics only; never relax recovery guards.
+                import logging
+                rows=con.execute("""SELECT o.environment,o.payment_status,o.invoice_status,
+                    o.folio IS NOT NULL AS has_folio,q.status AS queue_status,
+                    COUNT(*) AS count
+                    FROM billing_orders o LEFT JOIN sii_issuance_queue q ON q.order_id=o.order_id
+                    WHERE instr(lower(o.name),'giovanni')>0
+                    GROUP BY o.environment,o.payment_status,o.invoice_status,
+                             o.folio IS NOT NULL,q.status""").fetchall()
+                logging.getLogger("sii_invoice_recovery").warning(
+                    "PSC_SII_RECOVERY_DIAGNOSTIC matches=%d states=%s",
+                    len(matches),[dict(r) for r in rows])
                 return "no_unique_pending_match"
             target=matches[0]
             order_id=target["order_id"]
