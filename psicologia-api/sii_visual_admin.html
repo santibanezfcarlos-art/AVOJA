@@ -24,7 +24,7 @@ button.addEventListener("click",async()=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||"No se pudo iniciar la prueba.");
   if(popup){popup.location.replace(data.url)}else{window.location.href=data.url}
-  status.textContent="Chromium se abrirá en otra pestaña. El enlace vence en cinco minutos.";
+  status.textContent="Chromium se abrirá en otra pestaña. El enlace vence en diez minutos.";
  }catch(error){if(popup)popup.close();status.textContent=error.message;button.disabled=false}
 });
 </script></body></html>
