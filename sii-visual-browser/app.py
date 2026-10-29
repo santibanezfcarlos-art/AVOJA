@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, request, send_file
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from issue_canary import issue_once
+from issue_canary import issue_once, verify
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 4096
@@ -252,7 +252,7 @@ def _preview_request_allowed(req):
     return False
 
 
-def _prepare_order_preview(page, order, canary=False):
+def _prepare_order_preview(page, order, canary=False, diagnostic=False):
     """Adapt sii_monto_local's keypad and six fields; final issuance never allowed."""
     if not _calculator_ready(page):
         return "calculator_not_ready"
@@ -264,6 +264,9 @@ def _prepare_order_preview(page, order, canary=False):
             # Never log payload, query strings, tokens, or recipient identifiers.
             app.logger.warning("SII_PREVIEW_NETWORK_BLOCK method=%s host=%s",
                                route.request.method, urlparse(route.request.url).hostname)
+            if diagnostic:
+                with _lock:
+                    _session["diagnostic_blocked_posts"]=_session.get("diagnostic_blocked_posts",0)+1
             route.abort()
     if not canary:
         page.context.route("**/*", read_only)
@@ -309,7 +312,7 @@ def _prepare_order_preview(page, order, canary=False):
     # *exact verified* button is temporarily authorized after a durable claim.
     # Previously this blanket listener prevented the real SII form submit,
     # even when the button click itself succeeded.
-    if not canary:
+    if not canary and not diagnostic:
         page.evaluate("""() => {
             document.addEventListener('submit', e => {
                 e.preventDefault();e.stopImmediatePropagation();
@@ -383,7 +386,7 @@ def _prepare_order_preview(page, order, canary=False):
             return "blocked_receiver_verification"
     # A canary retains the final button under BLOCK_ISSUE_ACTIONS until a
     # separate administrator approval and durable claim. Previews remain inert.
-    if canary:
+    if canary or diagnostic:
         body=page.locator("body").inner_text()
         if not re.search(r"boleta[^\\n]{0,60}(exenta|no afecta)",body,re.I):
             return "filled_document_type_unverified"
@@ -393,7 +396,7 @@ def _prepare_order_preview(page, order, canary=False):
           const banner=document.getElementById('__psc_issue_guard');
           if(banner) banner.textContent='EMISIÓN REAL SUPERVISADA · Requiere confirmar desde el panel PSC antes del último clic.';
         }""")
-        return "prepared_canary_awaiting_approval"
+        return "prepared_diagnostic_no_issue" if diagnostic else "prepared_canary_awaiting_approval"
     # Freeze interaction once the form is complete. No folio/status writes occur.
     page.evaluate("""() => {
         document.querySelectorAll('button,[role=button],input[type=submit]').forEach(el=>{
@@ -408,6 +411,50 @@ def _prepare_order_preview(page, order, canary=False):
     if not re.search(r"boleta[^\\n]{0,60}(exenta|no afecta)", body, re.I):
         return "filled_document_type_unverified"
     return "prepared_not_issued"
+
+
+def _diagnose_issue_without_transmission(page,order):
+    """Exercise local SII click handler under an absolute state-changing network block."""
+    with _lock:
+        ids=_session.get("field_ids")
+        _session["diagnostic_blocked_posts"]=0
+    verify(page,ids,order)
+    # Highest-priority route: no state-changing request can leave this context.
+    def deny_write(route):
+        if route.request.method.upper() not in ("GET","HEAD","OPTIONS"):
+            with _lock:
+                _session["diagnostic_blocked_posts"]+=1
+            app.logger.warning("SII_DRYRUN_WRITE_BLOCK host=%s",urlparse(route.request.url).hostname)
+            route.abort()
+        else:
+            route.continue_()
+    page.context.route("**/*",deny_write)
+    errors=[]
+    page.on("pageerror",lambda error:errors.append(type(error).__name__))
+    page.evaluate("() => {window.__pscPermitFinal=document.querySelector('[data-psc-issue-final=yes]')}")
+    try:
+        page.locator('[data-psc-issue-final=yes]').click(timeout=10000)
+        for _ in range(40):
+            page.wait_for_timeout(500)
+            with _lock:
+                blocked=_session.get("diagnostic_blocked_posts",0)
+            if blocked or errors:
+                break
+        state=page.evaluate("""() => {
+          const vms=new Set([...document.querySelectorAll('*')].map(e=>e.__vue__).filter(Boolean));
+          const vm=[...vms].find(v=>typeof v.iniciarEmision==='function' && v.compartirData);
+          return vm ? {component:true,form_state:vm.estadoDte,emitting:vm.emitiendo,
+            receiver_present:!!vm.rutDvReceptor,receiver_type:typeof vm.rutDvReceptor,
+            error_notice:!!(vm.notificacion && vm.notificacion.visible),
+            error_kind:vm.notificacion && /^Error al generar boleta/.test(vm.notificacion.mensaje||'') ? 'sii_generation_error' : 'other',
+            request_blocked:0} : {component:false};
+        }""")
+        state["blocked_writes"]=blocked
+        state["javascript_errors"]=errors
+        app.logger.warning("SII_DRYRUN_RESULT %s",json.dumps(state))
+        return "diagnostic_request_blocked_no_issue" if blocked else "diagnostic_no_request_no_issue"
+    finally:
+        page.evaluate("() => {window.__pscPermitFinal=null}")
 
 
 def _update_preview(page):
@@ -518,7 +565,9 @@ def _browser_owner(started, ticket, mode):
                 with _lock:
                     _session["stage"] = "preparing_order"
                 try:
-                    prepare_result = _prepare_order_preview(page, order, canary=mode=="issue_canary")
+                    prepare_result = _prepare_order_preview(page, order, canary=mode=="issue_canary",diagnostic=mode=="diagnostic")
+                    if mode=="diagnostic" and prepare_result=="prepared_diagnostic_no_issue":
+                        prepare_result=_diagnose_issue_without_transmission(page,order)
                 except Exception as exc:
                     prepare_result = "blocked_" + _session.get("stage", "preparation") + "_" + type(exc).__name__
                 finally:
@@ -537,7 +586,7 @@ def _browser_owner(started, ticket, mode):
             # Background-only preparation never needs a 15-minute visual
             # session. Keep its final status while freeing Chromium for
             # another purchase (and preserving the existing visual workflow).
-            if mode=="preview" and _session.get("auto_issue"):
+            if mode in ("preview","diagnostic") and _session.get("auto_issue"):
                 result=_session.get("preparation")
                 browser.close()
                 with _lock:
@@ -667,7 +716,7 @@ def _start_ticket(ticket, *, automatic=False):
         return jsonify(error="El enlace venció o no es válido. Inicia la prueba otra vez desde el panel PSC."), 403
 
     mode=data.get("mode","preview")
-    if mode not in ("preview","issue_canary"):
+    if mode not in ("preview","issue_canary","diagnostic"):
         return jsonify(error="Tipo de sesión SII inválido."),403
 
     # A previously opened visual *preview* must never block a normal backend
@@ -753,7 +802,7 @@ def internal_start():
     body=request.get_json(silent=True) or {}
     ticket=body.get("ticket","")
     decoded=_decode_ticket(ticket)
-    if not decoded or decoded.get("mode") not in ("issue_canary","preview"):
+    if not decoded or decoded.get("mode") not in ("issue_canary","preview","diagnostic"):
         return jsonify(error="Solicitud SII inválida."),403
     # preview: prepare and verify, NO final SII emission.
     # issue_canary: existing one-click real issuance, separately authorized.
@@ -817,4 +866,5 @@ def status():
                    preparation=_session.get("preparation") if _can_resume() else None,
                    connectivity=_session.get("connectivity"),
                    expires_in_seconds=SESSION_TTL if _session.get("started") else 0)
+
 
