@@ -1,7 +1,7 @@
 """Short-lived, visible SII Chromium session over noVNC.
 
-The operator enters SII credentials directly in Chromium. This service never
-accepts or stores them, and its browser blocks the final EMITIR action.
+Credentials are fetched server-to-server from the PSC API and used only in
+memory to sign in. The browser blocks the final EMITIR action.
 """
 import base64
 import hashlib
@@ -11,6 +11,8 @@ import os
 import secrets
 import threading
 import time
+import urllib.error
+import urllib.request
 from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file
@@ -96,6 +98,91 @@ def _decode_ticket(ticket):
         return None
 
 
+def _fetch_sii_credentials(ticket):
+    """Fetch secrets server-side; never return or log them to the browser client."""
+    api_url = os.environ.get("SII_CREDENTIALS_API_URL", "").rstrip("/")
+    if not api_url.startswith("https://"):
+        raise RuntimeError("SII credential service is not configured")
+    body = json.dumps({"ticket": ticket}).encode("utf-8")
+    req = urllib.request.Request(
+        api_url + "/admin/sii-visual/internal-credentials",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-PSC-Visual-Bridge": os.environ.get("SII_VISUAL_BRIDGE_SECRET", ""),
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            data = json.loads(response.read(4096).decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        raise RuntimeError("SII credentials could not be retrieved") from exc
+    rut, password = data.get("rut"), data.get("password")
+    if not isinstance(rut, str) or not rut or not isinstance(password, str) or not password:
+        raise RuntimeError("SII credentials are not configured in the PSC API")
+    return {"rut": rut, "password": password}
+
+
+def _sign_in_if_needed(page, credentials):
+    host = urlparse(page.url).hostname or ""
+    if host == "eboleta.sii.cl":
+        return "already_authenticated"
+    if host != "clave.w.sii.cl":
+        return "unexpected_auth_host"
+
+    password_input = page.locator('input[type="password"]')
+    password_input.first.wait_for(state="visible", timeout=25000)
+    rut_candidates = page.locator(
+        'input[name*="rut" i], input[id*="rut" i], input[placeholder*="rut" i], '
+        'input[autocomplete="username"], input[type="text"], input[type="tel"]'
+    )
+    rut_field = None
+    for i in range(min(rut_candidates.count(), 12)):
+        candidate = rut_candidates.nth(i)
+        if candidate.is_visible() and candidate.is_enabled():
+            rut_field = candidate
+            break
+    if rut_field is None:
+        return "login_form_not_recognized"
+
+    rut_field.fill(credentials["rut"], timeout=10000)
+    password_input.first.fill(credentials["password"], timeout=10000)
+
+    submit_candidates = page.locator('button, input[type="submit"], [role="button"]')
+    submit = None
+    for i in range(min(submit_candidates.count(), 30)):
+        candidate = submit_candidates.nth(i)
+        if not candidate.is_visible() or not candidate.is_enabled():
+            continue
+        label = " ".join([
+            candidate.get_attribute("value") or "",
+            candidate.get_attribute("aria-label") or "",
+            candidate.inner_text(timeout=500) if candidate.evaluate("(e) => e.tagName !== 'INPUT'") else "",
+        ]).strip().casefold()
+        if any(word in label for word in ("ingresar", "iniciar sesión", "iniciar sesion", "continuar")):
+            submit = candidate
+            break
+    if submit is None:
+        return "login_submit_not_recognized"
+    submit.click(timeout=10000)
+    try:
+        page.wait_for_url("https://eboleta.sii.cl/**", timeout=60000)
+    except Exception:
+        return "login_not_completed"
+    return "signed_in"
+
+
+def _calculator_ready(page):
+    if (urlparse(page.url).hostname or "") != "eboleta.sii.cl":
+        return False
+    try:
+        page.get_by_text("EMITIR", exact=False).first.wait_for(state="visible", timeout=1000)
+        return True
+    except Exception:
+        return False
+
+
 def _close_browser():
     browser = _session.get("browser")
     _session["browser"] = None
@@ -114,7 +201,7 @@ def _expire_session(started):
             _session.update(state="expired", started=None)
 
 
-def _browser_owner(started):
+def _browser_owner(started, credentials):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -133,15 +220,30 @@ def _browser_owner(started):
             context.add_init_script(BLOCK_ISSUE_ACTIONS)
             page = context.new_page()
             response = page.goto(TARGET, wait_until="domcontentloaded", timeout=45000)
+            auth_result = _sign_in_if_needed(page, credentials)
+            credentials.clear()
+            try:
+                page.wait_for_function(
+                    "() => location.hostname === 'eboleta.sii.cl' && "
+                    "document.body && /EMITIR/i.test(document.body.innerText)",
+                    timeout=60000,
+                )
+                calculator = _calculator_ready(page)
+            except Exception:
+                calculator = False
             host = urlparse(page.url).hostname or ""
-            safe_result = {"connection": "direct",
-                           "sii_http_status": response.status if response else None,
-                           "final_host": host if host.endswith(".sii.cl") else "other"}
+            safe_result = {
+                "connection": "direct",
+                "sii_http_status": response.status if response else None,
+                "final_host": host if host.endswith(".sii.cl") else "other",
+                "authentication": auth_result,
+                "calculator_ready": calculator,
+            }
             with _lock:
                 if _session.get("started") == started:
                     _session["connectivity"] = safe_result
                     _session["state"] = "open"
-            app.logger.warning("SII_VISUAL_DIRECT_CONNECTIVITY %s", json.dumps(safe_result, separators=(",", ":")))
+            app.logger.warning("SII_VISUAL_DIRECT_LOGIN %s", json.dumps(safe_result, separators=(",", ":")))
             while time.monotonic() - started < SESSION_TTL and not _session.get("stop", False):
                 time.sleep(1)
             browser.close()
@@ -192,10 +294,21 @@ def start():
         if _session.get("state") in ("starting", "open"):
             return jsonify(error="Ya hay una sesión visual activa. Espera a que termine."), 409
         _used_nonces.add(data["nonce"])
+
+    try:
+        credentials = _fetch_sii_credentials(ticket)
+    except Exception as exc:
+        app.logger.warning("SII_VISUAL_CREDENTIAL_FETCH_FAILED %s", type(exc).__name__)
+        return jsonify(error="No se pudieron obtener las credenciales SII desde la API PSC."), 503
+
+    with _lock:
+        if _session.get("state") in ("starting", "open"):
+            credentials.clear()
+            return jsonify(error="Ya hay una sesión visual activa. Espera a que termine."), 409
         _session.update(state="starting", error=None, stop=False, connectivity=None, started=time.monotonic(), browser=None)
         started = _session["started"]
 
-    threading.Thread(target=_browser_owner, args=(started,), daemon=True,
+    threading.Thread(target=_browser_owner, args=(started, credentials), daemon=True,
                      name="sii-visible-chromium").start()
     threading.Thread(target=_expire_session, args=(started,), daemon=True,
                      name="sii-visible-chromium-timeout").start()
