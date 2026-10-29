@@ -25,7 +25,7 @@ class CanaryTests(unittest.TestCase):
             "RENDER":"","PSICOLOGIA_BILLING_DB":self.tmp.name+"/store.db",
             "PSICOLOGIA_BILLING_ADMIN_PASSWORD":"offline-canary-password",
             "PSICOLOGIA_BILLING_ADMIN_HASH":"",
-            "SII_CANARY_ENABLED":"true",
+            "SII_CANARY_ENABLED":"true","SII_POST_ISSUE_ENABLED":"true",
             "SII_VISUAL_BROWSER_URL":"https://psc-sii-visual-test.onrender.com",
             "SII_VISUAL_TICKET_SECRET":SECRET})
         self.env.start()
@@ -96,6 +96,34 @@ class CanaryTests(unittest.TestCase):
         after=self.client.post("/admin/sii-visual/session",auth=self.auth,
             data={"order_id":OID,"mode":"issue_canary"})
         self.assertEqual(after.status_code,409)
+
+    def test_signed_official_callback_persists_folio_and_pdf_and_sends_psc_once(self):
+        pdf=b'%PDF-1.4\\n'+b'x'*120+b'\\n%%EOF\\n'
+        self.assertEqual(self.claim().status_code,200)
+        data={"ticket":self.ticket(),"snapshot":{"folio":"716","dte":41,
+              "amount":30000,"pdf":base64.b64encode(pdf).decode()}}
+        with patch("sii_receipt_admin.dispatch_psc",return_value="accepted") as deliver:
+            result=self.client.post("/admin/sii-visual/internal-canary-complete",
+                                    json=data,headers=self.bridge)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json["state"],"issued")
+        self.assertTrue(result.json["pdf_stored"])
+        deliver.assert_called_once_with(OID)
+        with billing.db() as con:
+            row=con.execute("SELECT folio,pdf,psc_state FROM sii_receipts WHERE order_id=?",(OID,)).fetchone()
+            self.assertEqual(row["folio"],"716")
+            self.assertEqual(row["pdf"],pdf)
+            self.assertEqual(con.execute("SELECT state FROM sii_first_canary").fetchone()[0],"issued")
+
+    def test_invalid_completion_does_not_create_folio(self):
+        self.assertEqual(self.claim().status_code,200)
+        wrong={"ticket":self.ticket(),"snapshot":{"folio":"716","dte":39,
+              "amount":30000,"pdf":None}}
+        result=self.client.post("/admin/sii-visual/internal-canary-complete",
+                                json=wrong,headers=self.bridge)
+        self.assertEqual(result.status_code,409)
+        with billing.db() as con:
+            self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
 
     def test_disabled_canary_stays_unavailable(self):
         with patch.dict(os.environ,{"SII_CANARY_ENABLED":"false"}):
