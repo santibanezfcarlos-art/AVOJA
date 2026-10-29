@@ -1,7 +1,7 @@
 name: Validar navegador de emisión única sin contactar SII
 on:
   push:
-    branches: [feature/psc-sii-canary-browser-20261029]
+    branches: [feature/psc-sii-canary-browser-20261029, fix/psc-sii-render-one-click-20261029]
   pull_request:
     branches: [feature/sii-chromium-visual-test]
 permissions: {contents: read}
@@ -12,5 +12,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - run: pip install -r sii-visual-browser/requirements.txt
       - run: python -m compileall -q sii-visual-browser
-      - run: cd sii-visual-browser && python -m unittest -v test_issue_canary
+      - run: cd sii-visual-browser && python -m unittest -v test_issue_canary test_one_click
