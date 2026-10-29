@@ -12,6 +12,10 @@ import os
 import re
 import sqlite3
 import time
+import secrets
+import urllib.request
+import urllib.error
+from urllib.parse import urlparse, urlencode
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
@@ -155,3 +159,91 @@ def complete():
     return jsonify(state="issued",folio_recorded=True,pdf_stored=bool(pdf),
                    psc_delivery=psc)
 
+
+
+def _visual_service():
+    base=os.environ.get("SII_VISUAL_BROWSER_URL","").strip().rstrip("/")
+    parsed=urlparse(base)
+    if parsed.scheme!="https" or not (parsed.hostname or "").endswith(".onrender.com") or parsed.username or parsed.password or parsed.port:
+        raise RuntimeError("sii_browser_not_configured")
+    secret=os.environ.get("SII_VISUAL_TICKET_SECRET","")
+    if len(secret)<32:
+        raise RuntimeError("sii_bridge_secret_missing")
+    return base,secret
+
+
+def _server_request(url,secret,body=None):
+    headers={"X-PSC-Visual-Bridge":secret, "Accept":"application/json"}
+    if body is None:
+        req=urllib.request.Request(url,headers=headers,method="GET")
+    else:
+        headers["Content-Type"]="application/json"
+        req=urllib.request.Request(url,data=json.dumps(body,separators=(",",":")).encode(),
+                                   headers=headers,method="POST")
+    with urllib.request.urlopen(req,timeout=22) as response:
+        return response.status,json.loads(response.read(4096))
+
+
+@bp.post("/boletas/<order>/emit")
+@billing.private
+def emit_from_panel(order):
+    """One administrator click -> Render Chromium -> SII, never local/manual."""
+    if os.environ.get("SII_CANARY_ENABLED")!="true":
+        return jsonify(error="La emisión desde Render todavía está deshabilitada."),503
+    if not re.fullmatch(r"PSCP[0-9A-F]{18}",order):
+        return jsonify(error="Compra inválida."),400
+    try:
+        base,secret=_visual_service()
+        with billing.db() as con:
+            if any_claim(con):
+                return jsonify(error="Ya existe un intento real. Primero revisa el resultado SII."),409
+            row=con.execute("""SELECT name,environment,payment_status,invoice_status,folio
+                               FROM billing_orders WHERE order_id=?""",(order,)).fetchone()
+            if (not row or row["environment"]!="production" or row["payment_status"]!="approved"
+                or row["invoice_status"]!="pending" or row["folio"]):
+                return jsonify(error="La compra no tiene una boleta pendiente válida."),409
+            if "giovanni" not in row["name"].casefold() or "salas" not in row["name"].casefold():
+                return jsonify(error="La primera emisión desde Render está reservada para Giovanni Salas."),409
+            queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order,)).fetchone()
+            if queued is None:
+                billing._queue_sii_after_approved(con,order)
+            elif queued["status"]!="awaiting_issuer":
+                return jsonify(error="Emisión iniciada o pendiente de conciliación. No repetir."),409
+        from sii_visual_admin import _b64
+        payload=_b64(json.dumps({"exp":int(time.time())+600,
+               "nonce":secrets.token_urlsafe(24),"preview_order":order,
+               "mode":"issue_canary"},separators=(",",":")).encode())
+        signature=_b64(hmac.new(secret.encode(),payload.encode("ascii"),hashlib.sha256).digest())
+        ticket=payload+"."+signature
+        status,data=_server_request(base+"/api/internal/start",secret,{"ticket":ticket})
+        if status!=202:
+            return jsonify(error="Chromium no confirmó el inicio."),503
+        with billing.db() as con:
+            con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                        (order,"render_sii_emission_started",billing.now(),request.authorization.username))
+        return jsonify(started=True,state="starting",order_id=order),202
+    except urllib.error.HTTPError as exc:
+        return jsonify(error="Chromium rechazó el inicio; revisa su estado antes de repetir."),409 if exc.code==409 else 503
+    except (RuntimeError,ValueError,urllib.error.URLError,TimeoutError,OSError):
+        return jsonify(error="No se pudo confirmar el inicio en Render. Comprueba el estado antes de intentar otra vez."),503
+
+
+@bp.get("/boletas/<order>/issue-status")
+@billing.private
+def issue_status(order):
+    with billing.db() as con:
+        queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(order,)).fetchone()
+        receipt=con.execute("SELECT invoice_status,folio FROM billing_orders WHERE order_id=?",(order,)).fetchone()
+    if not receipt:
+        return jsonify(error="Compra no encontrada."),404
+    if receipt["invoice_status"]=="issued":
+        return jsonify(state="issued",folio=receipt["folio"])
+    if queued and queued["status"]=="reconciliation":
+        return jsonify(state="reconciliation",message="Comprobar folio en SII antes de reintentar")
+    try:
+        base,secret=_visual_service()
+        _,status=_server_request(base+"/api/internal/status?"+urlencode({"order_id":order}),secret)
+        return jsonify(state=status.get("state","unknown"),stage=status.get("stage","unknown"),
+                       preparation=status.get("preparation"))
+    except Exception:
+        return jsonify(state="unavailable",stage="render_unavailable")
