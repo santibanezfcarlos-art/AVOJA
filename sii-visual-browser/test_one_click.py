@@ -120,16 +120,36 @@ class OneClickBrowserTests(unittest.TestCase):
         self.assertEqual(res.status_code,409)
         self.assertFalse(browser._session['stop'])
 
-    def test_credentials_fail_with_safe_specific_code_not_false_busy_message(self):
+    def test_credentials_fetch_happens_only_after_http_start_response(self):
         value=self.data();value['mode']='preview'
         with (patch('app._decode_ticket',return_value=value),
-              patch('app._fetch_sii_credentials',side_effect=RuntimeError('credential_bridge_missing_purchase'))):
+              patch('app._fetch_sii_credentials') as fetch,
+              patch('app.threading.Thread') as thread):
             res=self.client.post('/api/internal/start',
-                json={'ticket':'signed-but-broken-credentials'},
+                json={'ticket':'signed-preview'},
                 headers={'X-PSC-Visual-Bridge':SECRET})
-        self.assertEqual(res.status_code,503)
-        self.assertEqual(res.json['code'],'credential_bridge_missing_purchase')
-        self.assertNotIn('ocupado',res.json['error'].lower())
+        self.assertEqual(res.status_code,202,res.text)
+        fetch.assert_not_called()
+        self.assertEqual(thread.call_args_list[0].kwargs['args'],
+                         (browser._session['started'],'signed-preview','preview'))
+        self.assertEqual(browser._session['order_id'],ORDER)
+
+    def test_failed_background_credentials_leave_safe_error_state(self):
+        value=self.data();value['mode']='preview'
+        with (patch('app._decode_ticket',return_value=value),
+              patch('app.threading.Thread')):
+            res=self.client.post('/api/internal/start',
+                json={'ticket':'signed-preview'},
+                headers={'X-PSC-Visual-Bridge':SECRET})
+        self.assertEqual(res.status_code,202)
+        started=browser._session['started']
+        with (patch('app._fetch_sii_credentials',
+                    side_effect=RuntimeError('credential_bridge_missing_purchase')),
+              patch('app._decode_ticket',return_value=value)):
+            browser._browser_owner(started,'signed-preview','preview')
+        self.assertEqual(browser._session['state'],'failed')
+        self.assertEqual(browser._session['stage'],'credential_fetch')
+        self.assertEqual(browser._session['error'],'credential_bridge_missing_purchase')
 
     def test_unknown_mode_cannot_use_privileged_background_start(self):
         value=self.data();value['mode']='issue_unrestricted'
