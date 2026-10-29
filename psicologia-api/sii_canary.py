@@ -94,22 +94,20 @@ def claim():
         with billing.db() as con:
             any_claim(con)
             con.execute("BEGIN IMMEDIATE")
-            if con.execute("SELECT 1 FROM sii_first_canary WHERE id=1").fetchone():
-                return jsonify(error="canary_ya_reclamado_revisar_sii"),409
+            if recorded_attempt(con,oid):
+                return jsonify(error="Este pago ya tiene una emisión iniciada. Verifica el folio del SII."),409
             order=con.execute("""SELECT environment,payment_status,invoice_status,folio,amount,name
                                  FROM billing_orders WHERE order_id=?""",(oid,)).fetchone()
             queued=con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(oid,)).fetchone()
-            if (not order or "giovanni" not in order["name"].casefold()
-                or "salas" not in order["name"].casefold()
-                or order["environment"]!="production"
+            if (not order or order["environment"]!="production"
                 or order["payment_status"]!="approved" or order["invoice_status"]!="pending"
                 or order["folio"] or type(order["amount"]) is not int or order["amount"]<=0
-                or not queued or queued["status"]!="awaiting_issuer"):
+                or not queued or queued["status"] not in ("awaiting_issuer","processing")):
                 return jsonify(error="orden_no_elegible"),409
             nonce_hash=hashlib.sha256(d["nonce"].encode()).hexdigest()
-            con.execute("""INSERT INTO sii_first_canary
-                           (id,order_id,nonce_hash,state,claimed_at)
-                           VALUES (1,?,?,'reconciliation',?)""",
+            con.execute("""INSERT INTO sii_issuance_attempts
+                           (order_id,nonce_hash,state,claimed_at)
+                           VALUES (?,?,'reconciliation',?)""",
                         (oid,nonce_hash,billing.now()))
             con.execute("UPDATE sii_issuance_queue SET status='reconciliation',updated_at=? WHERE order_id=?",
                         (billing.now(),oid))
