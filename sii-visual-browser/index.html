@@ -19,8 +19,19 @@ h1{font-size:1.5rem;margin:.2rem 0 .7rem}.warning{color:#7c1c1c;font-weight:700}
 import RFB from "/novnc/core/rfb.js";
 const start=document.getElementById("start"), stop=document.getElementById("stop");
 const status=document.getElementById("status"), screen=document.getElementById("screen");
-let rfb=null, ticket=new URLSearchParams(location.hash.slice(1)).get("ticket");
+let rfb=null, ticket=new URLSearchParams(location.hash.slice(1)).get("ticket"), pollTimer=null;
 history.replaceState(null,"",location.pathname);
+async function refreshStatus(){
+ try{
+  const response=await fetch("/api/status",{cache:"no-store"}), data=await response.json();
+  if(data.status==="failed"){status.textContent="La sesión falló al abrir el portal ("+(data.error||"error")+").";return}
+  if(data.status==="expired"){status.textContent="La sesión terminó.";return}
+  if(data.connectivity){
+   const c=data.connectivity;
+   status.textContent="Decodo · país de salida: "+c.country+" · SII HTTP "+(c.sii_http_status??"sin respuesta")+" · "+c.final_host;
+  }
+ }catch{}
+}
 start.onclick=async()=>{
  if(!ticket){status.textContent="Abre esta prueba desde el panel privado PSC para autorizar una sesión.";return}
  start.disabled=true;status.textContent="Validando el enlace y preparando Decodo…";
@@ -32,8 +43,8 @@ start.onclick=async()=>{
   const scheme=location.protocol==="https:"?"wss":"ws";
   rfb=new RFB(screen,scheme+"://"+location.host+"/websockify",{credentials:{password:data.vnc_password}});
   rfb.scaleViewport=true;rfb.resizeSession=false;rfb.clipViewport=true;
-  rfb.addEventListener("connect",()=>{status.textContent="Chromium conectado al SII mediante Decodo. Ingresa tus credenciales directamente en la ventana.";stop.hidden=false});
-  rfb.addEventListener("disconnect",()=>{status.textContent="La conexión visual se cerró.";});
+  rfb.addEventListener("connect",()=>{status.textContent="Chromium conectado. Comprobando salida Decodo y portal SII…";stop.hidden=false;refreshStatus();pollTimer=setInterval(refreshStatus,2000)});
+  rfb.addEventListener("disconnect",()=>{if(pollTimer)clearInterval(pollTimer);status.textContent="La conexión visual se cerró.";});
  }catch(e){status.textContent=e.message;start.disabled=false}
 };
 stop.onclick=async()=>{await fetch("/api/stop",{method:"POST"});if(rfb)rfb.disconnect();status.textContent="Sesión cerrada."};
