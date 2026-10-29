@@ -84,6 +84,11 @@ def allowed_slot(config, service, day, hour):
 @admin_bp.after_request
 def headers(response):
     response = billing.private_headers(response)
+    if request.path == '/admin/sii-visual/post-emission':
+        response.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+    elif request.path == '/admin/sii-visual/post-emission/email':
+        response.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'; base-uri 'none'"
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     if request.path == '/admin':
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; frame-src 'self' https://valhallaoffice.cl https://www.valhallaoffice.cl https://mi.fonasa.gob.cl https://accounts.claveunica.gob.cl https://www.google.com; frame-ancestors 'none'; base-uri 'none'"
     return response
@@ -260,3 +265,4 @@ register_site_content(admin_bp)
 # SII visual Chromium session routes.
 from sii_visual_admin import bp as sii_visual_admin_bp
 admin_bp.register_blueprint(sii_visual_admin_bp)
+

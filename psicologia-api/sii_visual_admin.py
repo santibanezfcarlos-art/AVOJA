@@ -9,10 +9,35 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, redirect, request, send_file
+from flask import Blueprint, Response, jsonify, redirect, request, send_file
 import billing
 
 bp = Blueprint("sii_visual_admin", __name__, url_prefix="/admin")
+
+
+@bp.get('/sii-visual/post-emission/email')
+@billing.private
+def post_emission_email_preview():
+    from sii_post_issue import email_content
+    with billing.db() as con:
+        row = con.execute("SELECT name,amount,detail FROM billing_orders WHERE environment='production' "
+                          "AND payment_status='approved' AND invoice_status='pending' "
+                          "ORDER BY COALESCE(paid_at,created_at),created_at,order_id LIMIT 1").fetchone()
+    receipt = {'patient_name':row['name'] if row else 'Cliente de ejemplo',
+               'amount':row['amount'] if row else 30000,
+               'detail':row['detail'] if row else 'Servicio de ejemplo'}
+    _, body, _ = email_content(receipt,preview=True)
+    return Response(body,mimetype='text/html',headers={'Cache-Control':'no-store, private',
+        'Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'"})
+
+
+@bp.get('/sii-visual/post-emission')
+@billing.private
+def post_emission_preview():
+    response = send_file(Path(__file__).with_name('sii_post_issue_preview.html'))
+    response.headers['Cache-Control'] = 'no-store, private'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
 
 
 def _b64(data):
@@ -137,3 +162,4 @@ def sii_visual_internal_credentials():
 def request_actor():
     from flask import request
     return request.authorization.username if request.authorization else "admin"
+
