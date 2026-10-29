@@ -27,7 +27,7 @@ class FakePage:
         self.results=iter(results)
         self.clicks=0
         self.evaluations=0
-    def evaluate(self,script,**kwargs):
+    def evaluate(self,script,*args,**kwargs):
         self.evaluations+=1
         if "__pscPermitFinal" in script:
             return None
