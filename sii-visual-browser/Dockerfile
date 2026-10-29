@@ -7,6 +7,7 @@ WORKDIR /srv
 COPY requirements.txt /srv/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py /srv/app.py
+COPY issue_canary.py /srv/issue_canary.py
 COPY index.html /srv/index.html
 COPY nginx.conf.template /srv/nginx.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/sii-visual.conf
