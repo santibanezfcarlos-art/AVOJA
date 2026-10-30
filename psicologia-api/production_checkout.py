@@ -13,7 +13,7 @@ from datetime import datetime,timedelta
 from zoneinfo import ZoneInfo
 from urllib.request import Request,urlopen
 from urllib.parse import urlencode
-from flask import Blueprint,Response,jsonify,request,redirect
+from flask import Blueprint,Response,jsonify,request,redirect,current_app
 import billing
 from webpay_gateway import Gateway,GatewaySettings,is_authorized,validate_checkout_url
 bp=Blueprint('production_checkout',__name__)
@@ -133,12 +133,30 @@ def returning():
             paid=is_authorized(result,expected_order=r['order_id'],expected_session=r['session_id'],expected_amount=r['amount'])
             billing.record_result(r['order_id'],token,r['amount'],paid,result.get('payment_type_code',''))
             with billing.db() as c:c.execute('UPDATE production_payments SET state=? WHERE order_id=?',('AUTHORIZED' if paid else 'REJECTED',r['order_id']))
+            if paid: issue_after_approved_payment(r['order_id'])
         fulfill(r['order_id'])
         return redirect(API+'/pago/'+r['receipt'],code=303)
     except Exception:
         if 'r' in locals() and r:
             with billing.db() as c:c.execute("UPDATE production_payments SET state='RECONCILIATION',expires_at=? WHERE order_id=? AND state IN ('READY','COMMITTING')",(time.time()+86400,r['order_id']))
         return page('Resultado pendiente de verificación','<p>Estamos verificando el pago. No repitas la compra; consulta a contacto@pscsantibanez.cl.</p>',503)
+
+def issue_after_approved_payment(order):
+    """Dispatch in the background after bank verification and durable payment save.
+
+    The shared coordinator atomically claims the queue and rejects repeated
+    attempts. Tax transport errors must not turn an approved payment into a
+    payment error or prevent appointment fulfillment.
+    """
+    try:
+        from sii_canary import start_emission
+        response, status = start_emission(order, "webpay-approved-auto")
+        current_app.logger.info("SII_AUTO_DISPATCH http=%s", status)
+        return status
+    except Exception:
+        current_app.logger.exception("SII_AUTO_DISPATCH failed")
+        return 503
+
 
 def fulfill(order):
     with billing.db() as c:
@@ -258,6 +276,8 @@ def reconcile():
                 if not paid and result.get('status') not in ('FAILED','REVERSED','NULLIFIED'):continue
                 billing.record_result(r['order_id'],r['token'],r['amount'],paid,result.get('payment_type_code',''))
                 with billing.db() as c:c.execute('UPDATE production_payments SET state=? WHERE order_id=?',('AUTHORIZED' if paid else 'REJECTED',r['order_id']))
+                if paid: issue_after_approved_payment(r['order_id'])
             fulfill(r['order_id']);reviewed+=1
         except Exception:continue
     return jsonify(reviewed=reviewed)
+
