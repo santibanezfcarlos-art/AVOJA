@@ -138,6 +138,13 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
 }
 if(r.invoice_status==='issued'){
  section.append(node('p','Folio '+r.folio+' · Emisión '+r.issued_date));
+ // A purchase is shown as fully delivered only when the official PDF is
+ // persisted and the transactional provider accepted the patient's email.
+ // Never equate "folio issued" with "email delivered" without this evidence.
+ const completedReceipt=receiptMap[r.order_id];
+ if(r.environment==='production'&&completedReceipt&&completedReceipt.has_pdf&&completedReceipt.psc_state==='accepted'){
+  section.append(node('p','Boleta OK · PDF oficial guardado y envío al paciente aceptado.','meta'));
+ }
  if(r.environment==='production'){
   const receipt=receiptMap[r.order_id];
   const hasPdf=!!(receipt&&receipt.has_pdf);
