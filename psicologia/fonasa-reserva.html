@@ -55,6 +55,36 @@ button:disabled{cursor:default}
 [hidden]{display:none!important}
 @media(max-width:850px){.layout{grid-template-columns:1fr}.card{padding:20px}.hours{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.week{gap:2px}.day{height:66px}.day strong{font-size:18px}.day .dow{font-size:10px}.hours{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Pantalla Fonasa: misma confirmación visual que el pago particular. */
+body.fonasa-confirmed{background:radial-gradient(ellipse at 50% 40%,#fcfdfc,#f1f6f2 80%)}
+body.fonasa-confirmed header,body.fonasa-confirmed .footer,body.fonasa-confirmed main>.eyebrow,body.fonasa-confirmed main>h1,body.fonasa-confirmed main>.muted,body.fonasa-confirmed #status{display:none!important}
+body.fonasa-confirmed main{max-width:950px;margin:clamp(30px,6vh,65px) auto 110px}
+#finish.fonasa-success{padding:clamp(26px,3.7vw,50px);border:1px solid #edf1ee;border-radius:22px;text-align:center;box-shadow:0 18px 60px rgba(15,71,49,.08)}
+.fonasa-success .success-icon{display:grid;place-items:center;width:90px;height:90px;margin:0 auto 24px;border-radius:50%;background:#ddf1df;color:#137957;position:relative}
+.fonasa-success .success-icon:before{content:"";position:absolute;inset:-12px;border:2px dotted #9cdca9;border-radius:50%;opacity:.6}
+.fonasa-success .success-icon svg{width:54px;height:54px}
+.fonasa-success h2{color:#164e40;font-size:clamp(27px,3.1vw,40px);line-height:1.2;letter-spacing:-.025em;margin:0 0 28px}
+.fonasa-success .success-details{display:grid;grid-template-columns:1fr 1.65fr .82fr;align-items:center;background:#f5f8f6;border:1px solid #edf2ee;border-radius:18px;padding:14px 7px;margin:0 0 27px;text-align:left}
+.fonasa-success .success-detail{display:flex;align-items:center;justify-content:center;gap:14px;min-width:0;padding:8px 15px}
+.fonasa-success .success-detail+.success-detail{border-left:1px solid #dce7e0}
+.fonasa-success .success-detail svg{flex:none;width:30px;height:30px;stroke:#164e40;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.fonasa-success .success-detail strong{display:block;font-size:15px;line-height:1.35;color:#233b33}
+.fonasa-success .success-detail small{display:block;font-size:14px;margin-top:4px;color:#53675e}
+.fonasa-success .success-detail .bono-tag{display:grid;place-items:center;flex:none;width:43px;height:43px;border-radius:50%;background:#dbf1df;color:#0a6549;font-size:13px;font-weight:800}
+.fonasa-success .success-description{font-size:clamp(16px,1.4vw,19px);margin:0 auto 26px;line-height:1.65}
+.fonasa-success .success-notice{display:flex;align-items:flex-start;gap:20px;text-align:left;padding:22px 24px;border-radius:18px;background:linear-gradient(115deg,#eef7f0,#f2f9f4)}
+.fonasa-success .notice-icon{display:grid;place-items:center;flex:none;width:50px;height:50px;border-radius:50%;background:#d6efdd;color:#0a6549}
+.fonasa-success .notice-icon svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fonasa-success .success-notice strong{display:block;color:#0a6549;font-size:17px;line-height:1.4;margin-bottom:6px}
+.fonasa-success .success-notice p{margin:0;font-size:16px}
+.fonasa-success .success-notice a{color:#0a6549;font-weight:650;overflow-wrap:anywhere}
+.fonasa-success .success-actions{display:flex;justify-content:center;gap:15px;flex-wrap:wrap;margin-top:25px}
+.fonasa-success .success-action{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:53px;padding:13px 25px;text-decoration:none;border-radius:14px;font-size:16px;font-weight:650}
+.fonasa-success .success-action.primary-action{background:#0a6549;color:white;min-width:254px}
+.fonasa-success .success-action.secondary-action{border:1.5px solid #0a6549;background:white;color:#0a6549;min-width:185px}
+.fonasa-success .success-action:focus-visible,.fonasa-success a:focus-visible{outline:3px solid #8fc9ac;outline-offset:3px}
+@media(max-width:740px){body.fonasa-confirmed main{margin:24px auto 100px}#finish.fonasa-success{padding:27px 19px}.fonasa-success .success-icon{width:73px;height:73px}.fonasa-success .success-details{grid-template-columns:1fr;padding:8px 15px}.fonasa-success .success-detail{justify-content:flex-start;padding:12px 5px}.fonasa-success .success-detail+.success-detail{border-left:0;border-top:1px solid #dce7e0}.fonasa-success .success-notice{padding:17px 14px;gap:12px}.fonasa-success .notice-icon{width:40px;height:40px}.fonasa-success .success-notice strong,.fonasa-success .success-notice p{font-size:14px}.fonasa-success .success-actions{flex-direction:column}.fonasa-success .success-action{width:100%}}
 </style><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23173e35%22%2F%3E%3Ctext%20x%3D%2232%22%20y%3D%2243%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-weight%3D%22800%22%20font-size%3D%2231%22%20fill%3D%22white%22%20text-anchor%3D%22middle%22%3ECS%3C%2Ftext%3E%3C%2Fsvg%3E"></head><body>
 <header><a href="https://pscsantibanez.cl/">CS · Psicología aplicada al bienestar</a></header>
 <main>
@@ -117,6 +147,40 @@ async function api(path,options={}){
  const data=await response.json().catch(()=>({error:"Respuesta no disponible."}));
  if(!response.ok){const e=new Error(data.error||"El servidor no respondió.");e.status=response.status;e.reason=data.reason||"";throw e}
  return data;
+}
+function showConfirmed(date,time,meetUrl){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date||"")||!/^\d{2}:\d{2}$/.test(time||"")){
+  status("Tu hora está confirmada en Google Calendar. Revisa tu correo para conocer los detalles.");return;
+ }
+ const finish=$("finish");finish.replaceChildren();finish.classList.add("fonasa-success");
+ const icon=document.createElement("div");icon.className="success-icon";icon.setAttribute("aria-hidden","true");
+ icon.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg>';
+ const heading=document.createElement("h2");heading.textContent="¡Felicidades! Tu hora está confirmada";
+ const details=document.createElement("div");details.className="success-details";
+ const service=document.createElement("div");service.className="success-detail";
+ service.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 0 0-8 8c0 2.3 1.1 4.3 2.7 5.8L6 21h10v-4.2a6.5 6.5 0 0 0 3-5.3A7.5 7.5 0 0 0 12 4Z"/><circle cx="10" cy="10" r="1.5"/></svg>';
+ const serviceName=document.createElement("strong");serviceName.textContent="Psicoterapia";service.append(serviceName);
+ const when=document.createElement("div");when.className="success-detail";
+ when.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6M17 2v6M3 10h18"/></svg>';
+ const dateDiv=document.createElement("div"),dateName=document.createElement("strong"),hours=document.createElement("small");
+ dateName.textContent=labelDate(date,{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+ dateName.textContent=dateName.textContent.charAt(0).toUpperCase()+dateName.textContent.slice(1);
+ hours.textContent=time+" – "+(String(Math.floor((minutesOf(time)+45)/60)).padStart(2,"0")+":"+String((minutesOf(time)+45)%60).padStart(2,"0"))+" h";
+ dateDiv.append(dateName,hours);when.append(dateDiv);
+ const paid=document.createElement("div");paid.className="success-detail";
+ paid.innerHTML='<span class="bono-tag" aria-hidden="true">F</span><strong>Bono Fonasa</strong>';
+ details.append(service,when,paid);
+ const desc=document.createElement("p");desc.className="success-description";desc.textContent="Puedes cerrar esta página y revisar en tu correo los detalles de tu reserva.";
+ const note=document.createElement("section");note.className="success-notice";
+ note.innerHTML='<span class="notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m3 7 9 7 9-7"/></svg></span><div><strong>Tu reserva con bono Fonasa está confirmada.</strong><p>Recibirás los detalles de tu sesión en el correo registrado. Si no los recibes durante el día, comunícate por <a href="https://wa.me/56997743644" target="_blank" rel="noopener noreferrer">WhatsApp</a> o al correo <a href="mailto:contacto@pscsantibanez.cl">contacto@pscsantibanez.cl</a>.</p></div>';
+ const actions=document.createElement("nav");actions.className="success-actions";actions.setAttribute("aria-label","Siguientes pasos");
+ if(/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:[/?#][^\s<>"]*)?$/i.test(meetUrl||"")){
+  const meet=document.createElement("a");meet.href=meetUrl;meet.className="success-action primary-action";meet.target="_blank";meet.rel="noopener noreferrer";meet.textContent="Entrar a Google Meet";actions.append(meet);
+ }
+ const back=document.createElement("a");back.href="https://pscsantibanez.cl/#agenda";back.className="success-action secondary-action";back.textContent="Volver a la página";actions.append(back);
+ finish.append(icon,heading,details,desc,note,actions);
+ $("layout").hidden=true;$("status").hidden=true;finish.hidden=false;document.body.classList.add("fonasa-confirmed");
+ window.scrollTo({top:0,behavior:"instant"});
 }
 function render(){
  $("period").textContent=labelDate(weekStart,{day:"numeric",month:"short"})+" – "+labelDate(add(weekStart,6),{day:"numeric",month:"short",year:"numeric"});
@@ -203,14 +267,12 @@ $("form").onsubmit=async event=>{
    body:JSON.stringify({date:day,time:hour,email,email_is_mine:true})
   });
   submitted=true;$("layout").hidden=true;$("status").hidden=true;
-  $("finish").hidden=false;
   const confirmed=result.status==="calendar_confirmed";
-  $("finish").textContent=(confirmed?"Reserva CONFIRMADA en Google Calendar para ":"Solicitud recibida, pendiente de confirmación en Google Calendar, para ")+result.date+" a las "+result.time+" (hora de Chile).";
-  if(confirmed&&result.meet_url){
-    const link=document.createElement("a");
-    link.href=result.meet_url;link.target="_blank";link.rel="noopener noreferrer";
-    link.textContent="Abrir enlace de Google Meet";
-    link.style.display="block";link.style.marginTop="12px";$("finish").append(link);
+  if(confirmed){
+   showConfirmed(result.date,result.time,result.meet_url);
+  }else{
+   $("finish").hidden=false;
+   $("finish").textContent="Recibimos tu solicitud para "+result.date+" a las "+result.time+". Está pendiente de confirmación en Google Calendar; aún no es una cita confirmada.";
   }
  }catch(err){
   status(err.message,true);
@@ -225,10 +287,7 @@ async function start(){
   $("name").value=data.name||"";
   if(["appointment_requested","calendar_pending","calendar_confirmed"].includes(data.state)){
    if(data.state==="calendar_confirmed"){
-     status("Tu cita está CONFIRMADA en Google Calendar: "+data.booked_date+" a las "+data.booked_time+" (hora de Chile).");
-     if(data.meet_url){
-       const link=document.createElement("a");link.href=data.meet_url;link.target="_blank";link.rel="noopener noreferrer";link.textContent="Abrir Google Meet";link.style.display="block";link.style.marginTop="10px";$("status").append(link);
-     }
+     showConfirmed(data.booked_date,data.booked_time,data.meet_url);
    }else status("Recibimos tu solicitud para "+data.booked_date+" a las "+data.booked_time+". Está pendiente de confirmación en Google Calendar.");
    return;
   }
