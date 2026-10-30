@@ -37,6 +37,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_BODY = 14_100_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
 DEFAULT_MANAGEMENT_EMAIL = "angelacs7@hotmail.com"
+SAME_DAY_BOOKING_EMAILS = frozenset({"angelacs7@hotmail.com"})
 LEGACY_DEMO_EMAILS = ("admin@valhalla.demo", "profesional@valhalla.demo")
 
 
@@ -810,6 +811,13 @@ class Store:
                 c.execute("UPDATE notification_outbox SET status='superseded' WHERE kind='document_approved' AND user_id=? AND status IN ('pending','retry','processing')",(uid,))
             self.log(c, uid, 'profile_updated', uid)
 
+    def same_day_booking_permission(self, c, uid, day):
+        if uid is None or day != now().astimezone(CHILE).date():
+            return False
+        person = c.execute("SELECT email,active,deleted_at FROM users WHERE id=?", (uid,)).fetchone()
+        return bool(person and person["active"] and not person["deleted_at"]
+                    and person["email"].lower() in SAME_DAY_BOOKING_EMAILS)
+
     def parse_slot(self, value, uid=None, connection=None, rescheduling=None):
         owner=False
         if uid is not None:
@@ -824,7 +832,14 @@ class Store:
             if local.minute or local.second or local.microsecond or not OPENING_HOUR <= local.hour < CLOSING_HOUR:
                 raise ValueError()
             same_day = rescheduling is not None and self.same_day_reschedule(rescheduling, local.date(), uid)
-            notice = timedelta(0) if owner else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
+            special = False
+            if uid is not None:
+                if connection is not None:
+                    special = self.same_day_booking_permission(connection, uid, local.date())
+                else:
+                    with self.connection() as c:
+                        special = self.same_day_booking_permission(c, uid, local.date())
+            notice = timedelta(0) if owner else timedelta(hours=2) if (same_day or special) else MIN_BOOKING_NOTICE
             if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + notice or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
@@ -859,7 +874,8 @@ class Store:
                 if not rescheduling:
                     raise Problem('Reserva no encontrada.', 404)
             same_day = rescheduling is not None and self.same_day_reschedule(rescheduling, day, uid)
-            notice = timedelta(0) if owner else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
+            special = self.same_day_booking_permission(c, uid, day)
+            notice = timedelta(0) if owner else timedelta(hours=2) if (same_day or special) else MIN_BOOKING_NOTICE
             occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
         for hour in range(OPENING_HOUR, CLOSING_HOUR):
