@@ -368,6 +368,24 @@ if os.environ.get("PSC_SII_UNLOCK_GIOVANNI_20261029")=="yes":
     threading.Thread(target=_recover_giovanni_unissued_sii_once,daemon=True).start()
 
 
+def _recover_operator_confirmed_sii_20261030():
+    """Fixed, expiring maintenance event; never starts an emission or email."""
+    import logging
+    import time
+    time.sleep(4)
+    from sii_one_time_recovery import recover_once, log_selected_state
+    logger=logging.getLogger("sii_invoice_recovery")
+    logger.warning("PSC_SII_CONFIRMED_RECOVERY phase=before order_suffix=155ECB")
+    log_selected_state()
+    status=recover_once(confirmed_event=True)
+    logger.warning("PSC_SII_CONFIRMED_RECOVERY status=%s order_suffix=155ECB",status)
+    log_selected_state()
+
+
+if os.environ.get("RENDER"):
+    threading.Thread(target=_recover_operator_confirmed_sii_20261030,daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 

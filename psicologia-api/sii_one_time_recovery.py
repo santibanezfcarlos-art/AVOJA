@@ -6,6 +6,7 @@ It is enabled only for this precisely scoped maintenance event.
 """
 import os
 import sqlite3
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import billing
@@ -14,6 +15,11 @@ from sii_post_issue import SCHEMA as RECEIPT_SCHEMA
 
 TARGET_ORDER="PSCP0282F8088E27155ECB"
 RECOVERY_KEY="sii_approved_order_unissued_20261029_v3"
+CONFIRMED_RECOVERY_KEY="sii_operator_confirmed_no_document_20261030_0126_v4"
+# Fixed authorization window for the failed attempt shown by the operator.
+# This deployment can never unlock an attempt started after this confirmation.
+CONFIRMED_BEFORE="2026-10-30T04:28:21+00:00"
+CONFIRMED_EVENT_DEADLINE="2026-10-30T05:28:21+00:00"
 SCHEMA="""CREATE TABLE IF NOT EXISTS sii_issue_recovery_audit (
  recovery_key TEXT PRIMARY KEY,
  order_id TEXT NOT NULL,
@@ -42,13 +48,16 @@ def _candidate(con):
     return rows
 
 
-def recover_once():
+def recover_once(*, confirmed_event=False):
     """Recover ONLY one verified pending purchase; preserve immutable audit.
 
     Returns a non-identifying status for operational logs.
     """
-    if os.environ.get("PSC_SII_UNLOCK_GIOVANNI_20261029")!="yes":
+    if not confirmed_event and os.environ.get("PSC_SII_UNLOCK_GIOVANNI_20261029")!="yes":
         return "not_enabled"
+    recovery_key=CONFIRMED_RECOVERY_KEY if confirmed_event else RECOVERY_KEY
+    if confirmed_event and datetime.now(timezone.utc)>datetime.fromisoformat(CONFIRMED_EVENT_DEADLINE):
+        return "confirmation_window_expired"
     if not billing.configured():
         return "storage_unavailable"
     try:
@@ -59,13 +68,25 @@ def recover_once():
             # Do not hold a write lock while asking Render whether Chromium
             # is still running; this would block all payment/booking writes.
             if con.execute("SELECT 1 FROM sii_issue_recovery_audit WHERE recovery_key=?",
-                           (RECOVERY_KEY,)).fetchone():
+                           (recovery_key,)).fetchone():
                 return "already_recovered"
             matches=_candidate(con)
             if len(matches)!=1:
                 return "no_unique_pending_match"
             target=matches[0]
             order_id=target["order_id"]
+            if confirmed_event:
+                cutoff=datetime.fromisoformat(CONFIRMED_BEFORE)
+                times=[target["updated_at"]]
+                for table in ("sii_issuance_attempts","sii_first_canary"):
+                    times.extend(r[0] for r in con.execute(
+                        "SELECT claimed_at FROM "+table+" WHERE order_id=?",(order_id,)))
+                try:
+                    parsed=[datetime.fromisoformat(str(value)) for value in times]
+                    if any(value.tzinfo is None or value>cutoff for value in parsed):
+                        return "newer_than_operator_confirmation"
+                except (ValueError,TypeError):
+                    return "attempt_timestamp_not_verified"
             claimed=con.execute("SELECT 1 FROM sii_issuance_attempts WHERE order_id=?",
                                 (order_id,)).fetchone()
             legacy=con.execute("SELECT 1 FROM sii_first_canary WHERE order_id=?",
@@ -112,10 +133,12 @@ def recover_once():
             # Re-check all material conditions under the write lock: a late
             # receipt callback may have arrived during the browser status call.
             if con.execute("SELECT 1 FROM sii_issue_recovery_audit WHERE recovery_key=?",
-                           (RECOVERY_KEY,)).fetchone():
+                           (recovery_key,)).fetchone():
                 return "already_recovered"
             current=_candidate(con)
-            if len(current)!=1 or current[0]["order_id"]!=order_id or current[0]["queue_status"]!=status:
+            if (len(current)!=1 or current[0]["order_id"]!=order_id
+                or current[0]["queue_status"]!=status
+                or current[0]["updated_at"]!=target["updated_at"]):
                 return "state_changed_no_reset"
             if con.execute("SELECT 1 FROM sii_receipts WHERE order_id=?",(order_id,)).fetchone():
                 return "document_record_exists_no_reset"
@@ -128,14 +151,16 @@ def recover_once():
             con.execute("""INSERT INTO sii_issue_recovery_audit
                  (recovery_key,order_id,previous_queue_status,previous_claim_count,
                   recorded_at,reason)
-                 VALUES (?,?,?,?,?,'user_verified_no_sii_dte41_30000_on_2026_10_29')""",
-                 (RECOVERY_KEY,order_id,status or "missing",claim_count,now))
+                 VALUES (?,?,?,?,?,?)""",
+                 (recovery_key,order_id,status or "missing",claim_count,now,
+                  "operator_verified_no_sii_dte41_30000_on_2026_10_30"
+                  if confirmed_event else "user_verified_no_sii_dte41_30000_on_2026_10_29"))
             import json
             for table in ("sii_issuance_attempts","sii_first_canary"):
                 original=con.execute("SELECT * FROM "+table+" WHERE order_id=?",(order_id,)).fetchone()
                 if original:
                     con.execute("INSERT INTO sii_recovered_claim_archive VALUES (?,?,?,?)",
-                                (RECOVERY_KEY,table,json.dumps(dict(original)),now))
+                                (recovery_key,table,json.dumps(dict(original)),now))
             con.execute("DELETE FROM sii_issuance_attempts WHERE order_id=?",(order_id,))
             con.execute("DELETE FROM sii_first_canary WHERE order_id=?",(order_id,))
             updated=con.execute("""UPDATE sii_issuance_queue
@@ -145,8 +170,9 @@ def recover_once():
             if updated.rowcount!=1:
                 raise RuntimeError("queue_recovery_conflict")
             con.execute("""INSERT INTO billing_audit(order_id,action,created_at,actor)
-                           VALUES (?,?,?,'operator_verified_2026_10_29')""",
-                        (order_id,"sii_verified_no_issue_rearmed_once",now))
+                           VALUES (?,?,?,?)""",
+                        (order_id,"sii_verified_no_issue_rearmed_once",now,
+                         "operator_verified_2026_10_30" if confirmed_event else "operator_verified_2026_10_29"))
             return "unblocked"
     except (sqlite3.Error,RuntimeError,OSError):
         return "recovery_failed"
@@ -226,8 +252,13 @@ def log_selected_state():
     import logging
     with billing.db() as con:
         con.executescript(RECEIPT_SCHEMA)
+        con.executescript(sii_canary.SCHEMA)
+        con.executescript(SCHEMA)
         row=con.execute("""SELECT o.payment_status,o.invoice_status,o.folio,
             q.status AS queue_status,(SELECT COUNT(*) FROM sii_receipts r WHERE r.order_id=o.order_id) AS receipts,
+            (SELECT COUNT(*) FROM sii_issuance_attempts a WHERE a.order_id=o.order_id) AS active_claims,
+            (SELECT COUNT(*) FROM sii_recovered_claim_archive a JOIN sii_issue_recovery_audit j
+             ON j.recovery_key=a.recovery_key WHERE j.order_id=o.order_id) AS archived_claims,
             (SELECT pdf IS NOT NULL FROM sii_receipts r WHERE r.order_id=o.order_id) AS has_pdf,
             (SELECT psc_state FROM sii_receipts r WHERE r.order_id=o.order_id) AS psc_state,
             (SELECT sii_state FROM sii_receipts r WHERE r.order_id=o.order_id) AS sii_state

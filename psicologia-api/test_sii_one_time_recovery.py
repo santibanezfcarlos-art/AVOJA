@@ -52,8 +52,11 @@ class RecoveryTests(unittest.TestCase):
                           return_value=(200,{"state":"not_running","stage":"not_running"}))
         self.browser.start()
         self.remote.start()
+        self.window=patch("sii_one_time_recovery.CONFIRMED_EVENT_DEADLINE","2099-01-01T00:00:00+00:00")
+        self.window.start()
 
     def tearDown(self):
+        self.window.stop()
         self.remote.stop()
         self.browser.stop()
         self.target.stop()
@@ -72,6 +75,53 @@ class RecoveryTests(unittest.TestCase):
                                (order,)).fetchone()[0]
             journal=con.execute("SELECT COUNT(*) FROM sii_issue_recovery_audit").fetchone()[0]
         return row,queue,claims,journal
+
+    def test_new_confirmation_archives_new_failed_attempt_without_overwriting_previous_recovery(self):
+        self.assertEqual(recover_once(),"unblocked")
+        add_paid(OTHER,"Otra compra aprobada")
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET status='reconciliation',updated_at=? WHERE order_id=?",
+                        ("2026-10-29T23:17:19-03:00",OID))
+            con.execute("INSERT INTO sii_issuance_attempts VALUES (?,?,'reconciliation',?)",
+                        (OID,"second-failed-attempt-nonce","2026-10-29T23:17:19-03:00"))
+            other_before=dict(con.execute("SELECT * FROM billing_orders WHERE order_id=?",(OTHER,)).fetchone())
+        with (patch.dict(os.environ,{"PSC_SII_UNLOCK_GIOVANNI_20261029":"no"}),
+              patch("sii_canary.start_emission") as emit):
+            self.assertEqual(recover_once(confirmed_event=True),"unblocked")
+            self.assertEqual(recover_once(confirmed_event=True),"already_recovered")
+            emit.assert_not_called()
+        row,queue,claims,journal=self.state()
+        self.assertEqual((queue["status"],claims,journal),("awaiting_issuer",0,2))
+        self.assertEqual((row["payment_status"],row["invoice_status"],row["folio"]),("approved","pending",None))
+        with billing.db() as con:
+            archives=con.execute("SELECT row_json FROM sii_recovered_claim_archive ORDER BY recorded_at").fetchall()
+            self.assertEqual(len(archives),2)
+            self.assertTrue(any("second-failed-attempt-nonce" in r[0] for r in archives))
+            self.assertEqual(dict(con.execute("SELECT * FROM billing_orders WHERE order_id=?",(OTHER,)).fetchone()),other_before)
+
+    def test_confirmation_never_unlocks_a_newer_attempt(self):
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET updated_at=? WHERE order_id=?",
+                        ("2026-10-30T02:00:00-03:00",OID))
+        self.assertEqual(recover_once(confirmed_event=True),"newer_than_operator_confirmation")
+        self.assertEqual(self.state()[1]["status"],"reconciliation")
+
+    def test_confirmation_cannot_run_after_its_deadline(self):
+        with patch("sii_one_time_recovery.CONFIRMED_EVENT_DEADLINE","2000-01-01T00:00:00+00:00"):
+            self.assertEqual(recover_once(confirmed_event=True),"confirmation_window_expired")
+        self.assertEqual(self.state()[1]["status"],"reconciliation")
+
+    def test_confirmation_never_resets_an_active_browser_or_an_official_document(self):
+        with patch("sii_one_time_recovery.sii_canary._server_request",
+                   return_value=(200,{"state":"open","stage":"waiting_sii_receipt"})):
+            self.assertEqual(recover_once(confirmed_event=True),"browser_still_active")
+        with billing.db() as con:
+            from sii_post_issue import SCHEMA
+            con.executescript(SCHEMA)
+            con.execute("INSERT INTO sii_receipts(order_id,folio,issued_date,amount,recipient,patient_name,detail,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (OID,"777","2026-10-29",30000,"test@example.invalid","Nombre ficticio","Prueba",billing.now()))
+        self.assertEqual(recover_once(confirmed_event=True),"document_record_exists_no_reset")
+        self.assertEqual(self.state()[1]["status"],"reconciliation")
 
     def test_rearms_giovanni_once_without_marking_issued(self):
         self.assertEqual(recover_once(),"unblocked")
