@@ -668,7 +668,7 @@ function currentService(){return SERVICE_TYPES[selectedService]}
 function minutesOf(h){const [hours,minutes]=h.split(':').map(Number);return hours*60+minutes}
 function clockAt(total){return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0')}
 function endsAt(h,duration=currentService().minutes){return clockAt(minutesOf(h)+duration)}
-function fitsSlot(h,duration=currentService().minutes){return minutesOf(h)>=540&&minutesOf(h)+duration<=1200}
+function fitsSlot(h,duration=currentService().minutes,date=chosen){const wd=dayIndex(date);return wd!==0&&minutesOf(h)>=540&&minutesOf(h)+duration<=(wd===6?720:1200)}
 function chooseService(id){
  if(!Object.prototype.hasOwnProperty.call(SERVICE_TYPES,id))return;
  selectedService=id;hold=null;clearMessage();
@@ -792,7 +792,7 @@ async function loadCalendar(){
   // automáticamente. No presentar horarios como libres durante el error.
   calendarRetry=setTimeout(()=>{if(req===calendarSeq)loadCalendar()},6000);
 }
- if(hold&&calendarState==='ready'&&(hold.expires<=Date.now()||hold.service!==selectedService||calendarBusy(hold.date,hold.time)||localBusy(hold.date,hold.time)||booked(hold.date).length>=MAX||!schedule(hold.date).includes(hold.time)||!fitsSlot(hold.time)||past(hold.date,hold.time))){
+ if(hold&&calendarState==='ready'&&(hold.expires<=Date.now()||hold.service!==selectedService||calendarBusy(hold.date,hold.time)||localBusy(hold.date,hold.time)||booked(hold.date).length>=MAX||!schedule(hold.date).includes(hold.time)||!fitsSlot(hold.time,currentService().minutes,hold.date)||past(hold.date,hold.time))){
   hold=null;message('El horario seleccionado expiró o ya no está disponible. Elige otra hora.');
  }
  render();
@@ -825,7 +825,7 @@ function localBusy(date,time,duration=currentService().minutes){
 function baseSchedule(isoDate){const wd=dayIndex(isoDate);return settings.closedWeekdays.includes(wd)?[]:normalize(settings.weekly[wd])}
 function schedule(isoDate){const ex=settings.exceptions[isoDate];return ex?ex.closed?[]:normalize(ex.slots):baseSchedule(isoDate)}
 function past(isoDate,time){const t=todayISO();if(isoDate<t)return true;if(isoDate>t)return false;const p=nowParts();return time<=p.hour+':'+p.minute}
-function availableDay(isoDate){return calendarState==='ready'&&configurationReady&&currentService().active&&isoDate>=todayISO()&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
+function availableDay(isoDate){return calendarState==='ready'&&configurationReady&&currentService().active&&isoDate>=todayISO()&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h,currentService().minutes,isoDate)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
 function publicDayHasCups(isoDate){return availableDay(isoDate)}
 function message(t){$('message').textContent=t;$('message').hidden=false}
 function clearMessage(){$('message').hidden=true}
@@ -847,7 +847,7 @@ function render(){
   b.onclick=()=>{chosen=date;hold=null;clearMessage();render()};$('week').append(b)
  }
  $('dateHeading').textContent=textDate(chosen,{weekday:'long',day:'numeric',month:'long'});
- const taken=booked(chosen),slots=schedule(chosen);$('capacity').textContent='Máximo '+MAX+' atenciones al día';$('hours').replaceChildren();
+ const taken=booked(chosen),slots=schedule(chosen).filter(time=>fitsSlot(time,currentService().minutes,chosen));$('capacity').textContent='Máximo '+MAX+' atenciones al día';$('hours').replaceChildren();
  if(!slots.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No hay horarios habilitados para este día.';$('hours').append(empty)}
  else for(const time of slots){const reserved=localBusy(chosen,time),exhausted=taken.length>=MAX,isPast=past(chosen,time),isBusy=calendarBusy(chosen,time),tooLate=!fitsSlot(time),notChecked=cannotCheck(),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast||isBusy||tooLate||notChecked;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=tooLate?'Fuera de horario':reserved?'Horario ocupado':isPast?'Hora pasada':exhausted?'Sin cupos':isBusy?'Ocupado en Calendar':calendarState==='error'?'Sin conexión':calendarState==='loading'?'Comprobando…':calendarState==='demo'?'Demo · disponible':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{hold={date:chosen,time,service:selectedService,expires:Date.now()+600000};clearMessage();render();const billing=$('billingDetails');if(billing){requestAnimationFrame(()=>{const first=$('payerName');if(!first)return;first.focus({preventScroll:true});first.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});});}};$('hours').append(b)}
  updateCalendarMessage();
@@ -877,7 +877,7 @@ $('confirm').onclick=()=>{
  if(!hold)return;
  if(hold.expires<Date.now()){tick();return}
  const {date,time}=hold,service=currentService(),r=bookedRecords(date);
- if(hold.service!==selectedService||!schedule(date).includes(time)||!fitsSlot(time)||localBusy(date,time)||r.length>=MAX||past(date,time)||calendarBusy(date,time)||cannotCheck()){
+ if(hold.service!==selectedService||!schedule(date).includes(time)||!fitsSlot(time,service.minutes,date)||localBusy(date,time)||r.length>=MAX||past(date,time)||calendarBusy(date,time)||cannotCheck()){
   hold=null;render();message('Ya no está disponible ese horario para este servicio.');return
  }
  reservations[date]=[...r,{time,duration:service.minutes,service:selectedService}];

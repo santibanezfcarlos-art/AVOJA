@@ -1,0 +1,15 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(require('node:path').join(__dirname,'../../psicologia/index.html'),'utf8');
+for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);
+const source=html.slice(html.indexOf('function fitsSlot('),html.indexOf('function chooseService('));
+const c={chosen:'2026-10-31',currentService:()=>({minutes:90}),minutesOf:h=>Number(h.slice(0,2))*60+Number(h.slice(3)),dayIndex:d=>new Date(d+'T12:00:00Z').getUTCDay()};
+vm.createContext(c);vm.runInContext(source,c);
+assert.equal(c.fitsSlot('10:00'),true);
+assert.equal(c.fitsSlot('10:30'),true);
+assert.equal(c.fitsSlot('11:00'),false);
+assert.equal(c.fitsSlot('12:00'),false);
+assert.equal(c.fitsSlot('11:00',45),true);
+assert.equal(c.fitsSlot('18:30',90,'2026-11-02'),true);
+assert.equal(c.fitsSlot('19:00',90,'2026-11-02'),false);
+assert.equal(c.fitsSlot('09:00',45,'2026-11-01'),false);
+console.log('Eight service-duration and Saturday boundary checks passed');
