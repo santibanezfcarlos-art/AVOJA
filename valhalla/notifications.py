@@ -73,7 +73,7 @@ def notification_message(kind, payload, public_url):
                  '• Recibe personalmente a tu consultante.\n'
                  '• Tu reserva es personal e intransferible.\n'
                  '• Puedes modificarla una sola vez, hasta 2 horas antes.\n'
-                 '• El nuevo horario requiere al menos 24 horas de anticipación.\n'
+                 '• Para cambiar a otro día, confirma hasta las 21:30 del día anterior (hora de Chile).\n'
                  '• Consulta el estado actualizado en Mis reservas.\n')
     if kind != 'booking_cancelled':
         if 'remaining' in payload:
@@ -119,7 +119,7 @@ def notification_html(kind, payload, public_url, logo_url=None):
         'Recibe personalmente a tu consultante.',
         'Tu reserva es personal e intransferible.',
         'Puedes modificarla una sola vez, hasta 2 horas antes.',
-        'El nuevo horario requiere al menos 24 horas de anticipación.',
+        'Para cambiar a otro día, confirma hasta las 21:30 del día anterior (hora de Chile).',
         'Consulta su estado actualizado en Mis reservas.']
     if 'remaining' in payload:
         remaining=payload['remaining'];notes.append(f'Saldo disponible al confirmar: {remaining} '+('sesión.' if remaining==1 else 'sesiones.'))

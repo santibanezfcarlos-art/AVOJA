@@ -44,10 +44,14 @@ class SameDayRescheduling(unittest.TestCase):
         self.assertFalse(self.available(10,bid=self.bid))
         self.assertTrue(self.available(11,bid=self.bid))
         with self.assertRaises(Problem): self.store.modify(self.uid,self.bid,self.target(10))
-        with self.assertRaises(Problem): self.store.modify(self.uid,self.bid,self.target(7,1))
         self.clock=self.clock.replace(hour=14)
         self.assertFalse(self.available(18,bid=self.bid))
         with self.assertRaises(Problem): self.store.modify(self.uid,self.bid,self.target())
+
+    def test_tomorrow_morning_can_be_selected_before_evening_cutoff(self):
+        self.store.modify(self.uid,self.bid,self.target(7,1))
+        with self.store.connection() as c:
+            self.assertEqual(c.execute('SELECT start FROM bookings WHERE id=?',(self.bid,)).fetchone()[0],self.target(7,1)['start'])
 
     def test_foreign_reservation_and_cancelled_reservation(self):
         with self.assertRaises(Problem): self.available(18,uid=self.admin,bid=self.bid)

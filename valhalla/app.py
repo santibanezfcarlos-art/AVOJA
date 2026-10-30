@@ -32,7 +32,8 @@ CATALOG = {'1': (1, 5990), '5': (5, 28990), '10': (10, 54990), '30': (30, 144990
 SESSION_MINUTES = 55
 OPENING_HOUR = 7
 CLOSING_HOUR = 23
-MIN_BOOKING_NOTICE = timedelta(hours=24)
+BOOKING_CUTOFF_HOUR = 21
+BOOKING_CUTOFF_MINUTE = 30
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_BODY = 14_100_000
 ADMIN_EMAIL = "santibanezf.carlos@gmail.com"
@@ -119,6 +120,13 @@ def room_photos():
 
 def now():
     return datetime.now(timezone.utc)
+
+
+def earliest_booking_start():
+    local = now().astimezone(CHILE)
+    cutoff = local.replace(hour=BOOKING_CUTOFF_HOUR, minute=BOOKING_CUTOFF_MINUTE, second=0, microsecond=0)
+    day = local.date() + timedelta(days=1 if local <= cutoff else 2)
+    return datetime(day.year, day.month, day.day, tzinfo=CHILE)
 
 
 def stamp(value):
@@ -784,7 +792,7 @@ class Store:
             profile['degree_approved'] = bool(degree and degree['status']=='approved')
             profile['owner_booking_privileges']=self.can_book_parallel(c,user['id'])
             profile['identity_source'] = 'administrator' if profile['owner_booking_privileges'] else 'personal' if self.personally_approved(c,user['id']) else 'legacy' if c.execute('SELECT 1 FROM legacy_imports WHERE user_id=? AND identity_valid=1', (user['id'],)).fetchone() else 'document'
-            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':(now().astimezone(CHILE).date() if profile['owner_booking_privileges'] else max(now().astimezone(CHILE).date()+timedelta(days=1),(now().astimezone(timezone.utc)+MIN_BOOKING_NOTICE).astimezone(CHILE).date())).isoformat(),
+            return {'purchase_rules':purchase_rules(), 'user': profile, 'rooms': room_photos(), 'csrf': user['csrf'], 'today': now().astimezone(CHILE).date().isoformat(), 'earliest_booking_date':(now().astimezone(CHILE).date() if profile['owner_booking_privileges'] else earliest_booking_start().date()).isoformat(),
                     'packages': [dict(r) for r in c.execute('SELECT p.*,COALESCE((SELECT SUM(delta) FROM session_adjustments j WHERE j.package_id=p.id),0) AS balance_adjustment,EXISTS(SELECT 1 FROM purchase_acceptances a WHERE a.package_id=p.id) AS rules_accepted,m.method AS manual_method FROM packages p LEFT JOIN manual_credits m ON m.package_id=p.id WHERE p.user_id=? AND p.archived_at=\'\' ORDER BY p.id DESC', (user['id'],))],
                     'bookings': [booking_details(r) for r in c.execute('SELECT * FROM bookings WHERE user_id=? ORDER BY start', (user['id'],))],
                     'documents': [self.document_metadata(c,r) for r in c.execute('SELECT id,filename,status,note,created_at,kind FROM documents WHERE user_id=? ORDER BY id DESC', (user['id'],))],
@@ -839,13 +847,13 @@ class Store:
                 else:
                     with self.connection() as c:
                         special = self.same_day_booking_permission(c, uid, local.date())
-            notice = timedelta(0) if owner else timedelta(0) if special else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
-            if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + notice or parsed > now() + timedelta(days=90):
+            earliest = now().astimezone(timezone.utc) + timedelta(hours=2 if same_day and not owner and not special else 0) if owner or special or same_day else earliest_booking_start().astimezone(timezone.utc)
+            if parsed.astimezone(timezone.utc) < earliest or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
         except (ValueError, TypeError):
             if owner:raise Problem('Elige un horario futuro con inicio entre 07:00 y 22:00, dentro de los próximos 90 días.')
-            raise Problem('Reserva con al menos 24 horas de anticipación, con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
+            raise Problem('Reserva hasta las 21:30 del día anterior (hora de Chile), con inicio entre 07:00 y 22:00 (cierre a las 23:00), dentro de los próximos 90 días.')
 
     def same_day_reschedule(self, booking, day, uid):
         # The existing reservation retains access for its original Chilean day.
@@ -875,7 +883,7 @@ class Store:
                     raise Problem('Reserva no encontrada.', 404)
             same_day = rescheduling is not None and self.same_day_reschedule(rescheduling, day, uid)
             special = self.same_day_booking_permission(c, uid, day)
-            notice = timedelta(0) if owner else timedelta(0) if special else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
+            earliest = now().astimezone(timezone.utc) + timedelta(hours=2 if same_day and not owner and not special else 0) if owner or special or same_day else earliest_booking_start().astimezone(timezone.utc)
             occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
         for hour in range(OPENING_HOUR, CLOSING_HOUR):
@@ -883,7 +891,7 @@ class Store:
             boxes = []
             for box in range(1,4):
                 booking = occupied.get((box, stamp(start)))
-                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= now().astimezone(timezone.utc) + notice}
+                cell = {'box': box, 'available': not booking and start.astimezone(timezone.utc) >= earliest}
                 if include_names and booking:
                     end = start + timedelta(minutes=SESSION_MINUTES)
                     booking['end'] = stamp(end)

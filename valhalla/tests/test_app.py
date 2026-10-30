@@ -162,34 +162,30 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.row(bid)['modifications'],0)
         self.assertEqual(self.balance(),4)
 
-    def test_24_hour_boundary_same_day_and_tomorrow_morning_are_blocked(self):
-        self.clock=self.clock.replace(hour=19,minute=55)
-        for slot in (self.slot(20,day=0),self.slot(7),self.slot(19)):
-            with self.subTest(slot=slot),self.assertRaises(Problem) as error:
-                self.store.reserve(1,slot)
-            self.assertIn('24 horas',error.exception.message)
-        self.assertEqual(self.balance(),5)
-        self.assertEqual(self.store.availability(self.clock.date().isoformat())['slots'][13]['boxes'][0]['available'],False)
-        tomorrow=self.store.availability((self.clock+timedelta(days=1)).date().isoformat())['slots']
-        self.assertFalse(tomorrow[12]['boxes'][0]['available'])
-        self.assertTrue(tomorrow[13]['boxes'][0]['available'])
-        self.store.reserve(1,self.slot(20));self.assertEqual(self.balance(),4)
+    def test_previous_day_cutoff_allows_entire_tomorrow(self):
+        self.clock=self.clock.replace(hour=21,minute=30)
+        for hour in (7,9,22):self.store.parse_slot(self.slot(hour)['start'])
+        self.assertTrue(all(c['available'] for s in self.store.availability(self.slot()['start'][:10])['slots'] for c in s['boxes']))
+        self.store.reserve(1,self.slot(7))
+        from ttlock_recipients import recipients_for_tomorrow
+        day, recipients = recipients_for_tomorrow(self.store.path,self.clock.replace(hour=22,minute=0))
+        self.assertEqual(day,self.clock.date()+timedelta(days=1))
+        self.assertIn('1@test.cl',recipients)
+        with self.assertRaises(Problem):self.store.reserve(1,self.slot(22,day=0))
 
-    def test_exact_24_hours_allowed_and_one_second_less_rejected(self):
-        self.clock=self.clock.replace(hour=10)
-        target=self.slot(10)
-        self.clock+=timedelta(seconds=1)
-        with self.assertRaises(Problem):self.store.reserve(1,target)
-        self.clock-=timedelta(seconds=1)
-        self.store.reserve(1,target)
+    def test_after_cutoff_blocks_all_tomorrow_but_allows_following_day(self):
+        self.clock=self.clock.replace(hour=21,minute=30,second=1)
+        for hour in (7,22):
+            with self.assertRaises(Problem):self.store.reserve(1,self.slot(hour))
+        self.assertFalse(any(c['available'] for s in self.store.availability(self.slot()['start'][:10])['slots'] for c in s['boxes']))
+        self.store.reserve(1,self.slot(7,day=2))
 
-    def test_24_hours_means_elapsed_time_across_chilean_dst(self):
-        self.clock=datetime(2026,9,5,10,tzinfo=CHILE)
-        with self.assertRaises(Problem):self.store.parse_slot(self.slot(10)['start'])
-        self.store.parse_slot(self.slot(11)['start'])
-        self.clock=datetime(2026,4,4,10,tzinfo=CHILE)
-        with self.assertRaises(Problem):self.store.parse_slot(self.slot(8)['start'])
-        self.store.parse_slot(self.slot(9)['start'])
+    def test_cutoff_uses_chilean_calendar_across_dst_and_utc_midnight(self):
+        for date in ((2026,9,5),(2026,4,4),(2026,10,15)):
+            self.clock=datetime(*date,21,30,tzinfo=CHILE)
+            self.store.parse_slot(self.slot(7)['start'])
+            self.clock+=timedelta(seconds=1)
+            with self.assertRaises(Problem):self.store.parse_slot(self.slot(22)['start'])
 
     def test_modify_noop_does_not_use_change(self):
         bid=self.store.reserve(1,self.slot())
