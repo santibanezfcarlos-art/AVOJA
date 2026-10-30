@@ -200,9 +200,20 @@ def issue_once(page, order, ids, ticket, on_submitted=None):
                     progress("downloading_sii_pdf")
                     try:
                         snapshot["pdf"]=download_official_pdf(page,snapshot)
-                    except Exception:
+                    except Exception as exc:
                         # Keep the CONFIRMED folio even if downloading fails.
-                        # A PDF failure can never authorize a second issuance.
+                        # Never retry EMITIR. Report only a safe reason, without
+                        # logging patient information, receipt URLs or PDF bytes.
+                        from logging import getLogger
+                        safe_codes={
+                            "download_document_changed",
+                            "official_pdf_unavailable_after_wait",
+                            "official_download_size_invalid",
+                            "official_download_invalid_pdf",
+                            "official_download_pdf_mismatch",
+                        }
+                        reason=str(exc) if type(exc) is ValueError and str(exc) in safe_codes else type(exc).__name__
+                        getLogger("sii_receipt_download").warning("SII_PDF_DOWNLOAD_FAILED reason=%s", reason)
                         snapshot["pdf"]=None
                     if not snapshot["pdf"]:
                         return "canary_issued_pdf_pending"
