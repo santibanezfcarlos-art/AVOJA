@@ -106,9 +106,27 @@ def advance_patient_bono():
         if claim.rowcount!=1:return jsonify(state='processing',retry_after=16),202
     id=row['id']
     state=row['state']
-    if state=='pdf_read':
+    # Only retry read-only lookups that failed before receiving a worker job.
+    # Never retry activation or an actual voucher validation failure here.
+    transport_errors=(
+        'No se pudo contactar el servicio de consulta Fonasa.',
+        'Fonasa no aceptó la consulta (502).',
+        'Fonasa no aceptó la consulta (503).',
+        'Fonasa no aceptó la consulta (504).',
+        'Fonasa no aceptó la consulta (429).',
+    )
+    retryable=(row['activation_status']=='not_requested' and not row['worker_job']
+               and row['check_detail'] in transport_errors)
+    if state=='pdf_read' or (state=='check_failed' and retryable):
         _,status=_result(f._start_lookup(id))
-        if status>=400:return jsonify(state='check_failed',error='No pudimos consultar Fonasa. El bono quedó guardado para revisión.'),503
+        if status>=400:
+            with billing.db() as con:
+                latest=f._record(con,id)
+            if (latest and latest['activation_status']=='not_requested'
+                    and not latest['worker_job'] and latest['check_detail'] in transport_errors):
+                return jsonify(state='warming',retry_after=17,
+                    message='Estamos iniciando la conexión con Fonasa. Tu bono sigue guardado; continuaremos automáticamente.'),202
+            return jsonify(state='check_failed',error='No pudimos consultar Fonasa. El bono quedó guardado para revisión.'),503
         return jsonify(state='checking'),202
     if state=='checking':
         result,status=_result(f._lookup_status(id))
