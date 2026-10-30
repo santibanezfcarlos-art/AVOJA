@@ -28,7 +28,7 @@
     return;
    }
    if(data.state==='already_booked'){message(data.message);$('newVoucher').hidden=false;return}
-   message(data.state==='activating'?'Fonasa está procesando la activación de tu bono…':data.state==='reviewing'?'Estamos comprobando el resultado de la activación en Fonasa…':'Estamos validando tu bono en Fonasa…');
+   message(data.message|| (data.state==='activating'?'Fonasa está procesando la activación de tu bono…':data.state==='reviewing'?'Estamos comprobando el resultado de la activación en Fonasa…':'Estamos validando tu bono en Fonasa…'));
    if(++attempts>=24){message('La verificación está tardando más de lo habitual. Puedes revisar el resultado en unos minutos o contactar al profesional.');$('resume').hidden=false;return}
    timer=setTimeout(progress,(data.retry_after||17)*1000);
   }catch(err){message(err.message,true);$('resume').hidden=err.status===404;$('newVoucher').hidden=err.status!==404}
