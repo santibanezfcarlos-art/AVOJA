@@ -10,6 +10,8 @@ COPY app.py /srv/app.py
 COPY issue_canary.py /srv/issue_canary.py
 COPY sii_email_after_issue.py /srv/sii_email_after_issue.py
 COPY sii_receipt_download.py /srv/sii_receipt_download.py
+COPY test_sii_receipt_download.py /srv/test_sii_receipt_download.py
+RUN python -m unittest -q test_sii_receipt_download
 COPY index.html /srv/index.html
 COPY nginx.conf.template /srv/nginx.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/sii-visual.conf
