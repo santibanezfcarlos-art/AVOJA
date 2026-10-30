@@ -144,7 +144,7 @@ if(r.invoice_status==='issued'){
   const describe=s=>s==='accepted'?'aceptado por el servicio':s==='pending'?'pendiente':s==='sending'?'en curso; no reintentar':s==='unknown'?'resultado incierto; revisar antes de reenviar':'sin confirmar';
   section.append(node('p',hasPdf?'PDF oficial guardado como respaldo de la compra.':'Boleta emitida · PDF oficial pendiente de guardar.','meta'));
   if(receipt){
-   section.append(node('p','Correo SII: '+describe(receipt.sii_state)+' · Correo PSC: '+describe(receipt.psc_state),'meta'));
+   section.append(node('p','Correo SII'+(receipt.sii_recipient?' a '+receipt.sii_recipient:'')+': '+describe(receipt.sii_state)+' · Correo PSC al paciente: '+describe(receipt.psc_state),'meta'));
    if(receipt.resend_count) section.append(node('p','Reenvíos PSC: '+receipt.resend_count+' · Último: '+describe(receipt.resend_state),'meta'));
   }
   if(hasPdf){
@@ -271,9 +271,16 @@ async function pollIssue(order){
       issue_approved_pending_claim:'Formulario validado. Iniciando emisión real…',
       claiming_canary:'Registrando intento único y enviando al SII…',
       waiting_sii_receipt:'Esperando comprobante oficial del SII (hasta 90 segundos)…',
+      downloading_sii_pdf:'Boleta confirmada. Descargando el PDF original del SII para guardar el respaldo…',
+      sending_sii_company_email:'PDF guardado. Enviando copia desde el SII al correo de PSC…',
       canary_clicked_reconciliation:'Se pulsó Emitir en SII, pero no se confirmó el folio. Verifica el documento oficial antes de repetir.',
       canary_attempt_reconciliation:'Intento SII incierto: verifica si se generó folio antes de repetir.',
       canary_issued_pdf_saved:'Boleta confirmada: folio y PDF guardados.',
+      canary_issued_pdf_saved_sii_accepted:'Boleta confirmada: PDF guardado y envío del SII al correo de PSC aceptado.',
+      canary_issued_pdf_saved_sii_unknown:'Boleta y PDF guardados. El envío del SII quedó sin confirmar; revisar antes de reenviar.',
+      canary_issued_pdf_saved_sii_blocked_mail_controls:'Boleta y PDF guardados. No se pudo identificar el botón de correo del SII.',
+      canary_issued_pdf_saved_sii_blocked_claim:'Boleta y PDF guardados. No se autorizó otro envío de correo desde el SII.',
+      canary_issued_pdf_saved_sii_blocked_document_unverified:'Boleta y PDF guardados. El documento cambió en el portal; envío SII detenido.',
       canary_issued_pdf_pending:'Boleta confirmada: falta guardar el PDF oficial.',
       issued:'Boleta emitida y folio registrado.',
       reconciliation:'Emisión con resultado incierto; revisar folio en SII. No volver a emitir.',

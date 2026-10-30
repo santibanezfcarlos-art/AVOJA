@@ -129,9 +129,17 @@ class CanaryTests(unittest.TestCase):
             if outcome:payload["outcome"]=outcome
             return self.client.post(endpoint,json=payload,headers=self.bridge)
         self.assertEqual(send("complete","accepted").status_code,409)
+        wrong=self.client.post(endpoint,json={"ticket":self.ticket(),"folio":"716",
+            "action":"claim","recipient":"other@example.invalid"},headers=self.bridge)
+        self.assertEqual(wrong.status_code,409)
         first=send("claim")
         self.assertEqual(first.status_code,200,first.text)
-        self.assertEqual(first.json["recipient"],"example@example.invalid")
+        self.assertEqual(first.json["recipient"],"contacto@pscsantibanez.cl")
+        with billing.db() as con:
+            portal=con.execute("SELECT recipient FROM sii_portal_deliveries WHERE order_id=?",(OID,)).fetchone()
+            patient=con.execute("SELECT recipient FROM sii_receipts WHERE order_id=?",(OID,)).fetchone()
+            self.assertEqual(portal["recipient"],"contacto@pscsantibanez.cl")
+            self.assertEqual(patient["recipient"],"example@example.invalid")
         self.assertEqual(send("claim").status_code,409)
         finish=send("complete","accepted")
         self.assertEqual(finish.status_code,200,finish.text)
@@ -291,6 +299,33 @@ class CanaryTests(unittest.TestCase):
         self.assertEqual(response.json["stage"],"prepared_not_issued")
         self.assertEqual(self.client.get("/admin/boletas/"+OID+"/prepare-status").status_code,401)
         self.assertEqual(self.client.post("/admin/boletas/"+OID+"/prepare-render",auth=self.auth).status_code,403)
+
+    def test_folio_survives_download_and_progress_continues_until_company_mail_finishes(self):
+        self.assertEqual(self.claim().status_code,200)
+        snapshot={"folio":"716","dte":41,"amount":30000,"pdf":None}
+        endpoint="/admin/sii-visual/internal-canary-complete"
+        with patch("sii_receipt_admin.dispatch_psc",return_value="accepted") as dispatch:
+            first=self.client.post(endpoint,json={"ticket":self.ticket(),"snapshot":snapshot},headers=self.bridge)
+            self.assertTrue(first.json["folio_recorded"])
+            self.assertFalse(first.json["pdf_stored"])
+            dispatch.assert_not_called()
+            active={"state":"open","stage":"downloading_sii_pdf"}
+            with patch("sii_canary._server_request",return_value=(200,active)):
+                status=self.client.get("/admin/boletas/"+OID+"/issue-status",auth=self.auth)
+            self.assertEqual(status.json["state"],"running")
+            self.assertEqual(status.json["folio"],"716")
+            snapshot["pdf"]=base64.b64encode(b'%PDF-1.4\n'+b'x'*120+b'\n%%EOF\n').decode()
+            second=self.client.post(endpoint,json={"ticket":self.ticket(),"snapshot":snapshot},headers=self.bridge)
+            self.assertTrue(second.json["pdf_stored"])
+            dispatch.assert_called_once_with(OID)
+        finished={"state":"open","stage":"canary_issued_pdf_saved_sii_accepted"}
+        with patch("sii_canary._server_request",return_value=(200,finished)):
+            status=self.client.get("/admin/boletas/"+OID+"/issue-status",auth=self.auth)
+        self.assertEqual(status.json["state"],"issued")
+        self.assertEqual(status.json["stage"],finished["stage"])
+        with patch("sii_canary._server_request",side_effect=TimeoutError):
+            status=self.client.get("/admin/boletas/"+OID+"/issue-status",auth=self.auth)
+        self.assertEqual(status.json["state"],"issued")
 
     def test_disabled_canary_stays_unavailable(self):
         with patch.dict(os.environ,{"SII_CANARY_ENABLED":"false"}):

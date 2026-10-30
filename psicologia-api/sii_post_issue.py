@@ -12,12 +12,17 @@ from datetime import date
 
 import billing
 
+COMPANY_EMAIL = 'contacto@pscsantibanez.cl'
+
 SCHEMA = '''CREATE TABLE IF NOT EXISTS sii_receipts (
  order_id TEXT PRIMARY KEY, folio TEXT UNIQUE NOT NULL, issued_date TEXT NOT NULL,
  amount INTEGER NOT NULL, recipient TEXT NOT NULL, patient_name TEXT NOT NULL,
  detail TEXT NOT NULL, pdf BLOB, pdf_sha256 TEXT,
  sii_state TEXT NOT NULL DEFAULT 'pending', psc_state TEXT NOT NULL DEFAULT 'pending',
  sii_reference TEXT, psc_reference TEXT, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sii_portal_deliveries (
+ order_id TEXT PRIMARY KEY, folio TEXT NOT NULL, recipient TEXT NOT NULL,
+ created_at TEXT NOT NULL);
 '''
 
 
@@ -168,3 +173,4 @@ def deliver(order_id, channel, sender):
         con.execute(f'UPDATE sii_receipts SET {col}=?,{ref}=?,updated_at=? WHERE order_id=?',
                     ('accepted',reference,billing.now(),order_id))
     return 'accepted'
+

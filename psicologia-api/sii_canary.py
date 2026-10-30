@@ -156,7 +156,7 @@ def complete():
             pdf=data
         except (ValueError,binascii.Error):
             pdf=None
-    from sii_post_issue import record_issued,store_pdf
+    from sii_post_issue import record_issued,store_pdf,COMPANY_EMAIL
     try:
         today=datetime.now(billing.TZ).date().isoformat()
         record_issued(oid,str(snap["folio"]),today,amount,dte=41)
@@ -172,7 +172,7 @@ def complete():
         except Exception:
             psc="unknown"
     return jsonify(state="issued",folio_recorded=True,pdf_stored=bool(pdf),
-                   psc_delivery=psc)
+                   psc_delivery=psc,sii_recipient=COMPANY_EMAIL)
 
 
 
@@ -193,7 +193,7 @@ def sii_delivery():
     if not d or payload.get("action") not in ("claim","complete"):
         return jsonify(error="ticket_invalido"),403
     order=d["preview_order"]
-    from sii_post_issue import SCHEMA as receipts_schema
+    from sii_post_issue import SCHEMA as receipts_schema,COMPANY_EMAIL
     with billing.db() as con:
         any_claim(con)
         con.executescript(receipts_schema)
@@ -209,11 +209,17 @@ def sii_delivery():
         if payload["action"]=="claim":
             if receipt["sii_state"]!="pending":
                 return jsonify(state=receipt["sii_state"],claimed=False),409
+            # The patient address stays in sii_receipts for the corporate
+            # patient email. This independent portal copy goes to PSC.
+            if payload.get("recipient",COMPANY_EMAIL)!=COMPANY_EMAIL:
+                return jsonify(error="destinatario_sii_no_autorizado"),409
+            con.execute("INSERT INTO sii_portal_deliveries(order_id,folio,recipient,created_at) VALUES (?,?,?,?)",
+                        (order,receipt["folio"],COMPANY_EMAIL,billing.now()))
             con.execute("UPDATE sii_receipts SET sii_state='sending',updated_at=? WHERE order_id=?",
                         (billing.now(),order))
             con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
                         (order,"sii_email_claimed",billing.now(),"sii_browser"))
-            return jsonify(state="sending",claimed=True,recipient=receipt["recipient"])
+            return jsonify(state="sending",claimed=True,recipient=COMPANY_EMAIL)
         if receipt["sii_state"]!="sending":
             return jsonify(error="envio_ya_resuelto"),409
         outcome=payload.get("outcome")
@@ -385,6 +391,19 @@ def issue_status(order):
     if not receipt:
         return jsonify(error="Compra no encontrada."),404
     if receipt["invoice_status"]=="issued":
+        # Folio persistence precedes PDF/download and portal mail. Keep the
+        # inline progress alive while THIS order is finishing those steps.
+        try:
+            base,secret=_visual_service()
+            _,status=_server_request(base+"/api/internal/status?"+urlencode({"order_id":order}),secret,timeout=4)
+            stage=status.get("stage","")
+            if (status.get("state") in ("starting","open") and stage in (
+                    "waiting_sii_receipt","downloading_sii_pdf","sending_sii_company_email")):
+                return jsonify(state="running",stage=stage,folio=receipt["folio"],claimed=True)
+            if stage.startswith("canary_issued"):
+                return jsonify(state="issued",stage=stage,folio=receipt["folio"])
+        except Exception:
+            pass  # An unavailable browser cannot undo a confirmed folio.
         return jsonify(state="issued",folio=receipt["folio"])
     import sii_dispatch
     with billing.db() as con:

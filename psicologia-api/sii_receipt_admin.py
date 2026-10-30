@@ -34,6 +34,8 @@ def statuses():
         con.executescript(RESEND_SCHEMA)
         rows=con.execute("""SELECT r.order_id,r.folio,r.pdf IS NOT NULL AS has_pdf,
                              r.sii_state,r.psc_state,
+                             (SELECT recipient FROM sii_portal_deliveries d
+                              WHERE d.order_id=r.order_id) AS sii_recipient,
                              COALESCE((SELECT MAX(sequence) FROM sii_receipt_resends
                                         WHERE order_id=r.order_id),0) AS resend_count,
                              (SELECT state FROM sii_receipt_resends
@@ -156,3 +158,4 @@ def resend_psc_receipt(order):
         con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
                     (order,"psc_receipt_resend_"+state,billing.now(),"admin"))
     return jsonify(state=state,attempt=seq,accepted_by_provider=state=="accepted")
+
