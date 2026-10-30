@@ -230,7 +230,7 @@ def template(role, order, service, start, end, *, correction=False, rebooking_ur
     if rebooking_url is not None:
         parsed = urlsplit(rebooking_url)
         legacy_link = (parsed.netloc in ("pscsantibanez.cl", "psicologia-retenciones-piloto.onrender.com") and parsed.path == "/reagendar" and bool(parsed.query))
-        production_link = (webpay_amount is not None and parsed.netloc == "psicologia-carlos-calendar-api.onrender.com" and re.fullmatch(r"/reagendar-produccion/[A-Za-z0-9_-]+", parsed.path) and not parsed.query and not parsed.fragment)
+        production_link = (webpay_amount is not None and parsed.netloc in ("pscsantibanez.cl", "psicologia-carlos-calendar-api.onrender.com") and re.fullmatch(r"/reagendar-produccion/[A-Za-z0-9_-]+", parsed.path) and not parsed.query and not parsed.fragment)
         if role != "patient" or parsed.scheme != "https" or not (legacy_link or production_link):
             raise NotificationError("Enlace de reagendamiento no permitido")
     rebooking_button = (
