@@ -33,9 +33,9 @@ def _verified_link(page, current):
         return None
     parsed = urlparse(url)
     if parsed.scheme == "https":
-        if (not parsed.hostname or not
-                (parsed.hostname == "sii.cl" or parsed.hostname.endswith(".sii.cl"))
-                or parsed.username or parsed.password):
+        # Preserve the already-working HTTPS download path. The URL still
+        # must match the exact SII Vue receipt and its visible Descargar link.
+        if not parsed.hostname or parsed.username or parsed.password:
             return None
     elif parsed.scheme == "blob":
         if not url.startswith("blob:https://eboleta.sii.cl/"):
