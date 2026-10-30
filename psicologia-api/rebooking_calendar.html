@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Reagendar mi sesión · Carlos Santibáñez</title>
+__SHARED_STYLES__
+<style>.rebooking-current{padding:15px 17px;border:1px solid var(--line);border-radius:13px;background:var(--light);margin:18px 0}.rebooking-current strong{display:block;margin:5px 0}.rebooking-submit{width:100%;margin-top:18px}.rebooking-message:empty{display:none}.rebooking-message{padding:13px;border-radius:12px;background:#fff4e4;color:#674f31;margin-top:15px}#rebookingForm .small{line-height:1.65}#rebookingForm button:disabled{opacity:.5;cursor:not-allowed}</style>
+</head><body>__SHARED_HEADER__
+<main><div id="appPage"><div class="app-crumb"><a href="https://pscsantibanez.cl/">Inicio</a><span aria-hidden="true">/</span><span>Reagendar mi sesión</span></div>
+<div class="app-head"><div><div class="eyebrow">Agenda de servicios online</div><h1>Reagendar mi sesión</h1><p class="sub">Selecciona una nueva fecha y un horario disponible para tu atención.</p></div><span class="app-trial">● Tu sesión ya está pagada</span></div>
+<div class="layout" id="patientView">__SHARED_CALENDAR__
+<aside class="card" id="rebookingSummary"><div class="kicker">Cambiar mi horario</div><h2 id="serviceTitle" style="margin-top:8px">Tu sesión online</h2>
+<div class="rebooking-current"><span class="small">Tu horario actual</span><strong id="currentDate"></strong><span id="currentTime"></span></div>
+<div class="detail"><span>Duración</span><strong id="sessionDuration"></strong></div><hr class="rule">
+<div class="detail"><span>Nueva fecha</span><strong id="selectionDate">Selecciona un día</strong></div><div class="detail"><span>Nuevo horario</span><strong id="selectionTime">Sin seleccionar</strong></div>
+<form id="rebookingForm" method="post"><input type="hidden" name="date" id="newDate"><input type="hidden" name="time" id="newTime"><button class="primary rebooking-submit" type="submit" id="rebookSubmit" disabled>Confirmar reprogramación</button><p class="small">Puedes realizar un cambio con al menos 24 horas de anticipación respecto de tu sesión actual. Te enviaremos los detalles actualizados por correo.</p></form>
+<p id="rebookingMessage" class="rebooking-message" role="status" aria-live="polite"></p><a href="https://pscsantibanez.cl/">Volver a la página</a></aside></div></div></main>
+<script type="application/json" id="bookingContext">__BOOKING_CONTEXT__</script>
+<script>
+(()=>{
+'use strict';
+const booking=JSON.parse(document.getElementById('bookingContext').textContent),$=id=>document.getElementById(id),ZONE='America/Santiago';
+const dateFormat=options=>new Intl.DateTimeFormat('es-CL',{timeZone:'UTC',...options});
+const dayObject=date=>new Date(date+'T12:00:00Z'),plus=(date,n)=>{const d=dayObject(date);d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)},weekday=date=>dayObject(date).getUTCDay();
+const parts=()=>Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+const today=()=>{const p=parts();return p.year+'-'+p.month+'-'+p.day},monday=date=>plus(date,-((weekday(date)+6)%7));
+const minutes=time=>Number(time.slice(0,2))*60+Number(time.slice(3)),clock=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+const original=new Date(booking.start),originalParts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(original).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+const originalDate=originalParts.year+'-'+originalParts.month+'-'+originalParts.day,originalTime=originalParts.hour+':'+originalParts.minute;
+let chosen=originalDate,start=monday(chosen),config=null,blocked={},ready=false,selected=null,submitting=false,sequence=0;
+const rangeEnd=()=>plus(today(),60),label=date=>dateFormat({weekday:'long',day:'numeric',month:'long'}).format(dayObject(date));
+$('currentDate').textContent=label(originalDate);$('currentTime').textContent=originalTime+' a '+clock(minutes(originalTime)+booking.duration)+' h';$('sessionDuration').textContent=booking.duration+' minutos';
+function schedule(date){
+ if(!config||!config.services[booking.service]?.active||date<today()||date>rangeEnd())return [];
+ const wd=weekday(date),exception=config.exceptions[date],slots=exception?(exception.closed?[]:exception.slots):(config.closedWeekdays.includes(wd)?[]:config.weekly[String(wd)]||[]);
+ const close=wd===6?720:1200,p=parts(),now=p.hour+':'+p.minute;
+ return wd===0?[]:slots.filter(time=>minutes(time)>=540&&minutes(time)+booking.duration<=close&&(date>today()||time>now));
+}
+function free(date,time){return ready&&!(blocked[date]||[]).includes(time)&&!(date===originalDate&&time===originalTime)}
+function available(date){return ready&&schedule(date).some(time=>free(date,time))}
+function message(text){$('rebookingMessage').textContent=text}
+function render(){
+ $('period').textContent=dateFormat({day:'numeric',month:'short'}).format(dayObject(start))+' – '+dateFormat({day:'numeric',month:'short',year:'numeric'}).format(dayObject(plus(start,6)));
+ $('prev').disabled=submitting||start<=monday(today());$('next').disabled=submitting||plus(start,7)>rangeEnd();$('week').replaceChildren();
+ for(let i=0;i<7;i++){
+  const date=plus(start,i),valid=available(date),button=document.createElement('button');button.type='button';button.className='day'+(date===chosen?' active':'');button.disabled=submitting||!valid;button.setAttribute('aria-label',label(date));button.setAttribute('aria-pressed',String(date===chosen));
+  const dow=document.createElement('span');dow.className='dow';dow.textContent=['Do','Lu','Ma','Mi','Ju','Vi','Sa'][weekday(date)];const number=document.createElement('strong');number.textContent=dayObject(date).getUTCDate();button.append(dow,number);
+  if(valid){const dot=document.createElement('span');dot.className='dot';button.append(dot)}
+  button.onclick=()=>{chosen=date;selected=null;message('');render()};$('week').append(button);
+ }
+ $('dateHeading').textContent=label(chosen);$('capacity').textContent='Máximo '+(config?.maxPerDay||3)+' atenciones al día';$('hours').replaceChildren();
+ const times=schedule(chosen);
+ if(!times.length){const empty=document.createElement('div');empty.className='empty';empty.textContent=ready?'No hay horarios disponibles para este día.':'Buscando horarios disponibles…';$('hours').append(empty)}
+ for(const time of times){
+  const button=document.createElement('button'),valid=free(chosen,time),active=selected?.date===chosen&&selected?.time===time;button.type='button';button.className='hour'+(active?' active':'');button.disabled=submitting||!valid;button.setAttribute('aria-pressed',String(!!active));
+  const hour=document.createElement('strong');hour.textContent=time;const note=document.createElement('span');note.textContent=!ready?'Comprobando…':active?'Seleccionado':valid?'Disponible':'No disponible';button.append(hour,note);
+  button.onclick=()=>{selected={date:chosen,time};message('');render();if(matchMedia('(max-width:760px)').matches)$('rebookingSummary').scrollIntoView({behavior:'smooth',block:'start'})};$('hours').append(button);
+ }
+ $('selectionDate').textContent=selected?label(selected.date):'Selecciona un día';$('selectionTime').textContent=selected?selected.time+' a '+clock(minutes(selected.time)+booking.duration)+' h':'Sin seleccionar';$('rebookSubmit').disabled=submitting||!selected||!ready;
+ $('calendarSyncStatus').textContent=ready?'Horarios actualizados. Elige el que más te acomode.':'Buscando horarios disponibles…';$('durationNotice').textContent='Lunes a viernes: 09:00–20:00 · Sábados: 09:00–12:00. '+booking.duration+' minutos por sesión.';
+}
+async function load(){
+ const req=++sequence;ready=false;render();
+ try{
+  const from=start<today()?today():start,to=plus(start,6)>rangeEnd()?rangeEnd():plus(start,6);
+  const requests=[fetch('/api/availability?from='+from+'&to='+to+'&duration='+booking.duration,{cache:'no-store'})];if(!config)requests.push(fetch('/api/booking-config',{cache:'no-store'}));
+  const responses=await Promise.all(requests);if(responses.some(r=>!r.ok))throw Error('No pudimos cargar los horarios. Intenta nuevamente.');
+  const data=await responses[0].json();if(!data.configured||data.status!=='ok'||data.duration_minutes!==booking.duration)throw Error('No pudimos verificar la disponibilidad.');
+  if(responses[1])config=(await responses[1].json()).settings;if(req!==sequence)return false;
+  blocked=data.blocked||{};ready=true;$('serviceTitle').textContent=config.services[booking.service].title;
+  if(selected&&!free(selected.date,selected.time)){selected=null;message('Ese horario acaba de ocuparse. Elige otro horario disponible.')}
+  if(!available(chosen)&&!selected){for(let i=0;i<7;i++){const date=plus(start,i);if(available(date)){chosen=date;break}}}
+  render();return true;
+ }catch(error){if(req!==sequence)return false;ready=false;render();$('calendarSyncStatus').textContent='No pudimos cargar los horarios.';message(error.message);return false}
+}
+$('prev').onclick=()=>{start=plus(start,-7);chosen=start<today()?today():start;selected=null;message('');load()};$('next').onclick=()=>{start=plus(start,7);chosen=start;selected=null;message('');load()};
+$('rebookingForm').onsubmit=async event=>{event.preventDefault();if(submitting||!selected||!ready)return;submitting=true;render();message('Comprobando tu nuevo horario…');const ok=await load();if(!ok||!selected){submitting=false;render();return}$('newDate').value=selected.date;$('newTime').value=selected.time;message('Confirmando tu reprogramación…');HTMLFormElement.prototype.submit.call($('rebookingForm'))};
+render();load();
+})();
+</script><script defer src="https://pscsantibanez.cl/contacto-whatsapp.js"></script></body></html>

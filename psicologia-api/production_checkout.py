@@ -317,7 +317,9 @@ def rebook(token):
     if not r:return page('Reserva no encontrada','',404)
     original=datetime.fromisoformat(r['starts_at'])
     if r['rebooked'] or original-datetime.now(TZ)<timedelta(hours=24):return page('Reprogramación no disponible','<p>Se permite un cambio con al menos 24 horas de anticipación. Para solicitudes del mismo día con justificativo médico, escribe a contacto@pscsantibanez.cl.</p>',409)
-    if request.method=='GET':return page('Reagendar mi sesión','<p>Selecciona una nueva fecha y hora. El servidor comprobará la disponibilidad antes de confirmar el único cambio permitido.</p><form method="post"><label>Fecha <input required type="date" name="date"></label><label>Hora <input required type="time" name="time" step="900"></label><button>Confirmar reprogramación</button></form>')
+    if request.method=='GET':
+        from rebooking_calendar import render_rebooking_calendar
+        return render_rebooking_calendar(r)
     try:
         duration=int((datetime.fromisoformat(r['ends_at'])-original).total_seconds()/60)
         start_at,end_at,_=interval(r['service'],request.form.get('date',''),request.form.get('time',''),duration=duration)

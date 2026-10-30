@@ -118,6 +118,30 @@ class ProductionCheckoutTests(unittest.TestCase):
         with billing.db() as c:
             row=c.execute('SELECT * FROM production_payments').fetchone();self.assertEqual((row['patient_mail'],row['professional_mail']),(1,1))
         self.assertEqual(len([x for x in self.calls.call_args_list if x.args[0]=='confirm']),1)
+    def test_existing_rebooking_link_renders_the_published_calendar_without_payment(self):
+        self.start()
+        with patch('sii_canary.start_emission',return_value=({},202)):
+            self.client.get('/api/webpay/return?token_ws='+'a'*64)
+        with billing.db() as c:row=c.execute('SELECT * FROM production_payments').fetchone()
+        link='/reagendar-produccion/'+row['rebook_token']
+        response=self.client.get(link)
+        self.assertEqual(response.status_code,200)
+        self.assertNotIn('Location',response.headers)
+        self.assertIn('no-store',response.headers['Cache-Control'])
+        body=response.get_data(as_text=True)
+        self.assertIn('id="week"',body)
+        self.assertIn('id="hours"',body)
+        self.assertIn('class="layout" id="patientView"',body)
+        self.assertIn('class="site-header"',body)
+        self.assertIn('id="rebookingForm" method="post"',body)
+        self.assertNotIn('type="date"',body)
+        self.assertNotIn('api/webpay/start',body)
+        with billing.db() as c:
+            same=c.execute('SELECT * FROM production_payments').fetchone()
+        self.assertEqual(same['rebook_token'],row['rebook_token'])
+        self.assertEqual(same['rebooked'],0)
+        self.assertEqual(self.g.creates,1)
+
     def test_one_reprogramming_updates_ledger_and_rejects_another(self):
         self.start();self.client.get('/api/webpay/return?token_ws='+'a'*64)
         with billing.db() as c:row=c.execute('SELECT * FROM production_payments').fetchone()
