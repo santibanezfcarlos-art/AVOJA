@@ -67,7 +67,11 @@ def mail():
             rescheduled=bool(d.get('revision',0)))
         send_payload({'from':FROM,'to':[recipient],'subject':subject,'html':body,'text':text},'psc-production-'+d['order']+'-'+d['role']+'-'+str(d.get('revision',0)))
         return jsonify(state='SENT')
-    except Exception:return jsonify(state='PENDING'),503
+    except Exception as exc:
+        # Signed server-to-server diagnostics, without message bodies or recipients.
+        return jsonify(state='PENDING',error_type=type(exc).__name__,
+            provider_code=getattr(exc,'provider_code',None),
+            provider_http=getattr(exc,'http_status',None)),503
 
 
 @bp.post('/internal/psicologia/production/receipt-mail')
