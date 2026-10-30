@@ -417,6 +417,8 @@ def _prepare_order_preview(page, order, canary=False, diagnostic=False):
 
 def _diagnose_issue_without_transmission(page,order):
     """Exercise local SII click handler under an absolute state-changing network block."""
+    if page.evaluate("() => !!navigator.serviceWorker?.controller"):
+        return "diagnostic_stopped_service_worker_no_click"
     with _lock:
         ids=_session.get("field_ids")
         _session["diagnostic_blocked_posts"]=0
@@ -523,7 +525,7 @@ def _browser_owner(started, ticket, mode):
                 _session["state"] = "open"
                 _session["stage"] = "opening_sii"
             context = browser.new_context(locale="es-CL", timezone_id="America/Santiago",
-                                          viewport={"width":1365,"height":768})
+                                          viewport={"width":1365,"height":768}, service_workers="block")
             context.add_init_script(BLOCK_ISSUE_ACTIONS)
             page = context.new_page()
             auth_document = {"status": None}
