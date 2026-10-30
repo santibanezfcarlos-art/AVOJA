@@ -434,6 +434,16 @@ def _diagnose_issue_without_transmission(page,order):
             route.continue_()
     page.context.route("**/*",deny_write)
     errors=[]
+    console=[]
+    def redact(message):
+        message=str(message)
+        for value in order.values():
+            if isinstance(value,str):message=message.replace(value,"[redacted]")
+        message=re.sub(r"https?://[^\s]+","[url]",message)
+        message=re.sub(r"[A-Za-z0-9_+/=-]{25,}","[token]",message)
+        message=re.sub(r"[0-9]{5,}","[number]",message)
+        return message[:350]
+    page.on("console",lambda msg:console.append(redact(msg.text)) if msg.type in ("error","warning") else None)
     def record_error(error):
         message=str(error)
         for value in order.values():
@@ -452,6 +462,8 @@ def _diagnose_issue_without_transmission(page,order):
                 break
         state=page.evaluate("""() => {
           const vms=new Set([...document.querySelectorAll('*')].map(e=>e.__vue__).filter(Boolean));
+          const queue=[...vms];
+          while(queue.length){const v=queue.shift();for(const c of v.$children||[])if(!vms.has(c)){vms.add(c);queue.push(c)}}
           const vm=[...vms].find(v=>typeof v.iniciarEmision==='function' && v.compartirData);
           return vm ? {component:true,form_state:vm.estadoDte,emitting:vm.emitiendo,
             receiver_present:!!vm.rutDvReceptor,receiver_type:typeof vm.rutDvReceptor,
@@ -461,6 +473,13 @@ def _diagnose_issue_without_transmission(page,order):
         }""")
         state["blocked_writes"]=blocked
         state["javascript_errors"]=errors
+        state["console"]=console[-5:]
+        state["host"]=urlparse(page.url).hostname
+        state["path"]=urlparse(page.url).path
+        state["page"]=redact(page.locator("body").inner_text(timeout=5000))
+        state["cookie_names"]=sorted({c["name"] for c in page.context.cookies()})
+        with _lock:
+            _session["diagnostic_summary"]=state
         app.logger.warning("SII_DRYRUN_RESULT %s",json.dumps(state))
         return "diagnostic_request_blocked_no_issue" if blocked else "diagnostic_no_request_no_issue"
     finally:
@@ -837,7 +856,7 @@ def internal_status():
         if order_id!=_session.get("order_id"):
             return jsonify(state="not_running",stage="not_running")
         return jsonify(state=_session.get("state","unknown"),stage=_session.get("stage","unknown"),
-                       preparation=_session.get("preparation"))
+                       preparation=_session.get("preparation"),diagnostic=_session.get("diagnostic_summary"))
 
 
 @app.post("/api/issue")
