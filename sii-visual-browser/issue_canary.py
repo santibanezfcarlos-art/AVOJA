@@ -78,12 +78,23 @@ def official_snapshot(page, expected_amount):
     if urlparse(page.url).hostname!="eboleta.sii.cl":
         return None
     data=page.evaluate("""() => {
-      const components=new Set();
+      const components=new Set(), visited=new Set(), pending=[];
       for(const el of document.querySelectorAll('*')){
-        const vm=el.__vue__;
-        if(vm && vm.emitido===true && vm.compartirData && vm.compartirData.folio){
+        if(el.__vue__)pending.push(el.__vue__);
+      }
+      // Vuetify can own the DOM node while the receipt belongs to its parent
+      // or a child component. Traverse the live Vue graph without invoking
+      // methods, changing state, or accepting unconfirmed form values.
+      while(pending.length){
+        const vm=pending.pop();
+        if(!vm || visited.has(vm))continue;
+        visited.add(vm);
+        if(vm._isDestroyed)continue;
+        if(vm.emitido===true && vm.compartirData && vm.compartirData.folio){
           components.add(vm);
         }
+        if(vm.$parent)pending.push(vm.$parent);
+        if(Array.isArray(vm.$children))pending.push(...vm.$children);
       }
       if(components.size!==1)return null;
       const vm=[...components][0], d=vm.compartirData;

@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from playwright.sync_api import sync_playwright
 from app import create_sii_context
-from issue_canary import issue_once
+from issue_canary import issue_once, official_snapshot
 from test_issue_canary import ORDER, IDS
 
 PDF = b"%PDF-1.4\n" + b"fixture-original-pdf " * 10 + b"\n%%EOF\n"
@@ -92,8 +92,10 @@ class ReceiptBrowserTests(unittest.TestCase):
         window.issueClicks=0;window.mailClicks=0;
         function issue(){window.issueClicks++;document.querySelector('#tax').hidden=true;
           document.querySelector('#receipt').hidden=false;
-          document.body.__vue__={emitido:true,compartirData:{folio:'615',dte:41,monto:30000},
-            b64Pdf:PDFDATA,urlPdf:'PDFURL'};}
+          const receipt={emitido:true,compartirData:{folio:'615',dte:41,monto:30000},
+            b64Pdf:PDFDATA,urlPdf:'PDFURL'};
+          const wrapper={$parent:receipt,$children:[]};
+          receipt.$children=[wrapper];document.body.__vue__=wrapper;}
         async function sendMail(){window.mailClicks++;await fetch('/fixture-email',{
           method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({to:document.querySelector('#mail').value,folio:'615',dte:41,monto:30000})});
@@ -116,6 +118,18 @@ class ReceiptBrowserTests(unittest.TestCase):
 
     def tearDown(self):
         self.context.close()
+
+    def test_snapshot_rejects_unconfirmed_wrong_amount_and_ambiguous_receipts(self):
+        self.page.evaluate("issue()")
+        self.assertEqual(official_snapshot(self.page, 30000)["folio"], "615")
+        self.assertIsNone(official_snapshot(self.page, 30001))
+        self.page.evaluate("document.body.__vue__.$parent.emitido=false")
+        self.assertIsNone(official_snapshot(self.page, 30000))
+        self.page.evaluate("""() => {
+          const vm=document.body.__vue__.$parent;vm.emitido=true;
+          vm.$children.push({emitido:true,compartirData:{folio:'616',dte:41,monto:30000}});
+        }""")
+        self.assertIsNone(official_snapshot(self.page, 30000))
 
     def test_location_is_denied_immediately_without_coordinates_or_prompt(self):
         status = self.page.evaluate('''async () => ({
