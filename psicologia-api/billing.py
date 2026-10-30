@@ -269,7 +269,9 @@ def filtered_rows():
         raise ValueError('Filtro inválido')
     sql = 'SELECT billing_orders.*, (SELECT status FROM sii_issuance_queue q WHERE q.order_id=billing_orders.order_id) AS issuance_state FROM billing_orders WHERE environment=?'
     params = [environment]
-    if status != 'all':
+    if status == 'issued':
+        sql += " AND invoice_status IN ('issued','sent_manually')"
+    elif status != 'all':
         sql += ' AND invoice_status=?'
         params.append(status)
     for key, operator in [('from', '>='), ('to', '<=')]:
