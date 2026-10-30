@@ -825,7 +825,7 @@ function localBusy(date,time,duration=currentService().minutes){
 function baseSchedule(isoDate){const wd=dayIndex(isoDate);return settings.closedWeekdays.includes(wd)?[]:normalize(settings.weekly[wd])}
 function schedule(isoDate){const ex=settings.exceptions[isoDate];return ex?ex.closed?[]:normalize(ex.slots):baseSchedule(isoDate)}
 function past(isoDate,time){const t=todayISO();if(isoDate<t)return true;if(isoDate>t)return false;const p=nowParts();return time<=p.hour+':'+p.minute}
-function availableDay(isoDate){return configurationReady&&currentService().active&&isoDate>=todayISO()&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
+function availableDay(isoDate){return calendarState==='ready'&&configurationReady&&currentService().active&&isoDate>=todayISO()&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
 function publicDayHasCups(isoDate){return availableDay(isoDate)}
 function message(t){$('message').textContent=t;$('message').hidden=false}
 function clearMessage(){$('message').hidden=true}
