@@ -241,7 +241,7 @@ async function pollPreview(order){
 async function pollIssue(order){
  if(issueTimers[order])return;
  let checks=0;
- const terminal=new Set(['issued','reconciliation','failed','expired','unavailable','not_running']);
+ const terminal=new Set(['issued','reconciliation','failed','expired','unavailable','not_running','not_started']);
  const finish=async (message)=>{
    issueRunning[order]=false;
    delete issueTimers[order];
@@ -257,6 +257,8 @@ async function pollIssue(order){
    const stage=result.stage||result.state||'unknown';
    const labels={
       starting:'Iniciando Chromium en Render…',
+      render_waking:'Iniciando el navegador SII en Render. La primera conexión puede tardar hasta 90 segundos…',
+      start_failed_rearmed:'El navegador no llegó a iniciar la emisión. No se emitió una boleta; el botón Emitir está disponible nuevamente.',
       credential_fetch:'Recuperando datos de la compra…',
       opening_sii:'Abriendo SII…',
       sii_authentication:'Ingresando al SII…',
@@ -320,6 +322,11 @@ async function refresh({quiet=false}={}){
   // Keep the previous list visible during requests. Replace it once.
   $('orders').replaceChildren(rendered);
   $('count').textContent=data.orders.length+' compras';
+  for(const order of data.orders){
+   if(!quiet&&order.issuance_state==='processing'&&!issueTimers[order.order_id]){
+    issueRunning[order.order_id]=true;pollIssue(order.order_id);
+   }
+  }
   if(!quiet)$('notice').textContent=data.orders.length?'':'No hay compras para estos filtros.';
  }catch(err){
   if(seq===generation)$('notice').textContent=err.message;
@@ -328,3 +335,4 @@ async function refresh({quiet=false}={}){
 
 $('environment').onchange=()=>{$('status').replaceChildren();for(const [value,label] of ($('environment').value==='integration'?[['test','Pruebas aprobadas'],['all','Todos los pagos de prueba']]:[['pending','Pendientes de emisión'],['issued','Emitidas'],['all','Todos los pagos']])){const o=node('option',label);o.value=value;$('status').append(o)}refresh()};
 $('refresh').onclick=refresh;$('status').onchange=refresh;$('export').onclick=()=>{location.href='/admin/boletas/export.csv?'+query()};refresh();
+

@@ -277,8 +277,6 @@ from sii_receipt_admin import bp as sii_receipt_admin_bp
 app.register_blueprint(sii_receipt_admin_bp)
 from sii_canary import bp as sii_canary_bp
 app.register_blueprint(sii_canary_bp)
-from sii_diagnostic_maintenance import bp as sii_diagnostic_bp
-app.register_blueprint(sii_diagnostic_bp)
 from admin import admin_bp
 app.register_blueprint(admin_bp)
 from reschedules import reschedules_bp
@@ -376,3 +374,12 @@ if __name__ == "__main__":
 
 
 
+
+# Recover only pre-claim startup failures; no issuance side effects.
+def _recover_sii_preclaims():
+    import time as _time
+    _time.sleep(4)
+    from sii_dispatch import recover_stalled_preclaims
+    recover_stalled_preclaims()
+if os.environ.get("RENDER"):
+    threading.Thread(target=_recover_sii_preclaims,daemon=True).start()

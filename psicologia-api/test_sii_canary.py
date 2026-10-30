@@ -178,20 +178,62 @@ class CanaryTests(unittest.TestCase):
         self.assertEqual(current["status"],"awaiting_issuer")
 
     def test_one_click_issues_through_server_to_server_chromium(self):
-        with patch("sii_canary._server_request",return_value=(202,{"status":"starting"})) as request_start:
+        with patch("sii_dispatch.threading.Thread") as thread:
             response=self.client.post("/admin/boletas/"+OID+"/emit",auth=self.auth,
                                       headers={"X-Billing-Action":"manual-invoice"})
         self.assertEqual(response.status_code,202,response.text)
         self.assertTrue(response.json["started"])
-        args=request_start.call_args.args
-        self.assertTrue(args[0].endswith("/api/internal/start"))
+        kwargs=thread.call_args.kwargs
         from sii_canary import ticket_data
-        ticket=args[2]["ticket"]
-        self.assertEqual(ticket_data(ticket)["preview_order"],OID)
-        self.assertEqual(ticket_data(ticket)["mode"],"issue_canary")
+        self.assertEqual(ticket_data(kwargs["args"][2])["preview_order"],OID)
+        self.assertEqual(ticket_data(kwargs["args"][2])["mode"],"issue_canary")
+        with patch("sii_canary._server_request",return_value=(202,{})) as transport:
+            kwargs["target"](*kwargs["args"])
+            self.assertEqual(transport.call_args.kwargs["timeout"],90)
+            transport.assert_called_once()
         with billing.db() as con:
-            # No false issuance claim before the browser actually clicks.
             self.assertEqual(con.execute("SELECT invoice_status FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0],"pending")
+
+    def test_cold_start_returns_immediately_and_polling_resumes_without_second_start(self):
+        with (patch("sii_dispatch.threading.Thread") as thread,
+              patch("sii_canary._server_request") as transport):
+            r=self.client.post("/admin/boletas/"+OID+"/emit",auth=self.auth,
+                               headers={"X-Billing-Action":"manual-invoice"})
+            self.assertEqual(r.status_code,202)
+            transport.assert_not_called()
+            status=self.client.get("/admin/boletas/"+OID+"/issue-status",auth=self.auth)
+            self.assertEqual(status.json["stage"],"render_waking")
+            transport.assert_not_called()
+            repeat=self.client.post("/admin/boletas/"+OID+"/emit",auth=self.auth,
+                                    headers={"X-Billing-Action":"manual-invoice"})
+            self.assertEqual(repeat.status_code,409)
+            self.assertEqual(thread.call_count,1)
+
+    def test_only_failed_preclaim_is_rearmed_and_audited(self):
+        import sii_dispatch
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET status='processing' WHERE order_id=?",(OID,))
+        self.assertTrue(sii_dispatch.reconcile_preclaim(OID,{"state":"not_running"}))
+        with billing.db() as con:
+            self.assertEqual(con.execute("SELECT status FROM sii_issuance_queue WHERE order_id=?",(OID,)).fetchone()[0],"awaiting_issuer")
+            self.assertIsNone(con.execute("SELECT folio FROM billing_orders WHERE order_id=?",(OID,)).fetchone()[0])
+            self.assertTrue(con.execute("SELECT 1 FROM billing_audit WHERE action='sii_preclaim_start_failure_rearmed'").fetchone())
+
+    def test_actual_sii_claim_is_never_reset_by_start_recovery(self):
+        import sii_dispatch
+        self.assertEqual(self.claim().status_code,200)
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET status='processing' WHERE order_id=?",(OID,))
+        self.assertFalse(sii_dispatch.reconcile_preclaim(OID,{"state":"not_running"}))
+
+    def test_active_browser_and_unapproved_payment_are_never_rearmed(self):
+        import sii_dispatch
+        with billing.db() as con:
+            con.execute("UPDATE sii_issuance_queue SET status='processing' WHERE order_id=?",(OID,))
+        self.assertFalse(sii_dispatch.reconcile_preclaim(OID,{"state":"open","stage":"filling_receiver"}))
+        with billing.db() as con:
+            con.execute("UPDATE billing_orders SET payment_status='initiated' WHERE order_id=?",(OID,))
+        self.assertFalse(sii_dispatch.reconcile_preclaim(OID,{"state":"not_running"}))
 
     def test_one_click_rejects_unapproved_and_unauthorized_requests(self):
         self.assertEqual(self.client.post("/admin/boletas/"+OID+"/emit").status_code,401)
@@ -259,3 +301,4 @@ class CanaryTests(unittest.TestCase):
 
 
 if __name__=="__main__":unittest.main()
+

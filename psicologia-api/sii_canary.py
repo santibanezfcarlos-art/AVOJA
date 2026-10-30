@@ -241,7 +241,7 @@ def _visual_service():
     return base,secret
 
 
-def _server_request(url,secret,body=None):
+def _server_request(url,secret,body=None,*,timeout=22):
     headers={"X-PSC-Visual-Bridge":secret, "Accept":"application/json"}
     if body is None:
         req=urllib.request.Request(url,headers=headers,method="GET")
@@ -249,7 +249,7 @@ def _server_request(url,secret,body=None):
         headers["Content-Type"]="application/json"
         req=urllib.request.Request(url,data=json.dumps(body,separators=(",",":")).encode(),
                                    headers=headers,method="POST")
-    with urllib.request.urlopen(req,timeout=22) as response:
+    with urllib.request.urlopen(req,timeout=timeout) as response:
         return response.status,json.loads(response.read(4096))
 
 
@@ -313,6 +313,8 @@ def prepare_status(order):
                        stage=result.get("stage","unknown"),
                        preparation=result.get("preparation"))
     except Exception:
+        if queued and queued["status"]=="processing":
+            return jsonify(state="running",stage="render_waking")
         return jsonify(state="unavailable",stage="render_unavailable")
 
 
@@ -331,8 +333,11 @@ def start_emission(order, actor):
         return jsonify(error="Compra inválida."),400
     try:
         base,secret=_visual_service()
+        import sii_dispatch
+        dispatch_id=secrets.token_hex(16)
         with billing.db() as con:
             any_claim(con,order)
+            con.executescript(sii_dispatch.SCHEMA)
             con.execute("BEGIN IMMEDIATE")
             if recorded_attempt(con,order):
                 return jsonify(error="Ya existe un intento de emisión para este pago. Revisar SII."),409
@@ -351,19 +356,20 @@ def start_emission(order, actor):
                                 (billing.now(),order))
             if changed.rowcount!=1:
                 return jsonify(error="Emisión ya en curso. No repetir."),409
+            con.execute("INSERT OR REPLACE INTO sii_render_dispatch VALUES (?,?, 'connecting',?,?,NULL)",
+                        (order,dispatch_id,time.time(),billing.now()))
+            con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
+                        (order,"render_sii_dispatch_queued",billing.now(),actor))
         from sii_visual_admin import _b64
         payload=_b64(json.dumps({"exp":int(time.time())+600,
                "nonce":secrets.token_urlsafe(24),"preview_order":order,
                "mode":"issue_canary"},separators=(",",":")).encode())
         signature=_b64(hmac.new(secret.encode(),payload.encode("ascii"),hashlib.sha256).digest())
         ticket=payload+"."+signature
-        status,data=_server_request(base+"/api/internal/start",secret,{"ticket":ticket})
-        if status!=202:
-            return jsonify(error="Chromium no confirmó el inicio."),503
-        with billing.db() as con:
-            con.execute("INSERT INTO billing_audit(order_id,action,created_at,actor) VALUES (?,?,?,?)",
-                        (order,"render_sii_emission_started",billing.now(),actor))
-        return jsonify(started=True,state="starting",order_id=order),202
+        sii_dispatch.threading.Thread(target=sii_dispatch.run,
+            args=(order,dispatch_id,ticket,actor,os.environ['PSICOLOGIA_BILLING_DB']),
+            daemon=True,name="sii-render-start").start()
+        return jsonify(started=True,state="starting",stage="render_waking",order_id=order),202
     except urllib.error.HTTPError as exc:
         return jsonify(error="Chromium rechazó el inicio; revisa su estado antes de repetir."),409 if exc.code==409 else 503
     except (RuntimeError,ValueError,urllib.error.URLError,TimeoutError,OSError):
@@ -380,11 +386,20 @@ def issue_status(order):
         return jsonify(error="Compra no encontrada."),404
     if receipt["invoice_status"]=="issued":
         return jsonify(state="issued",folio=receipt["folio"])
+    import sii_dispatch
+    with billing.db() as con:
+        con.executescript(sii_dispatch.SCHEMA)
+        dispatch=con.execute("SELECT state,started_at FROM sii_render_dispatch WHERE order_id=?",(order,)).fetchone()
+    if dispatch and dispatch["state"]=="connecting" and time.time()-dispatch["started_at"]<120:
+        return jsonify(state="running",stage="render_waking")
     try:
         base,secret=_visual_service()
         _,status=_server_request(base+"/api/internal/status?"+urlencode({"order_id":order}),secret)
         current=status.get("state","unknown")
         stage=status.get("stage","unknown")
+        if queued and queued["status"]=="processing" and sii_dispatch.reconcile_preclaim(order,status):
+            return jsonify(state="not_started",stage="start_failed_rearmed",retry_available=True)
+
         if queued and queued["status"]=="reconciliation":
             # Claim is persisted BEFORE the irreversible SII click.
             # It means "do not retry", NOT "Chromium finished".
@@ -397,5 +412,7 @@ def issue_status(order):
         if queued and queued["status"]=="reconciliation":
             return jsonify(state="reconciliation",stage="render_unavailable",
                            message="Verificar folio en SII antes de volver a intentar.")
+        if queued and queued["status"]=="processing":
+            return jsonify(state="running",stage="render_waking")
         return jsonify(state="unavailable",stage="render_unavailable")
 
