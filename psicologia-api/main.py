@@ -421,38 +421,3 @@ def _recover_sii_preclaims():
 if os.environ.get("RENDER"):
     threading.Thread(target=_recover_sii_preclaims,daemon=True).start()
 
-# Expiring read-only incident diagnosis. No commit, issuance or email is started.
-def _diagnose_webpay_20261030():
-    import logging
-    import time as _time
-    _time.sleep(6)
-    logger=logging.getLogger('webpay_reconciliation')
-    if datetime.now(timezone.utc).date()!=date(2026,10,30):
-        return
-    try:
-        import billing
-        from production_checkout import gateway
-        with billing.db() as con:
-            rows=con.execute("""SELECT p.order_id,p.session_id,p.token,p.amount,p.state,p.event_id,
-                b.payment_status,b.invoice_status,q.status AS queue_state
-                FROM production_payments p JOIN billing_orders b USING(order_id)
-                LEFT JOIN sii_issuance_queue q USING(order_id)
-                WHERE b.created_at>='2026-10-30T17:30:00'
-                ORDER BY b.created_at DESC LIMIT 12""").fetchall()
-        for row in rows:
-            data=dict(row)
-            try:
-                result=gateway().status(data['token']) if data['token'] else {}
-                logger.warning('PSC_WEBPAY_DIAG suffix=%s local=%s billing=%s invoice=%s queue=%s event=%s bank=%s code=%s amount_match=%s identity_match=%s',
-                    data['order_id'][-6:],data['state'],data['payment_status'],data['invoice_status'],
-                    data['queue_state'],bool(data['event_id']),result.get('status'),result.get('response_code'),
-                    result.get('amount')==data['amount'],
-                    result.get('buy_order')==data['order_id'] and result.get('session_id')==data['session_id'])
-            except Exception as exc:
-                logger.warning('PSC_WEBPAY_DIAG suffix=%s local=%s billing=%s invoice=%s bank_read_error=%s',
-                    data['order_id'][-6:],data['state'],data['payment_status'],data['invoice_status'],type(exc).__name__)
-    except Exception as exc:
-        logger.warning('PSC_WEBPAY_DIAG read_error=%s',type(exc).__name__)
-
-if os.environ.get('RENDER'):
-    threading.Thread(target=_diagnose_webpay_20261030,daemon=True).start()

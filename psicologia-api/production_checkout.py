@@ -136,7 +136,13 @@ def returning():
             billing.record_result(r['order_id'],token,r['amount'],paid,result.get('payment_type_code',''))
             with billing.db() as c:c.execute('UPDATE production_payments SET state=? WHERE order_id=?',('AUTHORIZED' if paid else 'REJECTED',r['order_id']))
             if paid: issue_after_approved_payment(r['order_id'])
-        fulfill(r['order_id'])
+        try:
+            fulfill(r['order_id'])
+        except Exception as exc:
+            # The bank result is already durable. Calendar/mail trouble must
+            # not turn an approved payment into a checkout error.
+            current_app.logger.warning('PSC_FULFILLMENT_PENDING suffix=%s error_type=%s',
+                r['order_id'][-6:],type(exc).__name__)
         return redirect(API+'/pago/'+r['receipt'],code=303)
     except Exception:
         if 'r' in locals() and r:
@@ -228,6 +234,25 @@ def confirmed_page(r):
     return response
 
 
+def resume_pending_invoice(order):
+    """Retry only startup failures: the issuer owns the durable no-duplicate claim."""
+    try:
+        with billing.db() as con:
+            row=con.execute("""SELECT b.invoice_status,q.status,
+                (SELECT count(*) FROM billing_audit a WHERE a.order_id=b.order_id
+                 AND a.action='render_sii_dispatch_queued') AS starts
+                FROM billing_orders b LEFT JOIN sii_issuance_queue q USING(order_id)
+                WHERE b.order_id=? AND b.payment_status='approved'""",(order,)).fetchone()
+        if row and row['invoice_status']=='pending' and row['status']=='awaiting_issuer' and row['starts']<3:
+            issue_after_approved_payment(order)
+        with billing.db() as con:
+            row=con.execute("""SELECT b.invoice_status,q.status FROM billing_orders b
+                LEFT JOIN sii_issuance_queue q USING(order_id) WHERE b.order_id=?""",(order,)).fetchone()
+        return bool(row and row['invoice_status']=='pending' and row['status'] in ('awaiting_issuer','processing'))
+    except Exception as exc:
+        current_app.logger.warning('PSC_RECEIPT_RECOVERY_PENDING suffix=%s error_type=%s',order[-6:],type(exc).__name__)
+        return False
+
 @bp.get('/pago/<receipt>')
 def receipt_page(receipt):
     init()
@@ -235,13 +260,24 @@ def receipt_page(receipt):
     if not r:return page('Comprobante no encontrado','',404)
     if r['state'] in ('AUTHORIZED','CONFIRMED'):
         try:fulfill(r['order_id'])
-        except Exception:pass
+        except Exception as exc:
+            current_app.logger.warning('PSC_RECEIPT_FULFILLMENT_PENDING suffix=%s error_type=%s',
+                r['order_id'][-6:],type(exc).__name__)
         with billing.db() as c:r=c.execute('SELECT * FROM production_payments WHERE receipt=?',(receipt,)).fetchone()
     label={'CONFIRMED':'Tu sesión está confirmada','AUTHORIZED':'Pago aprobado: confirmando tu reserva','CANCELLED':'Pago cancelado','REJECTED':'Pago rechazado'}.get(r['state'],'Operación pendiente de verificación')
     text='<p>'+html.escape(r['service'])+' · '+html.escape(r['starts_at'])+' · $'+str(r['amount'])+' CLP</p>'
     if r['state']=='CONFIRMED':
-        return confirmed_page(r)
+        pending_invoice=resume_pending_invoice(r['order_id'])
+        response=confirmed_page(r)
+        if pending_invoice:response.headers['Refresh']='20'
+        return response
     else:text+='<p><a href="'+API+'/pago/'+r['receipt']+'">Actualizar estado de la reserva</a></p><p>Si el banco aprobó el pago, no repitas la compra. Escríbenos a contacto@pscsantibanez.cl para revisar el estado.</p>'
+    if r['state']=='AUTHORIZED':
+        response=page('¡Tu pago fue aprobado!',
+            '<p>Estamos terminando de confirmar tu sesión y el envío de sus detalles al correo. '
+            'Esta página se actualizará automáticamente. Tu pago ya está registrado; no necesitas volver a pagar.</p>'+text)
+        response.headers['Refresh']='20'
+        return response
     return page(label,text)
 
 def busy_intervals(first,last):

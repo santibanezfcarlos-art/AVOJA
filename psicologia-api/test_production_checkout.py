@@ -130,6 +130,26 @@ class ProductionCheckoutTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT rebooked FROM production_payments').fetchone()['rebooked'],1)
             self.assertEqual(c.execute('SELECT appointment_date FROM billing_orders').fetchone()['appointment_date'],next_day)
         self.assertEqual(self.client.post(link,data={'date':next_day,'time':'12:00'}).status_code,409)
+    def test_approved_payment_survives_calendar_failure_and_recovers(self):
+        self.start()
+        with (patch.object(p,'fulfill',side_effect=RuntimeError('calendar temporarily unavailable')),
+              patch('sii_canary.start_emission',return_value=({},202))):
+            response=self.client.get('/api/webpay/return?token_ws='+'a'*64)
+            self.assertEqual(response.status_code,303)
+            self.assertTrue(response.location.startswith(p.SITE+'/pago/'))
+            pending=self.client.get(response.location)
+            self.assertEqual(pending.status_code,200)
+            self.assertIn('Tu pago fue aprobado',pending.get_data(as_text=True))
+            self.assertEqual(pending.headers['Refresh'],'20')
+            with billing.db() as c:
+                self.assertEqual(c.execute('SELECT state FROM production_payments').fetchone()[0],'AUTHORIZED')
+                self.assertEqual(c.execute('SELECT payment_status FROM billing_orders').fetchone()[0],'approved')
+        confirmed=self.client.get(response.location)
+        self.assertEqual(confirmed.status_code,200)
+        with billing.db() as c:
+            self.assertEqual(c.execute('SELECT state FROM production_payments').fetchone()[0],'CONFIRMED')
+        self.assertEqual(self.g.commits,1)
+
     def test_paused_sales_cannot_create_transaction(self):
         with billing.db() as c:c.execute('INSERT INTO webpay_live_settings VALUES(1,?,0,?)',(self.g.config.commerce_code,billing.now()))
         self.assertEqual(self.start().status_code,503);self.assertEqual(self.g.creates,0)
