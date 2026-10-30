@@ -243,7 +243,7 @@ def transbank():
                    enabled=webpay._enabled(),paused=payments_paused(),production_supported=True,
                    production_ready=production_ready,production_commerce_code=production_code,
                    validation_paid=validation_paid,live_sales_enabled=__import__('production_checkout').enabled(),
-                   production_return_url=os.environ.get('PSICOLOGIA_API_PUBLIC_URL','https://psicologia-carlos-calendar-api.onrender.com')+'/api/webpay/validation/return',
+                   production_return_url=os.environ.get('PSICOLOGIA_API_PUBLIC_URL','https://pscsantibanez.cl')+'/api/webpay/validation/return',
                    return_url=webpay.RETURN_URL)
 
 

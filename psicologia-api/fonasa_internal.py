@@ -583,6 +583,11 @@ def _slots(con,row,days=20,with_schedule=False):
             busy+=busy_intervals(today,last,include_calendar=True)
         except (BridgeError,ValueError,TypeError,RuntimeError):
             raise AvailabilityUnavailable("booking_bridge_unavailable") from None
+    from production_checkout import busy_intervals as production_busy
+    try:
+        busy+=production_busy(today,last)
+    except (sqlite3.Error,RuntimeError,ValueError):
+        raise AvailabilityUnavailable("production_bookings_unavailable") from None
     # Pending requests in this module block the same period.
     others=con.execute("""SELECT requested_date,requested_time
          FROM fonasa_intake WHERE state IN ('appointment_requested','calendar_pending','calendar_confirmed')
@@ -597,6 +602,8 @@ def _slots(con,row,days=20,with_schedule=False):
     duration=service["minutes"]
     if not service["active"]:
         raise AvailabilityUnavailable("service_unavailable")
+    from daily_capacity import full_days
+    exhausted=full_days(busy,config["maxPerDay"])
     available={}
     scheduled={}
     now_local=datetime.now(TZ)
@@ -615,7 +622,7 @@ def _slots(con,row,days=20,with_schedule=False):
             if start<=now_local:
                 continue
             offered.append(hour)
-            if same_day>=config["maxPerDay"]:
+            if day in exhausted:
                 continue
             if any(start<other_end and other_start<end for other_start,other_end in busy):
                 continue

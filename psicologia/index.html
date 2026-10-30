@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="es">
 <head>
-<link rel="preconnect" href="https://psicologia-carlos-calendar-api.onrender.com" crossorigin>
+<link rel="preconnect" href="https://pscsantibanez.cl" crossorigin>
 <script>
 (function(){
  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()),p={};parts.forEach(x=>{if(x.type!=='literal')p[x.type]=x.value});
  const from=p.year+'-'+p.month+'-'+p.day,d=new Date(from+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+20);const to=d.toISOString().slice(0,10);
- const url='https://psicologia-carlos-calendar-api.onrender.com/api/availability?from='+from+'&to='+to+'&duration=45';
+ const url='https://pscsantibanez.cl/api/availability?from='+from+'&to='+to+'&duration=45';
  const promise=fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(data=>data.duration_minutes===45&&data.configured===true&&data.status==='ok'?{data,at:Date.now()}:null).catch(()=>null);
  window.__pscCalendarPrefetch={from,to,promise};
 })();
@@ -512,7 +512,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
  <div class="hero-copy"><div class="eyebrow" data-site-node="inicio-1">Psicología aplicada a tu realidad</div><h1 id="heroTitle" data-site-node="inicio-2">Cada historia merece <em data-site-node="inicio-3">ser comprendida.</em></h1>
  <p class="hero-lead" data-site-node="inicio-4">Un espacio de escucha, orientación y evaluación psicológica, donde cada situación se aborda desde una mirada profesional, ética y respetuosa, tanto en el ámbito clínico como laboral y forense.</p>
  <div class="hero-actions"><a href="#agenda" class="cta-button" data-site-node="inicio-5">Agendar una Hora <span aria-hidden="true" data-site-node="inicio-6">→</span></a><a href="#prestaciones" class="secondary-button" data-site-node="inicio-7">Conoce cómo puedo ayudarte</a></div>
- <div class="hero-points"><span data-site-node="inicio-8">100% online</span><span data-site-node="inicio-9">Atención individual a adultos</span><span data-site-node="inicio-10">Objetivos claros</span></div><a class="owner-access" href="https://psicologia-carlos-calendar-api.onrender.com/admin" aria-label="Ingresar al panel de administración">⚙ Acceso administrador</a></div>
+ <div class="hero-points"><span data-site-node="inicio-8">100% online</span><span data-site-node="inicio-9">Atención individual a adultos</span><span data-site-node="inicio-10">Objetivos claros</span></div><a class="owner-access" href="https://pscsantibanez.cl/admin" aria-label="Ingresar al panel de administración">⚙ Acceso administrador</a></div>
  <div class="hero-art" aria-label="Ilustración de una agenda con horarios disponibles"><div class="art-orb"></div><div class="art-leaf"></div><div class="art-leaf two"></div>
  <div class="art-inner"><div class="art-top"><div class="art-mini-title">¡Un espacio para ti! <svg class="art-people-icon" role="img" aria-label="Dos personas" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="9" r="5" fill="#8FBF96"/><circle cx="23" cy="10" r="4.5" fill="#2F6B57"/><path d="M2 26v-3c0-5 4-8 9-8s9 3 9 8v3H2Z" fill="#8FBF96"/><path d="M18 19c1.4-2.2 3.2-3.4 5-3.4 4.4 0 7 3.2 7 7.3V26h-8v-3c0-1.5-1.3-3-4-4Z" fill="#2F6B57"/></svg></div><span class="art-tag">Online</span></div><p class="art-mini-sub">Agenda tu atención con tranquilidad</p>
  <div class="art-week"><div class="art-day"><span>Lu</span><strong>26</strong></div><div class="art-day"><span>Ma</span><strong>27</strong></div><div class="art-day on"><span>Mi</span><strong>28</strong></div><div class="art-day"><span>Ju</span><strong>29</strong></div><div class="art-day"><span>Vi</span><strong>30</strong></div></div>
@@ -617,7 +617,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 <div class="card" style="margin:18px 0 12px;padding:16px;border-radius:12px;background:#f7faf7">
  <h3>Pago seguro · Webpay Plus</h3><div id="webpayDemoResult" role="status" aria-live="polite" hidden style="padding:14px;border:1px solid #b9d7c4;border-radius:12px;background:#edf6ee;margin:12px 0"></div>
  <p class="small" id="webpayNotice" role="status" style="margin:8px 0 14px">Paga tu sesión con tarjeta de débito, crédito o prepago mediante Transbank.</p>
- <form id="webpayForm" autocomplete="on" method="post" action="https://psicologia-carlos-calendar-api.onrender.com/api/webpay/start"><input type="hidden" id="webpayTestService" name="service" value="psicoterapia"><input type="hidden" id="webpayTestDate" name="date"><input type="hidden" id="webpayTestTime" name="time">
+ <form id="webpayForm" autocomplete="on" method="post" action="https://pscsantibanez.cl/api/webpay/start"><input type="hidden" id="webpayTestService" name="service" value="psicoterapia"><input type="hidden" id="webpayTestDate" name="date"><input type="hidden" id="webpayTestTime" name="time">
   <fieldset class="billing-fields" id="billingDetails" tabindex="-1"><legend>Datos para tu boleta</legend>
   <p class="small">Completa los datos del receptor. Se guardarán con la compra en un historial privado para preparar la boleta. Ingresa tus datos reales para la reserva y la boleta.</p>
   <input type="hidden" name="billing_required" value="1">
@@ -640,7 +640,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 <p class="app-bottom-note">Tu reserva se confirma cuando Transbank aprueba el pago y el servidor registra la sesión en Google Calendar.</p><button hidden type="button" class="reset" id="clear">Eliminar reservas de prueba</button></div>
 </main>
 
-<footer class="site-footer"><div class="footer-inner"><div><div class="footer-label">Carlos Santibáñez · Psicología</div><p>Atención psicológica online para personas adultas</p></div><nav class="footer-links" aria-label="Enlaces de pie de página"><a href="#inicio">Inicio</a><a href="#agenda">Agendar una hora</a><a href="https://psicologia-carlos-calendar-api.onrender.com/admin">Administración</a></nav></div></footer>
+<footer class="site-footer"><div class="footer-inner"><div><div class="footer-label">Carlos Santibáñez · Psicología</div><p>Atención psicológica online para personas adultas</p></div><nav class="footer-links" aria-label="Enlaces de pie de página"><a href="#inicio">Inicio</a><a href="#agenda">Agendar una hora</a><a href="https://pscsantibanez.cl/admin">Administración</a></nav></div></footer>
 
 <dialog id="bookingPolicyDialog" aria-labelledby="bookingPolicyTitle"><div class="policy-top"><h2 id="bookingPolicyTitle">Políticas de reserva y reprogramación</h2><button class="policy-close" type="button" aria-label="Cerrar políticas">×</button></div><ul><li><strong>Atención online:</strong> todas las sesiones se realizan por videollamada. Conéctate desde un lugar privado, con buena conexión, cámara y micrófono.</li><li><strong>Puntualidad:</strong> respeta la fecha y el horario reservado. Un atraso no extiende la hora de término de la sesión.</li><li><strong>Confirmación:</strong> la reserva se confirma después de verificar el pago y registrar la sesión. Recibirás los detalles por correo.</li><li><strong>Una reprogramación:</strong> puedes solicitar un único cambio con al menos <strong>24 horas de anticipación</strong>, sujeto a disponibilidad.</li><li><strong>Cambios el mismo día:</strong> solo se considerarán por motivos médicos y con justificativo médico.</li><li><strong>Cancelaciones:</strong> tu horario queda reservado especialmente para ti. Las reservas confirmadas no contemplan cancelaciones; si necesitas un cambio, puedes utilizar la opción de reprogramación indicada arriba.</li></ul><button class="policy-return" type="button">Volver a mi compra</button></dialog>
 <script>
@@ -677,7 +677,7 @@ function chooseService(id){
  chosen=getAvailable(todayISO());start=monday(chosen);
  loadCalendar();
 }
-const CAL_API='https://psicologia-carlos-calendar-api.onrender.com/api/availability';
+const CAL_API='https://pscsantibanez.cl/api/availability';
 const PAYMENT_API=CAL_API.replace('/api/availability','');
 const BILLING_DETAILS={psicoterapia:'Sesión de psicoterapia breve online',empleabilidad:'Asesoría en empleabilidad online',competencias:'Desarrollo de competencias online'};
 function updateBillingDetail(){$('billingDetail').value=BILLING_DETAILS[selectedService];$('fonasaBookingEntry').hidden=selectedService!=='psicoterapia'}
@@ -968,6 +968,10 @@ $('webpayForm').addEventListener('submit',async (ev)=>{
  emailField.setCustomValidity('');
  if(!emailField.checkValidity()){emailField.reportValidity();return;}
  paymentBusy=true;$('webpayPay').disabled=true;
+ paymentStatus('Verificando que tu horario siga disponible…');
+ availabilityCache.length=0;window.__pscCalendarPrefetch=null;
+ await loadCalendar();
+ if(!hold||cannotCheck()){paymentBusy=false;render();paymentStatus('Ese horario ya no está disponible. Elige otra fecha para continuar; tus datos siguen en el formulario.');return;}
  if(!await billingReady()){paymentBusy=false;render();return;}
  if(!hold||Date.now()>=hold.expires||hold.service!==selectedService){paymentBusy=false;hold=null;render();return;}
  // Los datos del receptor viajan al servidor propio; no se incluyen en Webpay ni en URLs.
@@ -1018,7 +1022,7 @@ checkWebpayConfig();
 const home=document.getElementById('homePage'),app=document.getElementById('appPage');
 function route(){
  let frag=decodeURIComponent((location.hash||'#inicio').slice(1)).toLowerCase();
- if(frag==='admin'){window.location.replace('https://psicologia-carlos-calendar-api.onrender.com/admin');return;}
+ if(frag==='admin'){window.location.replace('https://pscsantibanez.cl/admin');return;}
  let inApp=frag==='agenda';
  home.hidden=inApp;app.hidden=!inApp;
  if(inApp){document.getElementById('appBread').textContent='Reserva tu hora';document.title='Reserva tu sesión · Carlos Santibáñez';}

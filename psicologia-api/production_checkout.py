@@ -19,7 +19,7 @@ import billing
 from webpay_gateway import Gateway,GatewaySettings,is_authorized,validate_checkout_url
 bp=Blueprint('production_checkout',__name__)
 TZ=ZoneInfo('America/Santiago')
-API='https://psicologia-carlos-calendar-api.onrender.com'
+API='https://pscsantibanez.cl'
 SITE='https://pscsantibanez.cl'
 SCHEMA='''CREATE TABLE IF NOT EXISTS production_payments(
  order_id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL, session_id TEXT NOT NULL,
@@ -65,7 +65,8 @@ def claim(c,start,end,exclude='',busy=()):
     rows=c.execute("SELECT order_id,starts_at,ends_at,new_starts_at,new_ends_at,state FROM production_payments WHERE order_id!=? AND (state IN ('AUTHORIZED','CONFIRMED','FULFILLING','REBOOKING') OR (state IN ('CREATING','READY','COMMITTING','RECONCILIATION') AND expires_at>?))",(exclude,time.time())).fetchall()
     combined={(x.astimezone(TZ).isoformat(),y.astimezone(TZ).isoformat()) for x,y in busy if x.astimezone(TZ).date()==start.date()}
     combined.update((r['starts_at'],r['ends_at']) for r in rows if datetime.fromisoformat(r['starts_at']).date()==start.date())
-    if len(combined)>=3:raise ValueError('Se completaron los tres cupos de ese día.')
+    from daily_capacity import full_days
+    if start.date() in full_days((datetime.fromisoformat(x),datetime.fromisoformat(y)) for x,y in combined):raise ValueError('Se completaron los tres cupos de ese día.')
     if any(r['state']=='REBOOKING' and r['new_starts_at'] and start<datetime.fromisoformat(r['new_ends_at']) and datetime.fromisoformat(r['new_starts_at'])<end for r in rows):raise ValueError('Ese horario tiene una reprogramación pendiente.')
     daily=[r for r in rows if datetime.fromisoformat(r['starts_at']).date()==start.date()]
     if len(daily)>=3 or any(start<datetime.fromisoformat(r['ends_at']) and datetime.fromisoformat(r['starts_at'])<end for r in rows):raise ValueError('El horario acaba de ocuparse. Elige otro.')

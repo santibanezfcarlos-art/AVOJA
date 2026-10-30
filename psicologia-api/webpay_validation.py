@@ -9,7 +9,7 @@ import billing
 from webpay_gateway import Gateway, GatewayError, GatewaySettings, validate_checkout_url
 
 bp = Blueprint('webpay_validation', __name__)
-ADMIN_URL = os.environ.get('PSICOLOGIA_API_PUBLIC_URL', 'https://psicologia-carlos-calendar-api.onrender.com').rstrip('/') + '/admin#transbank'
+ADMIN_URL = os.environ.get('PSICOLOGIA_API_PUBLIC_URL', 'https://pscsantibanez.cl').rstrip('/') + '/admin#transbank'
 
 def _page(title, message, status=200):
     from html import escape

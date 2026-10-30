@@ -1,6 +1,6 @@
 'use strict';
 (()=>{
- const $=id=>document.getElementById(id),API='https://psicologia-carlos-calendar-api.onrender.com';
+ const $=id=>document.getElementById(id),API='https://pscsantibanez.cl';
  const KEY='psc_fonasa_intake_v1';let access=null,busy=false,timer=null,attempts=0;
  try{access=sessionStorage.getItem(KEY)}catch{}
  function message(text,warn=false){$('message').hidden=false;$('message').textContent=text;$('message').classList.toggle('warn',warn)}

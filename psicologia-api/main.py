@@ -34,7 +34,7 @@ SLOT_DURATION_MINUTES = 60
 OPEN_MINUTES = 9 * 60
 CLOSE_MINUTES = 20 * 60
 CACHE_TTL_SECONDS = 600
-ALLOWED_SITE = "https://psicologia-carlos-demo.onrender.com"
+ALLOWED_SITE = "https://pscsantibanez.cl"
 ALLOWED_ORIGINS = frozenset((ALLOWED_SITE, "https://pscsantibanez.cl"))
 MAX_FEED_SIZE = 24_000_000
 _feed_cache = {"at": 0.0, "events": []}
@@ -229,7 +229,7 @@ def availability():
     from webpay_demo_bridge import enabled as bridge_ready, busy_intervals, BridgeError
     if bridge_ready():
         try:
-            intervals = list(intervals) + busy_intervals(first,last)
+            intervals = list(intervals) + busy_intervals(first,last,include_calendar=True)
         except (BridgeError,ValueError,TypeError):
             return jsonify(status="refreshing",
                 error="Verificando las reservas recientes. Reintenta en unos segundos."),503
@@ -239,6 +239,25 @@ def availability():
     if production_storage_ready():
         try:intervals=list(intervals)+production_busy(first,last)
         except Exception:return jsonify(error='No se pudo verificar la agenda de reservas.'),503
+    # Pending Fonasa requests reserve capacity before Google publishes them.
+    if production_storage_ready():
+        try:
+            from fonasa_internal import _schema
+            import billing
+            with billing.db() as con:
+                _schema(con)
+                pending=con.execute("""SELECT requested_date,requested_time FROM fonasa_intake
+                    WHERE state IN ('appointment_requested','calendar_pending','calendar_confirmed')
+                    AND requested_date>=? AND requested_date<=?""",
+                    (first.isoformat(),last.isoformat())).fetchall()
+            intervals=list(intervals)
+            for item in pending:
+                begins=datetime.fromisoformat(item['requested_date']+'T'+item['requested_time']).replace(tzinfo=TZ)
+                intervals.append((begins,begins+timedelta(minutes=45)))
+        except Exception:
+            return jsonify(error='No se pudo verificar la agenda de bonos.'),503
+    from daily_capacity import full_days
+    exhausted=full_days(intervals)
     blocked = {}
     day = first
     while day <= last:
@@ -246,7 +265,7 @@ def availability():
         for minute in range(OPEN_MINUTES, CLOSE_MINUTES - duration + 1, 15):
             start = datetime(day.year, day.month, day.day, minute // 60, minute % 60, tzinfo=TZ)
             end = start + timedelta(minutes=duration)
-            if any(start < ev_end and ev_start < end for ev_start, ev_end in intervals):
+            if day in exhausted or any(start < ev_end and ev_start < end for ev_start, ev_end in intervals):
                 items.append(start.strftime("%H:%M"))
         blocked[day.isoformat()] = items
         day += timedelta(days=1)

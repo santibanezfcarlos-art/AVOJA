@@ -51,7 +51,7 @@ class GatewaySettings:
         if selected not in ("disabled", "integration", "production"):
             raise GatewayError("Modo de pagos no admitido")
         public_url = os.environ.get(
-            "PSICOLOGIA_API_PUBLIC_URL", "https://psicologia-carlos-calendar-api.onrender.com").rstrip("/")
+            "PSICOLOGIA_API_PUBLIC_URL", "https://pscsantibanez.cl").rstrip("/")
         parts = urlsplit(public_url)
         if (parts.scheme != "https" or not parts.hostname or parts.username or parts.password
                 or parts.port not in (None, 443) or parts.path not in ("", "/")

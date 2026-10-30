@@ -1,6 +1,6 @@
 /* Text-only public content. Original HTML remains usable if the API is offline. */
 (()=>{'use strict';
-const endpoint='https://psicologia-carlos-calendar-api.onrender.com/api/site-content';
+const endpoint='https://pscsantibanez.cl/api/site-content';
 const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),5000);
 fetch(endpoint,{cache:'no-store',credentials:'omit',signal:controller.signal})
  .then(response=>{if(!response.ok)throw Error('unavailable');return response.json()})
