@@ -22,7 +22,7 @@ function previewMessage(order,message){
  if(status)status.textContent=message;
 }
 const siiLabels={queued:"Esperando agente local",running:"Preparando en tu computador",prepared:"Formulario verificado · sin emitir",blocked:"Detenido · revisar formulario",session_required:"Renovar sesión SII",failed:"Preparación fallida",reconciliation:"Pendiente de conciliación"};
-const labels={initiated:'Pago sin confirmar',approved:'Pago aprobado',rejected:'Pago rechazado',cancelled:'Pago cancelado',pending:'Boleta pendiente',issued:'Boleta emitida',test:'Prueba · no emitir',not_applicable:'No corresponde emitir'};
+const labels={initiated:'Pago sin confirmar',approved:'Pago aprobado',rejected:'Pago rechazado',cancelled:'Pago cancelado',pending:'Boleta pendiente',issued:'Boleta emitida',sent_manually:'Boleta enviada manualmente',test:'Prueba · no emitir',not_applicable:'No corresponde emitir'};
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
 function query(){const p=new URLSearchParams();for(const id of ['environment','status','from','to','q'])p.set(id,$(id).value);return p.toString()}
 async function copy(value){try{await navigator.clipboard.writeText(String(value));$('notice').textContent='Copiado. Puedes pegarlo en el SII.'}catch{$('notice').textContent='No se pudo copiar automáticamente. Selecciona el texto y usa Ctrl+C.'}}
@@ -136,6 +136,7 @@ if(r.payment_status==='approved'&&!r.folio&&((r.environment==='production'&&r.in
   actions.append(state);
  }
 }
+if(r.invoice_status==='sent_manually'){section.append(node('p','Envío manual registrado · gestión finalizada.','meta'));}
 if(r.invoice_status==='issued'){
  section.append(node('p','Folio '+r.folio+' · Emisión '+r.issued_date));
  // A purchase is shown as fully delivered only when the official PDF is
