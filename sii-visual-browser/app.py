@@ -667,6 +667,27 @@ def _browser_owner(started, ticket, mode):
                         _session["stage"]=outcome
                         _session["preparation"]=outcome
                     app.logger.warning("SII_ISSUE_CANARY %s",outcome)
+                    # Automatic issuance is terminal after one SII attempt.
+                    # Free Chromium for the next purchase immediately, while
+                    # keeping the PSC durable issuance claim untouched.
+                    # An uncertain result still requires reconciliation; it
+                    # must never enable another SII EMITIR for this order.
+                    if _session.get("auto_issue"):
+                        try:
+                            browser.close()
+                        except Exception:
+                            app.logger.warning("SII_BROWSER_CLOSE_FAILED after_terminal_attempt")
+                        with _lock:
+                            if _session.get("started")==started:
+                                terminal_state=(
+                                    "issued" if outcome.startswith("canary_issued_")
+                                    else "blocked" if outcome.startswith("canary_blocked_")
+                                    else "reconciliation")
+                                _session.update(
+                                    state=terminal_state,stage=outcome,
+                                    preparation=outcome,browser=None,
+                                    started=None,stop=False)
+                        return
                 try:
                     # Memory-only preview; password is masked even if its eye toggle was used.
                     preview = page.screenshot(type="jpeg", quality=65,
