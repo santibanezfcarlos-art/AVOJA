@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>¡Tu hora está confirmada! | PSC Santibáñez</title>
+<style>
+:root{color-scheme:light;--green:#0a6549;--deep:#164e40;--ink:#24352f}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 40%,#fcfdfc,#f1f6f2 80%);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+.confirmation{width:min(950px,calc(100% - 36px));margin:clamp(30px,6vh,65px) auto 110px;padding:clamp(26px,3.7vw,50px);text-align:center;background:#fff;border:1px solid #edf1ee;border-radius:22px;box-shadow:0 18px 60px rgba(15,71,49,.08)}
+.success{display:grid;place-items:center;width:90px;height:90px;margin:0 auto 24px;border-radius:50%;background:#ddf1df;color:#137957;position:relative}
+.success:before{content:"";position:absolute;inset:-12px;border:2px dotted #9cdca9;border-radius:50%;opacity:.6}
+.success svg{width:54px;height:54px}
+h1{color:var(--deep);font-size:clamp(27px,3.1vw,40px);line-height:1.2;letter-spacing:-.025em;margin:0 0 29px;font-weight:750}
+.details{display:grid;grid-template-columns:1fr 1.65fr .82fr;align-items:center;background:#f5f8f6;border:1px solid #edf2ee;border-radius:18px;padding:14px 7px;margin:0 0 27px;text-align:left}
+.detail{display:flex;align-items:center;justify-content:center;min-width:0;gap:14px;padding:8px 15px}
+.detail+.detail{border-left:1px solid #dce7e0}
+.detail svg{flex:none;width:30px;height:30px;fill:none;stroke:var(--deep);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.detail strong{display:block;font-size:15px;line-height:1.35;color:#233b33}
+.detail small{display:block;color:#53675e;font-size:14px;margin-top:4px}
+.money-icon{display:grid;place-items:center;flex:none;width:43px;height:43px;border-radius:50%;background:#dbf1df;color:var(--green);font-size:23px;font-weight:700}
+.description{margin:0 auto 26px;max-width:790px;line-height:1.65;font-size:clamp(16px,1.4vw,19px)}
+.notice{display:flex;align-items:flex-start;gap:22px;text-align:left;padding:22px 24px;border-radius:18px;background:linear-gradient(115deg,#eef7f0,#f2f9f4)}
+.notice-icon{display:grid;place-items:center;flex:none;width:51px;height:51px;border-radius:50%;background:#d6efdd;color:var(--green)}
+.notice-icon svg{width:26px;height:26px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.notice strong{display:block;color:var(--green);font-size:17px;line-height:1.4;margin-bottom:6px}
+.notice p{margin:0;font-size:16px}
+.notice a{color:var(--green);font-weight:650;text-underline-offset:2px;overflow-wrap:anywhere}
+.actions{display:flex;justify-content:center;gap:15px;flex-wrap:wrap;margin-top:25px}
+.button{display:inline-flex;justify-content:center;align-items:center;gap:12px;min-height:53px;padding:13px 25px;text-decoration:none;font-weight:650;font-size:16px;border-radius:14px}
+.button:hover{filter:brightness(.96)}
+.button:focus-visible,.notice a:focus-visible{outline:3px solid #8fc9ac;outline-offset:3px}
+.button svg{width:21px;height:21px}
+.button-primary{background:var(--green);color:#fff;min-width:254px}
+.button-secondary{border:1.5px solid var(--green);background:#fff;color:var(--green);min-width:185px}
+@media(max-width:740px){
+ .confirmation{margin:24px auto 100px;padding:27px 19px}
+ .success{width:73px;height:73px;margin-bottom:25px}.success svg{width:43px;height:43px}
+ h1{margin-bottom:23px}.details{grid-template-columns:1fr;padding:8px 15px;margin-bottom:22px}
+ .detail{justify-content:flex-start;padding:12px 5px}
+ .detail+.detail{border-left:0;border-top:1px solid #dce7e0}
+ .notice{padding:17px 14px;gap:12px}
+ .notice-icon{width:40px;height:40px}.notice-icon svg{width:22px;height:22px}
+ .notice strong,.notice p{font-size:14px}
+ .actions{flex-direction:column}.button{width:100%}
+}
+</style>
+</head>
+<body>
+<main class="confirmation" aria-labelledby="confirmation-title">
+ <div class="success" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
+ <h1 id="confirmation-title">¡Felicidades! Tu hora está confirmada</h1>
+ <section class="details" aria-label="Datos de tu reserva">
+  <div class="detail"><svg viewBox="0 0 24 24" aria-hidden="true">__SERVICE_ICON__</svg><strong>__SERVICE__</strong></div>
+  <div class="detail"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6M17 2v6M3 10h18"/></svg><div><strong>__DATE__</strong><small>__TIME__</small></div></div>
+  <div class="detail"><span class="money-icon" aria-hidden="true">$</span><strong>__AMOUNT__</strong></div>
+ </section>
+ <p class="description">Puedes cerrar esta página y revisar en tu correo los detalles de tu reserva.</p>
+ <section class="notice" aria-label="Información de tu boleta electrónica">
+  <span class="notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m3 7 9 7 9-7"/></svg></span>
+  <div><strong>Tu boleta electrónica llegará dentro de los próximos minutos.</strong>
+  <p>Si no la recibes durante el día, comunícate directamente por
+   <a href="https://wa.me/56997743644" rel="noopener noreferrer" target="_blank">WhatsApp</a>
+   o al correo de contacto:
+   <a href="mailto:contacto@pscsantibanez.cl">contacto@pscsantibanez.cl</a>.</p></div>
+ </section>
+ <nav class="actions" aria-label="Siguientes pasos">
+  __MEET_BUTTON__
+  <a class="button button-secondary" href="https://pscsantibanez.cl/#agenda">Volver a la página</a>
+ </nav>
+</main>
+<script defer src="https://pscsantibanez.cl/contacto-whatsapp.js"></script>
+</body></html>
