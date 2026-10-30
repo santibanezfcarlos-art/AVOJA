@@ -13,13 +13,15 @@ from urllib.parse import urlparse
 from issue_canary import official_snapshot
 
 
-def _api(ticket, folio, action, outcome=None):
+def _api(ticket, folio, action, outcome=None, recipient=None):
     base=os.environ.get("SII_CREDENTIALS_API_URL","").rstrip("/")
     secret=os.environ.get("SII_VISUAL_TICKET_SECRET","")
     host=urlparse(base)
     if host.scheme!="https" or not (host.hostname or "").endswith(".onrender.com") or len(secret)<32:
         raise RuntimeError("sii_email_bridge_unavailable")
     body={"ticket":ticket,"folio":folio,"action":action}
+    if recipient is not None:
+        body["recipient"]=recipient
     if outcome is not None:
         body["outcome"]=outcome
     raw=json.dumps(body,separators=(",",":")).encode()
@@ -61,7 +63,7 @@ def send_once(page, ticket, recipient, folio, amount):
         return "blocked_mail_controls"
     # Durable claim must happen before any external mail effect.
     try:
-        claim=_api(ticket,folio,"claim")
+        claim=_api(ticket,folio,"claim",recipient=recipient)
     except Exception:
         return "blocked_claim"
     if claim.get("claimed") is not True or claim.get("recipient")!=recipient:
@@ -75,7 +77,8 @@ def send_once(page, ticket, recipient, folio, amount):
                 return (req.method=="POST" and isinstance(data,dict)
                         and data.get("to")==recipient
                         and str(data.get("folio"))==folio
-                        and int(data.get("dte",0))==41)
+                        and int(data.get("dte",0))==41
+                        and data.get("monto")==amount)
             except Exception:
                 return False
         with page.expect_response(matching,timeout=30000) as waiting:
@@ -91,3 +94,4 @@ def send_once(page, ticket, recipient, folio, amount):
         return response.get("state","unknown")
     except Exception:
         return "unknown"
+

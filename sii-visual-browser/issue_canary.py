@@ -88,7 +88,7 @@ def official_snapshot(page, expected_amount):
       if(components.size!==1)return null;
       const vm=[...components][0], d=vm.compartirData;
       return {folio:String(d.folio),dte:Number(d.dte),amount:Number(d.monto),
-              pdf:vm.b64Pdf||null};
+              pdf:vm.b64Pdf||null,pdf_url:vm.urlPdf||null};
     }""")
     if not isinstance(data,dict):
         return None
@@ -139,7 +139,7 @@ def wait_for_official_receipt(page, expected_amount, *, timeout_seconds=90,
         if snapshot:
             # The folio may appear before the PDF is ready. Prefer to keep
             # waiting for the PDF so it can be stored and emailed immediately.
-            if snapshot.get("pdf"):
+            if snapshot.get("pdf_url") or snapshot.get("pdf"):
                 return snapshot
             folio_only=snapshot
         remaining=deadline-time.monotonic()
@@ -152,6 +152,12 @@ def wait_for_official_receipt(page, expected_amount, *, timeout_seconds=90,
 
 def issue_once(page, order, ids, ticket, on_submitted=None):
     """A verified claim survives crashes and forbids automated reissue."""
+    def progress(stage):
+        if on_submitted is not None:
+            try:
+                on_submitted(stage)
+            except Exception:
+                pass
     first=verify(page,ids,order)
     claim(ticket)
     try:
@@ -168,11 +174,7 @@ def issue_once(page, order, ids, ticket, on_submitted=None):
             page.locator('[data-psc-issue-final=yes]').click(timeout=10000)
             # Update the administrator's inline status without triggering
             # another submit. No callback failure may cause a second click.
-            if on_submitted is not None:
-                try:
-                    on_submitted("waiting_sii_receipt")
-                except Exception:
-                    pass
+            progress("waiting_sii_receipt")
             # Exactly one SII click. The portal can take significantly longer
             # than the old ~19-second window to display the official receipt.
             # Keep waiting for up to 90 seconds, never press Emitir again.
@@ -180,6 +182,19 @@ def issue_once(page, order, ids, ticket, on_submitted=None):
                                                timeout_seconds=90)
             if snapshot:
                 try:
+                    # Persist the verified folio before any download can fail
+                    # or the ephemeral browser can be stopped by Render.
+                    report_complete(ticket,{**snapshot,"pdf":None})
+                    from sii_receipt_download import download_official_pdf
+                    progress("downloading_sii_pdf")
+                    try:
+                        snapshot["pdf"]=download_official_pdf(page,snapshot)
+                    except Exception:
+                        # Keep the CONFIRMED folio even if downloading fails.
+                        # A PDF failure can never authorize a second issuance.
+                        snapshot["pdf"]=None
+                    if not snapshot["pdf"]:
+                        return "canary_issued_pdf_pending"
                     result=report_complete(ticket,snapshot)
                     if not result.get("pdf_stored"):
                         return "canary_issued_pdf_pending"
@@ -189,7 +204,8 @@ def issue_once(page, order, ids, ticket, on_submitted=None):
                     # send never triggers another issuance or a mail retry.
                     from sii_email_after_issue import send_once
                     try:
-                        state=send_once(page,ticket,order["email"],
+                        progress("sending_sii_company_email")
+                        state=send_once(page,ticket,result.get("sii_recipient"),
                                         snapshot["folio"],order["amount"])
                     except Exception:
                         state="unknown"
@@ -205,3 +221,4 @@ def issue_once(page, order, ids, ticket, on_submitted=None):
     except Exception:
         # An issued document could exist despite any browser error. Never retry.
         return "canary_attempt_reconciliation"
+

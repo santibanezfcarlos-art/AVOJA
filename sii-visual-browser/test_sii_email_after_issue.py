@@ -56,7 +56,7 @@ class MailTests(unittest.TestCase):
         page.expect_response=lambda predicate,timeout: Pending()
         page.locator=lambda selector: Snackbar()
         requests=[]
-        def api(ticket,folio,action,outcome=None):
+        def api(ticket,folio,action,outcome=None,recipient=None):
             requests.append((action,outcome))
             if action=="claim":return {"claimed":True,"recipient":"client@example.invalid"}
             return {"state":outcome}
@@ -86,3 +86,4 @@ class MailTests(unittest.TestCase):
         self.assertEqual(b.clicks,0)
 
 if __name__=="__main__":unittest.main()
+

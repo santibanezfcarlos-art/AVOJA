@@ -50,19 +50,21 @@ class Canaries(unittest.TestCase):
         self.assertEqual(status,"canary_clicked_reconciliation")
         claim.assert_called_once_with("signed-opaque")
         self.assertEqual(p.clicks,1)
-    def test_official_result_is_reported_once_and_pdf_saved(self):
+    def test_official_folio_is_persisted_before_pdf_and_company_mail(self):
         page=FakePage([{"ok":True,"amount":30000,"form_id":"btn","text_length":100},
                        {"ok":True,"amount":30000,"form_id":"btn","text_length":100},
                        {"folio":"615","dte":41,"amount":30000,"pdf":"fake-b64-pdf"}])
         with (patch("issue_canary.claim",return_value=True),
-              patch("issue_canary.report_complete",return_value={"state":"issued","pdf_stored":True}) as send,
+              patch("sii_receipt_download.download_official_pdf",return_value="fake-b64-pdf"),
+              patch("issue_canary.report_complete",return_value={"state":"issued","pdf_stored":True,"sii_recipient":"contacto@pscsantibanez.cl"}) as send,
               patch("issue_canary.wait_for_official_receipt",return_value={"folio":"615","dte":41,"amount":30000,"pdf":"fake-b64-pdf"}) as waiting,
               patch("sii_email_after_issue.send_once",return_value="accepted") as sii_mail):
             result=issue_canary.issue_once(page,ORDER,IDS,"signed-canary-ticket")
         self.assertEqual(result,"canary_issued_pdf_saved_sii_accepted")
-        sii_mail.assert_called_once_with(page,"signed-canary-ticket",ORDER["email"],"615",30000)
+        sii_mail.assert_called_once_with(page,"signed-canary-ticket","contacto@pscsantibanez.cl","615",30000)
         self.assertEqual(page.clicks,1)
-        send.assert_called_once()
+        self.assertEqual(send.call_count,2)
+        self.assertIsNone(send.call_args_list[0].args[1]["pdf"])
         self.assertEqual(send.call_args.args[1]["folio"],"615")
 
     def test_waits_full_ninety_seconds_without_reclicking(self):
@@ -84,6 +86,23 @@ class Canaries(unittest.TestCase):
         self.assertLessEqual(clock.now-1000.0,90.02)
         self.assertTrue(all(0<ms<=1500 for ms in page.waits))
         self.assertEqual(page.clicks,0)
+
+    def test_failed_download_preserves_confirmed_folio_and_never_sends_or_reissues(self):
+        page=FakePage([{"ok":True,"amount":30000,"form_id":"btn","text_length":100},
+                       {"ok":True,"amount":30000,"form_id":"btn","text_length":100}])
+        snapshot={"folio":"615","dte":41,"amount":30000,"pdf":"existing-b64"}
+        with (patch("issue_canary.claim",return_value=True),
+              patch("issue_canary.wait_for_official_receipt",return_value=snapshot),
+              patch("sii_receipt_download.download_official_pdf",side_effect=TimeoutError),
+              patch("issue_canary.report_complete",return_value={"pdf_stored":False}) as report,
+              patch("sii_email_after_issue.send_once") as mail):
+            state=issue_canary.issue_once(page,ORDER,IDS,"ticket")
+        self.assertEqual(state,"canary_issued_pdf_pending")
+        self.assertEqual(page.clicks,1)
+        report.assert_called_once()
+        self.assertEqual(report.call_args.args[1]["folio"],"615")
+        self.assertIsNone(report.call_args.args[1]["pdf"])
+        mail.assert_not_called()
 
     def test_receipt_seen_early_returns_without_waiting_more(self):
         page=FakePage([])
@@ -143,3 +162,4 @@ class Canaries(unittest.TestCase):
         self.assertEqual(p.clicks,0)
 
 if __name__=="__main__":unittest.main()
+

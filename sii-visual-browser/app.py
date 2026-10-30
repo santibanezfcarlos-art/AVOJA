@@ -515,6 +515,17 @@ def _expire_session(started):
             _session.update(state="expired", started=None)
 
 
+def create_sii_context(browser):
+    """Resolve location without an unattended permission prompt or fake GPS."""
+    context = browser.new_context(locale="es-CL", timezone_id="America/Santiago",
+                                  viewport={"width":1365,"height":768},
+                                  service_workers="block", accept_downloads=True)
+    # Chromium denies every permission not listed here for this origin. An
+    # empty list explicitly denies geolocation instead of leaving it 'prompt'.
+    context.grant_permissions([], origin="https://eboleta.sii.cl")
+    return context
+
+
 def _browser_owner(started, ticket, mode):
     # Critical: Never fetch credentials from PSC in /api/internal/start.
     # PSC runs a single synchronous Gunicorn worker and must finish its
@@ -543,8 +554,7 @@ def _browser_owner(started, ticket, mode):
                 _session["browser"] = browser
                 _session["state"] = "open"
                 _session["stage"] = "opening_sii"
-            context = browser.new_context(locale="es-CL", timezone_id="America/Santiago",
-                                          viewport={"width":1365,"height":768}, service_workers="block")
+            context = create_sii_context(browser)
             context.add_init_script(BLOCK_ISSUE_ACTIONS)
             page = context.new_page()
             auth_document = {"status": None}
