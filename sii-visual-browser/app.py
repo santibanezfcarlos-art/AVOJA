@@ -360,6 +360,8 @@ def _prepare_order_preview(page, order, canary=False, diagnostic=False):
               "Teléfono receptor": "telefono", "Detalle": "detalle"}
     ids = {}
     for label, key in fields.items():
+        with _lock:
+            _session["stage"]="filling_receiver_"+key
         if _session.get("stop"):
             return "stopped"
         loc = page.get_by_label(label, exact=True)
@@ -430,7 +432,13 @@ def _diagnose_issue_without_transmission(page,order):
             route.continue_()
     page.context.route("**/*",deny_write)
     errors=[]
-    page.on("pageerror",lambda error:errors.append(type(error).__name__))
+    def record_error(error):
+        message=str(error)
+        for value in order.values():
+            if isinstance(value,str):message=message.replace(value,"[redacted]")
+        message=re.sub(r"https?://[^\s]+","[url]",message)
+        errors.append(message[:200])
+    page.on("pageerror",record_error)
     page.evaluate("() => {window.__pscPermitFinal=document.querySelector('[data-psc-issue-final=yes]')}")
     try:
         page.locator('[data-psc-issue-final=yes]').click(timeout=10000)
@@ -565,11 +573,18 @@ def _browser_owner(started, ticket, mode):
                 with _lock:
                     _session["stage"] = "preparing_order"
                 try:
-                    prepare_result = _prepare_order_preview(page, order, canary=mode=="issue_canary",diagnostic=mode=="diagnostic")
+                    prepare_result = _prepare_order_preview(page, order, canary=mode in ("issue_canary","diagnostic"),diagnostic=mode=="diagnostic")
                     if mode=="diagnostic" and prepare_result=="prepared_diagnostic_no_issue":
                         prepare_result=_diagnose_issue_without_transmission(page,order)
                 except Exception as exc:
                     prepare_result = "blocked_" + _session.get("stage", "preparation") + "_" + type(exc).__name__
+                    reason=str(exc)
+                    for value in order.values():
+                        if isinstance(value,str):
+                            reason=reason.replace(value,"[redacted]")
+                    reason=re.sub(r"https?://[^\s]+","[url]",reason)
+                    reason=re.sub(r"[0-9]{5,}","[number]",reason)
+                    app.logger.warning("SII_PREP_DIAG stage=%s reason=%s",_session.get("stage"),reason[:900])
                 finally:
                     if mode!="issue_canary":
                         order.clear()
