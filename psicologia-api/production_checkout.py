@@ -10,6 +10,7 @@ import sqlite3
 import time
 import uuid
 from datetime import datetime,timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.request import Request,urlopen
 from urllib.parse import urlencode
@@ -178,6 +179,54 @@ def fulfill(order):
                 with billing.db() as c:c.execute('UPDATE production_payments SET '+role+'_mail=1 WHERE order_id=?',(order,))
         except Exception:pass
 
+def confirmed_page(r):
+    """Render a read-only success page for a confirmed, paid booking."""
+    days=('lunes','martes','miércoles','jueves','viernes','sábado','domingo')
+    months=('enero','febrero','marzo','abril','mayo','junio',
+            'julio','agosto','septiembre','octubre','noviembre','diciembre')
+    begins=datetime.fromisoformat(r['starts_at'])
+    ends=datetime.fromisoformat(r['ends_at'])
+    if begins.tzinfo is None:begins=begins.replace(tzinfo=TZ)
+    if ends.tzinfo is None:ends=ends.replace(tzinfo=TZ)
+    begins=begins.astimezone(TZ)
+    ends=ends.astimezone(TZ)
+    date_text=days[begins.weekday()].capitalize()+' '+str(begins.day)+' de '+months[begins.month-1]+' de '+str(begins.year)
+    time_text=begins.strftime('%H:%M')+' – '+ends.strftime('%H:%M')+' h'
+    amount_text='$'+format(int(r['amount']),',').replace(',','.')+' CLP'
+    service=str(r['service'])
+    names={'psicoterapia':'Psicoterapia',
+           'empleabilidad':'Empleabilidad',
+           'competencias':'Desarrollo de competencias'}
+    service_text=names.get(service,service.replace('_',' ').capitalize())
+    icons={
+      'psicoterapia':'<path d="M12 4a8 8 0 0 0-8 8c0 2.3 1.1 4.3 2.7 5.8L6 21h10v-4.2a6.5 6.5 0 0 0 3-5.3A7.5 7.5 0 0 0 12 4Z"/><circle cx="10" cy="10" r="1.5"/><path d="M13.5 9a2 2 0 0 1 2 2M9 14h4"/>',
+      'empleabilidad':'<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13a22 22 0 0 0 18 0M10 13v2h4v-2"/>',
+      'competencias':'<circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 9-5.2"/><circle cx="17.5" cy="16.5" r="3.5"/><path d="M17.5 11v2m0 7v2m-5.5-5.5h2m7 0h2m-9.4-3.9 1.4 1.4m5 5 1.4 1.4m0-7.8-1.4 1.4m-5 5-1.4 1.4"/>'}
+    meet=str(r['meet_url'] or '').strip()
+    meet_button=''
+    if re.fullmatch(r'https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:[/?#][^\s<>"]*)?',meet,re.I):
+        meet_button=(
+          '<a class="button button-primary" href="'+html.escape(meet,quote=True)+'" target="_blank" rel="noopener noreferrer">'
+          '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">'
+          '<path d="M3 6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H3Zm14 4.1 5-3.2v10.2l-5-3.2v-3.8Z"/>'
+          '</svg>Entrar a Google Meet</a>')
+    template=Path(__file__).with_name('confirmed_receipt.html').read_text(encoding='utf-8')
+    replacements={
+      '__SERVICE_ICON__':icons.get(service,icons['psicoterapia']),
+      '__SERVICE__':html.escape(service_text),
+      '__DATE__':html.escape(date_text),
+      '__TIME__':html.escape(time_text),
+      '__AMOUNT__':html.escape(amount_text),
+      '__MEET_BUTTON__':meet_button}
+    for marker,value in replacements.items():
+        template=template.replace(marker,value)
+    response=Response(template,content_type='text/html; charset=utf-8')
+    response.headers.update({'Cache-Control':'no-store, private',
+                             'Referrer-Policy':'no-referrer',
+                             'X-Frame-Options':'DENY'})
+    return response
+
+
 @bp.get('/pago/<receipt>')
 def receipt_page(receipt):
     init()
@@ -190,8 +239,7 @@ def receipt_page(receipt):
     label={'CONFIRMED':'Tu sesión está confirmada','AUTHORIZED':'Pago aprobado: confirmando tu reserva','CANCELLED':'Pago cancelado','REJECTED':'Pago rechazado'}.get(r['state'],'Operación pendiente de verificación')
     text='<p>'+html.escape(r['service'])+' · '+html.escape(r['starts_at'])+' · $'+str(r['amount'])+' CLP</p>'
     if r['state']=='CONFIRMED':
-        text+='<p>Revisa tu correo para ver los detalles de la sesión.</p>'
-        if r['meet_url']:text+='<p><a href="'+html.escape(r['meet_url'],quote=True)+'">Entrar a Google Meet</a></p>'
+        return confirmed_page(r)
     else:text+='<p><a href="'+API+'/pago/'+r['receipt']+'">Actualizar estado de la reserva</a></p><p>Si el banco aprobó el pago, no repitas la compra. Escríbenos a contacto@pscsantibanez.cl para revisar el estado.</p>'
     return page(label,text)
 
