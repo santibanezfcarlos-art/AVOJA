@@ -148,7 +148,7 @@ def send_fonasa_confirmation():
     try:
         with _database_connection() as conn:
             token=register(conn,source,hold_id,patient,patient_email,start,end)
-        link="https://psicologia-retenciones-piloto.onrender.com/reagendar?t="+token if role=="patient" else None
+        link="https://pscsantibanez.cl/reagendar?t="+token if role=="patient" else None
         if body.get("prepare_only") is True:
             if body.get("refresh_presentation") is True:
                 updated=writer.transport("PATCH",writer._calendar_path+"/"+event_id_for_hold(hold_id),
@@ -361,7 +361,7 @@ def prepare_fonasa_rebooking():
                   {'summary':'Atención Fonasa · '+name,'description':'Reserva de psicoterapia online con bono Fonasa.'})
             if not _owns(event,hold_id,start=start,end=end,service='psicoterapia') or event.get('summary')!='Atención Fonasa · '+name:
                 return jsonify(state='EVENT_UNVERIFIED'),503
-        return jsonify(state='PREPARED',rebooking_url='https://psicologia-retenciones-piloto.onrender.com/reagendar?t='+token)
+        return jsonify(state='PREPARED',rebooking_url='https://pscsantibanez.cl/reagendar?t='+token)
     except Exception:
         print('FONASA_REBOOKING_PREPARATION_FAILED',flush=True)
         return jsonify(state='PREPARATION_UNAVAILABLE'),503
