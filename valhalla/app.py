@@ -839,7 +839,7 @@ class Store:
                 else:
                     with self.connection() as c:
                         special = self.same_day_booking_permission(c, uid, local.date())
-            notice = timedelta(0) if owner else timedelta(hours=2) if (same_day or special) else MIN_BOOKING_NOTICE
+            notice = timedelta(0) if owner else timedelta(0) if special else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
             if parsed.astimezone(timezone.utc) < now().astimezone(timezone.utc) + notice or parsed > now() + timedelta(days=90):
                 raise ValueError()
             return stamp(parsed)
@@ -875,7 +875,7 @@ class Store:
                     raise Problem('Reserva no encontrada.', 404)
             same_day = rescheduling is not None and self.same_day_reschedule(rescheduling, day, uid)
             special = self.same_day_booking_permission(c, uid, day)
-            notice = timedelta(0) if owner else timedelta(hours=2) if (same_day or special) else MIN_BOOKING_NOTICE
+            notice = timedelta(0) if owner else timedelta(0) if special else timedelta(hours=2) if same_day else MIN_BOOKING_NOTICE
             occupied = {(r['box'], r['start']): dict(r) for r in c.execute("SELECT b.id,b.user_id,b.box,b.start,u.name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.status='confirmed'")}
         result = []
         for hour in range(OPENING_HOUR, CLOSING_HOUR):
