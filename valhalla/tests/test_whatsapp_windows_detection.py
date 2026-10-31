@@ -193,4 +193,20 @@ class Detection(unittest.TestCase):
             self.assertIn('detection_error',data);self.assertEqual(data['controls'],[])
             self.assertEqual(data['windows'][0]['process'],'chrome.exe')
 
+class ClipboardRetry(unittest.TestCase):
+    def test_busy_clipboard_retries(self):
+        from unittest.mock import Mock
+        adapter=object.__new__(module.WhatsApp);adapter.gate=lambda:None
+        clipboard=Mock();clipboard.OpenClipboard.side_effect=[RuntimeError('busy'),None]
+        with patch.object(module.time,'sleep'):
+            adapter.open_clipboard(clipboard)
+        self.assertEqual(clipboard.OpenClipboard.call_count,2)
+
+    def test_busy_clipboard_timeout_is_specific(self):
+        from unittest.mock import Mock
+        adapter=object.__new__(module.WhatsApp);adapter.gate=lambda:None
+        clipboard=Mock();clipboard.OpenClipboard.side_effect=RuntimeError('busy')
+        with patch.object(module.time,'monotonic',side_effect=[0,3]):
+            with self.assertRaises(module.VerificationError):adapter.open_clipboard(clipboard)
+
 if __name__=='__main__':unittest.main()

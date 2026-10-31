@@ -239,6 +239,17 @@ class WhatsApp:
         finally:
             # Release modifiers even if a keyboard event or focus check fails.
             for key in sorted(down,reverse=True):self.emit_key(key,2)
+    def open_clipboard(self,clipboard):
+        deadline=time.monotonic()+2
+        while True:
+            self.gate()
+            try:
+                clipboard.OpenClipboard()
+                return
+            except Exception:
+                if time.monotonic()>=deadline:
+                    raise VerificationError('El portapapeles está ocupado. No se enviará; cierra otros programas que lo estén usando.') from None
+                time.sleep(.05)
     def clipboard_text(self,editor):
         # Focus the actual contenteditable via its UIA rectangle. No fixed coordinates.
         # Then read the clipboard's plain Unicode selection, including embedded emoji.
@@ -247,7 +258,7 @@ class WhatsApp:
         editor=self.focus_editor()
         sentinel='valhalla-read-'+secrets.token_hex(16)
         previous=None
-        win32clipboard.OpenClipboard()
+        self.open_clipboard(win32clipboard)
         try:
             if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):previous=win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
             win32clipboard.EmptyClipboard();win32clipboard.SetClipboardText(sentinel,win32clipboard.CF_UNICODETEXT)
@@ -259,7 +270,7 @@ class WhatsApp:
             deadline=time.monotonic()+1.5
             while time.monotonic()<deadline:
                 self.gate();self.foreground()
-                win32clipboard.OpenClipboard()
+                self.open_clipboard(win32clipboard)
                 try:
                     if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
                         candidate=win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
@@ -272,7 +283,7 @@ class WhatsApp:
             # Arrow Right removes the selection without changing its contents.
             if self.owns_foreground() and editor.element_info.element.CurrentHasKeyboardFocus:
                 self.native_keys(editor,[(0x27,0),(0x27,2)])
-            win32clipboard.OpenClipboard()
+            self.open_clipboard(win32clipboard)
             try:
                 win32clipboard.EmptyClipboard()
                 if previous is not None:win32clipboard.SetClipboardText(previous,win32clipboard.CF_UNICODETEXT)

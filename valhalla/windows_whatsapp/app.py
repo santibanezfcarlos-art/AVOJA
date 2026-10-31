@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import uuid
+import traceback
 import tkinter as tk
 from tkinter import messagebox, ttk
 from core import API, Journal, Runner, Stopped, TEST_MESSAGE, phone
@@ -17,7 +18,7 @@ class App:
     def __init__(self,root):
         self.root=root;self.minimized_for_send=False;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False
         self.journal=Journal(FOLDER/'registro.sqlite3');self.api=None;self.data=None
-        root.title('Valhalla · WhatsApp Windows v1.10');root.geometry('840x650')
+        root.title('Valhalla · WhatsApp Windows v1.11');root.geometry('840x650')
         frame=ttk.Frame(root,padding=16);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='1 · Prueba exclusivamente con tu propio número',font=('',12,'bold')).pack(anchor='w')
         self.number=tk.StringVar();ttk.Entry(frame,textvariable=self.number).pack(fill='x',pady=6)
@@ -76,7 +77,12 @@ class App:
             pythoncom.CoInitialize()
             try:fn()
             except Stopped:self.log('Detenido. Retomar omite los intentos ya registrados.')
-            except Exception as e:self.log(getattr(e,'safe_reason','Operación detenida. No se reenvía. Revisa conexión, registro y diagnóstico UIA.'))
+            except Exception as e:
+                diagnostic=FOLDER/'ultimo-error-privado.txt'
+                try:diagnostic.write_text(traceback.format_exc(),encoding='utf-8')
+                except OSError:pass
+                self.log(getattr(e,'safe_reason','Fallo '+type(e).__name__+'. No se reenvía.'))
+                self.log('Detalle privado: '+str(diagnostic))
             finally:pythoncom.CoUninitialize();self.messages.put(('done',None))
         self.root.after(350 if hide else 0,lambda:threading.Thread(target=work,daemon=True).start())
     def adapter(self):
