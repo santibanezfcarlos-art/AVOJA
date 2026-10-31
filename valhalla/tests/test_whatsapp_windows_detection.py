@@ -209,4 +209,18 @@ class ClipboardRetry(unittest.TestCase):
         with patch.object(module.time,'monotonic',side_effect=[0,3]):
             with self.assertRaises(module.VerificationError):adapter.open_clipboard(clipboard)
 
+class UnavailableDetection(unittest.TestCase):
+    def test_dedicated_unblock_action(self):
+        node=SimpleNamespace(element_info=SimpleNamespace(control_type='Button',name='Desbloquear'))
+        self.assertIn('bloqueado',module.unavailable_reason([node]))
+    def test_invalid_number_requires_error_dialog(self):
+        dialog=SimpleNamespace(element_info=SimpleNamespace(control_type='Dialog',name='Aviso'))
+        text=SimpleNamespace(element_info=SimpleNamespace(control_type='Text',name='Este número no está en WhatsApp'))
+        with patch.object(module,'control_tree',return_value=[dialog,text]):
+            self.assertIn('sin cuenta',module.unavailable_reason([dialog]))
+
+    def test_chat_text_is_not_a_block_or_invalid_number_signal(self):
+        node=SimpleNamespace(element_info=SimpleNamespace(control_type='Text',name='Este número no tiene WhatsApp. Desbloquear'))
+        self.assertIsNone(module.unavailable_reason([node]))
+
 if __name__=='__main__':unittest.main()

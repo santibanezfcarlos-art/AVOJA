@@ -102,7 +102,8 @@ class Backend(unittest.TestCase):
 
 class FakeUI:
     def __init__(self,fail=None):self.fail=fail;self.sent=0
-    def open_chat(self,p,message):pass
+    def open_chat(self,p,message):
+        if self.fail=='unavailable':raise core.RecipientUnavailable('Chat no disponible')
     def verify_recipient(self,p):
         if self.fail=='recipient':raise RuntimeError('wrong recipient')
     def prepare(self,m):pass
@@ -146,6 +147,17 @@ class Desktop(unittest.TestCase):
         ui.verify_content=lambda message:calls.append(message)
         self.assertTrue(self.run_with(ui).run_one('single',self.item))
         self.assertEqual(calls,[self.item['message']]);self.assertEqual(ui.sent,1)
+
+    def test_unavailable_contact_is_recorded_and_next_continues(self):
+        ui=FakeUI('unavailable');runner=self.run_with(ui)
+        self.assertFalse(runner.run_one('1',self.item));self.assertEqual(ui.sent,0)
+        self.assertEqual(self.state(),'runner_failed')
+        ui.fail=None
+        self.assertFalse(runner.run_one('1',self.item))
+        self.assertTrue(runner.run_one('2',self.item));self.assertEqual(ui.sent,1)
+    def test_unavailable_self_test_still_stops(self):
+        with self.assertRaises(core.RecipientUnavailable):
+            self.run_with(FakeUI('unavailable')).run_one('1',self.item,test=True)
 
     def test_restart_blocks_prepared_attempt(self):
         self.j.begin('1',self.item['phone'],self.item['message'],'a')

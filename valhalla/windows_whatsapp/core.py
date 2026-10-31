@@ -86,6 +86,9 @@ class API:
         for id,attempt,status,reason in journal.pending():
             self.call('event',attempt=attempt,status=status,reason=reason);journal.ack(id)
 
+class RecipientUnavailable(Exception):
+    def __init__(self,reason):self.safe_reason=reason;super().__init__(reason)
+
 class ConfirmationPending(Exception):
     safe_reason="Enviar fue accionado; confirmación visual pendiente. No reenviar este número."
 
@@ -140,6 +143,9 @@ class Runner:
             except Exception:
                 self.log('Resultado guardado localmente; sincronización pendiente. Detenido.')
                 raise
+            if not actioned and isinstance(e,RecipientUnavailable) and not test:
+                self.log('Contacto no enviado y registrado para revisión. Continúa con el siguiente destinatario.')
+                return False
             if send_returned and isinstance(e,ConfirmationPending) and not test:
                 self.log('Número bloqueado para reenvío. Continúa con el siguiente destinatario.')
                 return False

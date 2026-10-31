@@ -5,7 +5,7 @@ import re
 import time
 from pathlib import Path
 from urllib.parse import urlencode, quote
-from core import normalized, Stopped, ConfirmationPending
+from core import normalized, Stopped, ConfirmationPending, RecipientUnavailable
 
 DEFAULT_PROFILE = {
     'composer': {'control_type':'Edit','name_regex':r'(?i)^(Type a message|Escribe un mensaje|Escribir un mensaje|Mensaje)(?: (?:para|to) .+)?$'},
@@ -21,6 +21,20 @@ class VerificationError(Exception):
 
 def require(condition,reason):
     if not condition:raise VerificationError(reason)
+
+def unavailable_reason(nodes):
+    # Only a dedicated action or an actual dialog; never infer from chat history.
+    if any(n.element_info.control_type=='Button' and re.fullmatch(r'(?i)\s*(desbloquear|unblock)\s*',n.element_info.name or '') for n in nodes):
+        return 'Contacto bloqueado en WhatsApp. No se desbloqueó ni se envió.'
+    for dialog in nodes:
+        if dialog.element_info.control_type not in ('Window','Dialog'):continue
+        if not getattr(dialog.element_info,'name',''):continue
+        # The main WhatsApp window is not an error dialog.
+        if re.fullmatch(r'(?i)whatsapp',dialog.element_info.name.strip()):continue
+        labels=' '.join(n.element_info.name or '' for n in control_tree(dialog))
+        if re.search(r'(?i)(no (?:está|esta) en whatsapp|no (?:tiene|usa) whatsapp|no es válido|no es valido|isn.t on whatsapp|not (?:on|registered (?:on|with)) whatsapp|phone number.*invalid)',labels):
+            return 'WhatsApp indica número no válido o sin cuenta. No se envió.'
+    return None
 
 def matches(node,selector):
     i=node.element_info
@@ -317,15 +331,36 @@ class WhatsApp:
             self.gate()
             try:
                 self.find_window();self.activate_window();self.foreground()
+                if time.monotonic()>=settle:
+                    nodes=self.nodes();reason=unavailable_reason(nodes)
+                    if reason:
+                        if 'indica número' in reason:
+                            # Dismiss only an identified invalid-number dialog's neutral button.
+                            for dialog in nodes:
+                                if dialog.element_info.control_type not in ('Dialog','Window'):continue
+                                if unavailable_reason([dialog])!=reason:continue
+                                buttons=[n for n in control_tree(dialog) if n.element_info.control_type=='Button' and re.fullmatch(r'(?i)(ok|aceptar|cerrar|cancelar|cancel|close)',n.element_info.name or '')]
+                                if len(buttons)==1:
+                                    self.foreground();buttons[0].invoke()
+                                    break
+                        raise RecipientUnavailable(reason)
                 editor=self.one(self.profile['composer'])
                 if time.monotonic()<settle:
                     time.sleep(.1);continue
                 self.chat_signature=(tuple(editor.element_info.runtime_id or ()),editor.element_info.name)
                 return
-            except Stopped:raise
+            except (Stopped,RecipientUnavailable):raise
             except Exception as error:
                 last_error=getattr(error,'safe_reason','No fue posible leer los controles UIA.')
                 time.sleep(.4)
+        # A live, readable WhatsApp window with no usable editor is a per-contact
+        # timeout, not proof that the number does not exist. Never send to old chat.
+        if self.window is not None and self.win32gui.IsWindow(self.hwnd) and self.window.process_id()==self.pid:
+            try:
+                self.nodes()
+            except Exception:
+                raise VerificationError('No se puede leer WhatsApp. Detenido para revisar la aplicación.') from None
+            raise RecipientUnavailable('El chat no cargó un editor utilizable dentro de 25 segundos. No se envió; causa sin confirmar.')
         raise VerificationError('WhatsApp no abrió un chat accesible. '+last_error)
     def verify_recipient(self,p,foreground_required=True):
         # User-selected workflow: rely on the requested native deep link, then bind
