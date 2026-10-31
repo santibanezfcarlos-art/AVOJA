@@ -84,13 +84,16 @@ class API:
         for id,attempt,status,reason in journal.pending():
             self.call('event',attempt=attempt,status=status,reason=reason);journal.ack(id)
 
+class ConfirmationPending(Exception):
+    safe_reason="Enviar fue accionado; confirmación visual pendiente. No reenviar este número."
+
 class Stopped(Exception): pass
 
 class Runner:
     def __init__(self,journal,adapter,gate,log,api=None):
         self.j=journal;self.ui=adapter;self.gate=gate;self.log=log;self.api=api
     def run_one(self,campaign,item,test=False):
-        p=phone(item['phone']);message=item['message']; aid='test'; actioned=False; confirmed=False
+        p=phone(item['phone']);message=item['message']; aid='test'; actioned=False; confirmed=False; send_returned=False
         if self.j.exists(campaign,p):self.log('Omitido: ya existe registro local para este teléfono.');return False
         self.gate()
         if self.api:
@@ -118,6 +121,7 @@ class Runner:
             self.gate();self.ui.verify_recipient(p);self.ui.verify_content(message)
             self.log('Mensaje comprobado. Accionando Enviar…')
             self.ui.send()
+            send_returned=True
             self.ui.verify_sent(message)
             confirmed=True
             record('runner_confirmed_ui')
@@ -130,5 +134,10 @@ class Runner:
             reason='Detenido por usuario' if isinstance(e,Stopped) else getattr(e,'safe_reason','No se pudo comprobar el estado. Revisa WhatsApp y el diagnóstico local.')
             # Never persist raw exceptions, which can contain full UI text or credentials.
             try:record('runner_uncertain' if actioned else 'runner_failed',reason)
-            except Exception:self.log('Resultado guardado localmente; sincronización pendiente. Detenido.')
+            except Exception:
+                self.log('Resultado guardado localmente; sincronización pendiente. Detenido.')
+                raise
+            if send_returned and isinstance(e,ConfirmationPending) and not test:
+                self.log('Número bloqueado para reenvío. Continúa con el siguiente destinatario.')
+                return False
             raise

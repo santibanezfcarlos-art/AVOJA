@@ -5,7 +5,7 @@ import re
 import time
 from pathlib import Path
 from urllib.parse import urlencode, quote
-from core import normalized, Stopped
+from core import normalized, Stopped, ConfirmationPending
 
 DEFAULT_PROFILE = {
     'composer': {'control_type':'Edit','name_regex':r'(?i)^(Type a message|Escribe un mensaje|Escribir un mensaje|Mensaje)(?: (?:para|to) .+)?$'},
@@ -289,7 +289,7 @@ class WhatsApp:
             return True
         return False
     def editor_report(self,editor,message):
-        report={'version':'1.9','expected':message,'accessible_name':editor.element_info.name,'clipboard_read':getattr(self,'last_clipboard_read',None)}
+        report={'version':'1.10','expected':message,'accessible_name':editor.element_info.name,'clipboard_read':getattr(self,'last_clipboard_read',None)}
         for name,read in [('value_pattern',lambda:editor.iface_value.CurrentValue),
                           ('text_pattern',lambda:editor.iface_text.DocumentRange.GetText(-1))]:
             try:report[name]=read()
@@ -371,7 +371,7 @@ class WhatsApp:
         except Exception:raise VerificationError('La acción Enviar quedó incierta. No se repetirá automáticamente.')
     def sent_report(self,message):
         # Read-only evidence; never clicks, focuses, copies or sends after Enviar.
-        report={'version':'1.9','expected':message,'verified_draft_projection':getattr(self,'message_projection',None),'rows':[]}
+        report={'version':'1.10','expected':message,'verified_draft_projection':getattr(self,'message_projection',None),'rows':[]}
         for row in self.outgoing():
             info={'runtime_id':row.element_info.runtime_id,'new':tuple(row.element_info.runtime_id) not in getattr(self,'before',set()),'controls':[]}
             for n in control_tree(row):
@@ -409,11 +409,11 @@ class WhatsApp:
             time.sleep(.4)
         try:self.sent_report(message)
         except Exception:pass
-        raise VerificationError('Enviar fue accionado, pero falta comprobarlo en UIA. Revisa la conversación y diagnostico-envio.json. No reenviar.')
+        raise ConfirmationPending()
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.9','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.10','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

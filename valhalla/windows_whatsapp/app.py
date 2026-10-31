@@ -17,7 +17,7 @@ class App:
     def __init__(self,root):
         self.root=root;self.minimized_for_send=False;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False
         self.journal=Journal(FOLDER/'registro.sqlite3');self.api=None;self.data=None
-        root.title('Valhalla · WhatsApp Windows v1.9');root.geometry('840x650')
+        root.title('Valhalla · WhatsApp Windows v1.10');root.geometry('840x650')
         frame=ttk.Frame(root,padding=16);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='1 · Prueba exclusivamente con tu propio número',font=('',12,'bold')).pack(anchor='w')
         self.number=tk.StringVar();ttk.Entry(frame,textvariable=self.number).pack(fill='x',pady=6)
@@ -25,6 +25,8 @@ class App:
         self.test_button=ttk.Button(frame,text='Enviar una prueba a mi número',command=self.test);self.test_button.pack(anchor='w',pady=6)
         self.observed_button=ttk.Button(frame,text='Registrar prueba ya enviada · sin reenviar',command=self.confirm_observed_test);self.observed_button.pack(anchor='w')
         ttk.Label(frame,text='2 · Conecta una campaña desde Administración → WhatsApp',font=('',12,'bold')).pack(anchor='w',pady=(15,0))
+        ttk.Label(frame,text='En el panel: guarda campaña y mensaje → aplica el filtro → Conectar programa Windows → Copiar clave.',wraplength=800).pack(anchor='w')
+        ttk.Label(frame,text='Pega aquí la clave temporal del panel:').pack(anchor='w')
         self.token=tk.StringVar();ttk.Entry(frame,textvariable=self.token,show='•').pack(fill='x',pady=6)
         self.connect_button=ttk.Button(frame,text='Cargar selección y conteos actuales (sin enviar)',command=self.connect);self.connect_button.pack(anchor='w')
         self.summary=tk.StringVar(value='Sin campaña conectada.');ttk.Label(frame,textvariable=self.summary,wraplength=800).pack(anchor='w',pady=8)

@@ -111,6 +111,7 @@ class FakeUI:
     def send(self):self.sent+=1
     def verify_sent(self,m):
         if self.fail=='confirmation':raise RuntimeError('unknown')
+        if self.fail=='pending':raise core.ConfirmationPending()
 
 class Desktop(unittest.TestCase):
     def setUp(self):
@@ -130,6 +131,16 @@ class Desktop(unittest.TestCase):
         with self.assertRaises(RuntimeError):self.run_with(ui).run_one('1',self.item)
         self.assertEqual(self.state(),'runner_uncertain')
         self.assertFalse(self.run_with(ui).run_one('1',self.item));self.assertEqual(ui.sent,1)
+    def test_confirmation_pending_continues_without_retry(self):
+        ui=FakeUI('pending');runner=self.run_with(ui)
+        self.assertFalse(runner.run_one('1',self.item))
+        self.assertEqual(self.state(),'runner_uncertain')
+        self.assertFalse(runner.run_one('1',self.item))
+        self.assertEqual(ui.sent,1)
+        ui.fail=None
+        self.assertTrue(runner.run_one('2',self.item))
+        self.assertEqual(ui.sent,2)
+
     def test_restart_blocks_prepared_attempt(self):
         self.j.begin('1',self.item['phone'],self.item['message'],'a')
         self.j.state('1',self.item['phone'],'runner_prepared')

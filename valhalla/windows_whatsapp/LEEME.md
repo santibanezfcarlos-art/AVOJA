@@ -1,124 +1,32 @@
-# Valhalla · WhatsApp para Windows
+# Valhalla · WhatsApp Windows v1.10
 
-Programa local propio, gratuito, Python 3.12 (64 bits), Windows 10/11, WhatsApp de Windows ya instalado y conectado. No necesita suscripciones.
+## Continuar después de una prueba que ya llegó
 
-## Primera ejecución: solo tu número
+1. Extrae todo el ZIP en una carpeta nueva y ejecuta Iniciar.cmd. No ejecutes desde dentro del ZIP.
+2. Escribe tu número y pulsa **Registrar prueba ya enviada · sin reenviar** si el mensaje ya llegó. Conserva el registro local de versiones anteriores.
+3. En https://valhallaoffice.cl entra en **Administración → WhatsApp**. Los contactos ya importados se seleccionan allí; no vuelvas a importar el Excel salvo que quieras actualizar los datos.
+4. Crea una campaña con el mensaje definitivo. Usa {nombre} para personalizar. Para cambiar el mensaje de una campaña existente, crea otra campaña; revisa sus destinatarios porque los envíos se excluyen por campaña.
+5. Selecciona la campaña y aplica el filtro de destinatarios. Revisa los conteos actuales; las cifras antiguas no sustituyen esta revisión.
+6. Pulsa **Conectar programa Windows** y **Copiar clave**. La selección comprende el filtro completo, no solo la página visible.
+7. Pega la clave temporal en el programa y pulsa **Cargar selección y conteos actuales (sin enviar)**.
+8. Revisa mensaje y destinatarios. Marca la autorización y pulsa **Revisar e iniciar campaña**; revisa la vista previa antes de confirmar.
 
-1. Extrae este ZIP en una carpeta de tu computador (no lo ejecutes dentro del ZIP).
-2. Abre WhatsApp. Si falta Python, instala Python 3.12 de 64 bits desde https://www.python.org/downloads/windows/ incluyendo el lanzador `py`.
-3. Haz doble clic en **Iniciar.cmd**. Crea su entorno e instala las dependencias gratuitas automáticamente. No requiere administrador.
-4. Escribe **tu propio número** y pulsa **Enviar una prueba a mi número**. Revisa el número y confirma. No se conecta a la campaña ni accede a clientes durante esta prueba.
-5. Mantén WhatsApp visible y no uses teclado, ratón ni otro programa durante el intento.
+No envíes a clientes hasta definir el mensaje y la selección. La clave caduca; no la compartas ni la guardes en repositorios.
 
-Mensaje de prueba:
+## Estados y continuidad
 
-¡Hola! 👋 Prueba de Valhalla Office.
-Emojis, tildes y conexión: todo en orden. 🌿
+El registro persistente está en %LOCALAPPDATA%\ValhallaWhatsApp. No borres registro.sqlite3 para actualizar.
 
-El teléfono debe aparecer completo en un botón del encabezado del chat. Un nombre guardado, «Tú», una foto o el número escrito en otro mensaje no prueban la identidad. Si tu versión no expone ese encabezado, el programa se detiene antes de escribir. Si ajustas el perfil tras una prueba detenida, puedes solicitar una **nueva prueba manual a tu propio número**: exige confirmar primero que revisaste la conversación y crea un registro separado. Nunca repite una prueba por sí solo.
+El programa distingue preparación, acción de Enviar y comprobación en interfaz. Si Enviar termina pero no aparece confirmación accesible, registra runner_uncertain, bloquea ese teléfono y continúa con el siguiente. Nunca lo marca como entregado ni lo reintenta automáticamente. Si falla el chat, el contenido, la acción de enviar o la sincronización, detiene la ejecución para revisar. La prueba personal incierta también se detiene: si observaste el mensaje enviado usa el botón de registro manual.
 
-No se considera que haya funcionado hasta ver `runner_confirmed_ui` y el mensaje real en tu WhatsApp.
+Pausar / continuar y Detener permiten interrumpir. Retomar conserva los intentos registrados; las bajas y omitidos se respetan. Mantén WhatsApp abierto y evita usar teclado o ratón durante los intentos.
 
-## Campañas: únicamente después de autorizar una
+## Requisitos
 
-1. En Administración → WhatsApp de https://valhallaoffice.cl selecciona una campaña guardada y aplica el filtro y la búsqueda deseados. El panel muestra los conteos **actuales** de coincidencias por correo; no se reutilizan conteos históricos.
-2. Pulsa **Conectar programa Windows**. Incluye todos los pendientes del filtro completo, no solo la página de 40 filas. La selección y el mensaje quedan limitados a esa campaña. La conexión no envía nada.
-3. Copia la clave temporal de 8 horas al programa y pulsa **Cargar selección y conteos actuales**. No pegues esta clave en un chat, correo o repositorio. No contiene tu contraseña; da acceso a la selección de la campaña.
-4. Solo después de la prueba comprobada, marca la autorización de campaña, pulsa **Revisar e iniciar campaña**, revisa el mensaje y los nombres/números, y confirma en esa ventana. Por defecto no se inicia ninguna campaña.
+Windows 10/11, WhatsApp instalado y conectado, Python 3.12 de 64 bits con lanzador py. Iniciar.cmd ejecuta el lanzador PowerShell que prepara el entorno e instala requirements.txt. No requiere suscripciones ni administrador.
 
-Los enlaces se envían como texto simple. Los mensajes se personalizan en el servidor con el nombre actual. Se comprueban nuevamente las bajas y el estado antes de enviar. Las omisiones, bajas y estados previos se conservan. Si alguien da de baja a un contacto en el intervalo mínimo entre la última comprobación y el clic, puede que ese clic ya ocurra; detener no retira mensajes ya accionados.
+El diagnóstico puede contener datos privados: no lo publiques. Los archivos de diagnóstico se guardan junto al registro local. No se incluyen contraseñas, sesiones ni contactos en esta distribución.
 
-## Pausar, detener y retomar
+## Validación
 
-- **Pausar / continuar** suspende las siguientes acciones; una llamada UIA ya iniciada puede terminar. Al continuar se revalida destinatario, contenido y primer plano antes de Enviar.
-- **Detener** termina el proceso en el siguiente punto de control. Cualquier resultado posterior a preparar la acción de Enviar que no pueda verificarse queda incierto.
-- Para retomar, carga nuevamente la selección y revisa/inicia. El registro local y la reserva en el servidor impiden volver a intentar el mismo teléfono en esa campaña, incluso después de reiniciar el programa o restablecer el estado visual del panel.
-- Un fallo de destinatario, editor, red o comprobación detiene la ejecución completa. No se sigue enviando a otros clientes con un fallo sin resolver.
-- Los intentos fallidos o inciertos **no se desbloquean automáticamente**. «Restablecer» en el panel no elimina la protección del registro de intentos. Requieren revisión humana antes de cualquier nueva decisión de envío; esta versión no ofrece un botón para forzar el reenvío.
-
-## Estados y persistencia
-
-| Estado | Significado |
-| --- | --- |
-| runner_claimed | Intento reservado, aún sin preparar |
-| runner_prepared | Número y borrador completo comprobados |
-| runner_actioned | Acción de envío registrada anticipadamente; el clic puede haber ocurrido o no |
-| runner_confirmed_ui | Nueva burbuja saliente, texto exacto y estado enviado detectados por accesibilidad |
-| runner_uncertain | No se pudo confirmar lo ocurrido; no reenviar |
-| runner_failed | Detenido antes de intentar enviar; tampoco se reintenta automáticamente |
-
-Ninguno de estos estados equivale a «entregado» o «leído» por el destinatario. La marca anticipada `runner_actioned` favorece evitar duplicados si el equipo se interrumpe justo durante el clic.
-
-El registro SQLite se guarda en `%LOCALAPPDATA%\ValhallaWhatsApp`, protegido para tu usuario y SYSTEM por el lanzador. Guarda campaña, teléfono, hash del mensaje, estados y pendientes de sincronización. No guarda contraseñas, sesión de WhatsApp ni el texto completo de campañas. Las claves y las colas permanecen en memoria. Los resultados sin confirmar en el servidor se sincronizan al reconectar con la misma clave mientras siga vigente; si vence antes, el intento continúa bloqueado en el servidor y el resultado exacto queda en el registro local para revisión. Nunca se reenvía por un error de sincronización.
-
-## Si WhatsApp no expone los controles esperados
-
-Las versiones de WhatsApp pueden cambiar sus controles. **Los selectores de esta distribución son iniciales y aún requieren validación en tu Windows**. No se reemplazan por clics en coordenadas cuando faltan.
-
-Pulsa **Diagnosticar UIA**. Guarda `diagnostico-uia-privado.json` en la carpeta del registro. Puede contener nombres y conversaciones; no lo publiques ni lo adjuntes completo sin revisar sus datos. `uia-profile.json`, en la misma carpeta, permite adaptar selectores UIA para editor, encabezado, botón Enviar y burbujas salientes usando los nombres y AutomationId reales del diagnóstico. Después de modificarlo, el siguiente intento vuelve a cargarlo. El encabezado debe exponer el teléfono exacto, y la comprobación exige dirección saliente y estado enviado; no rebajes estas verificaciones a un nombre o texto genérico.
-
-La escritura usa UIA ValuePattern cuando está disponible; como respaldo, pega texto Unicode con Ctrl+V después de comprobar el foco del editor específico y el primer plano de WhatsApp. En ese respaldo se reemplaza el contenido del portapapeles. Nunca pulsa Enter global ni utiliza coordenadas para Enviar: invoca el control accesible. No sobrescribe borradores previos.
-
-## Validación realizada y pendiente
-
-Pasaron 19 pruebas específicas de campañas y automatización. Se probaron en un entorno Linux la máquina de estados, recuperación tras interrupciones, bloqueo de duplicados, pérdida de red, exclusiones, bajas sobrevenidas, personalización Unicode, autenticación, CSRF y concurrencia con datos sintéticos. La interfaz de Windows, sus dependencias, PowerShell y los selectores reales de WhatsApp **no se ejecutaron aquí**. La prueba real con tu propio número está pendiente. No se enviaron mensajes ni campañas a clientes.
-
-Los conteos de producción requieren iniciar sesión como administrador: el programa los consulta en vivo al conectar. No se presentan 618/32/586 como cifras verificadas.
-
-La revisión general ejecutó 288 pruebas con 4 fallos. Se reprodujeron los mismos cuatro en la revisión original `65aa4e6`, sin estos cambios: anticipación de reservas por lote, enlaces de correo, disponibilidad con una fecha pasada y entrega Skedu con fecha vencida. No se modificaron esas funciones.
-
-## Corrección 1.1 · detección de ventanas
-
-La detección inicial exigía una sola ventana llamada WhatsApp.exe y el diagnóstico fallaba si no la encontraba. Esta revisión admite también WhatsApp.Root.exe y ventanas antiguas alojadas por ApplicationFrameHost.exe, siempre comprobando un proceso hijo nativo de WhatsApp. Distingue ventanas auxiliares mediante el editor accesible; no acepta una pestaña de Chrome/Edge como aplicación nativa.
-
-Diagnosticar UIA ahora genera el archivo incluso sin detectar WhatsApp, con los procesos relevantes y el motivo de detección. No hace envíos. Para actualizar, cierra el programa anterior, extrae el ZIP actualizado y ejecuta Iniciar.cmd. Conserva el registro de intentos en LOCALAPPDATA.
-
-Primero ejecuta Diagnosticar UIA en esta revisión. No repitas la prueba de envío hasta resolver la identificación de la aplicación. La corrección pasó siete pruebas de detección con ventanas simuladas; la compatibilidad real con tu equipo sigue pendiente.
-
-## Corrección 1.2 · WhatsApp Business con WebView
-
-Incluye el editor «Escribir un mensaje para…», deduplicación de controles por RuntimeId y lectura del teléfono exacto en la ficha «Info. del contacto». Abre y cierra esa ficha desde el encabezado antes de escribir/enviar, comprobando también que su nombre corresponda a la conversación activa. No usa teléfonos encontrados en el historial. Actualiza los selectores iniciales anteriores conservando configuraciones personalizadas y el registro de envíos.
-
-Esta revisión se preparó a partir de los controles expuestos por la versión del usuario. Su ejecución real aún requiere validación en Windows. Extrae en una carpeta nueva, abre Iniciar.cmd y comprueba el título v1.2. Puedes realizar una nueva prueba manual a tu propio número; los intentos anteriores no se borran ni se reintentan solos. Durante la verificación verás abrirse y cerrarse la ficha del contacto varias veces.
-
-## Corrección 1.3 · pegar + Enter
-
-El editor vacío de WebView puede devolver un salto de párrafo; ahora se reconoce como vacío. Se da preferencia al contenido TextPattern en vez del nombre accesible o placeholder. Los borradores con texto y los espacios siguen bloqueados. Por indicación del usuario, la escritura utiliza portapapeles Unicode y Ctrl+V; el envío utiliza Enter dirigido al editor identificado por UIA, después de comprobar su foco, el primer plano, el teléfono y el contenido exacto. Se mantiene el bloqueo de intentos inciertos y la comprobación posterior. El portapapeles se sustituye por el mensaje.
-
-La ejecución real en Windows sigue pendiente. En esta versión es válido que no aparezca un botón Enviar accesible, ya que se usa Enter en el control comprobado. Las secciones anteriores que describen la invocación del botón o escritura ValuePattern corresponden a versiones anteriores.
-
-## Corrección 1.4 · flujo directo sin ficha
-
-Por indicación expresa del usuario, se elimina la navegación a la ficha del contacto. El flujo es abrir whatsapp://send?phone=NUMERO, enfocar el editor UIA, pegar Unicode, comprobar el contenido y pulsar Enter en ese editor. El programa se minimiza durante el intento y reaparece al terminar. Si se cambia la conversación o el primer plano, se detiene.
-
-En este modo el teléfono procede del enlace nativo solicitado: NO se verifica independientemente en la ficha. Se comprueba que el editor y el nombre accesible de la conversación resultante permanezcan iguales durante el intento. Las descripciones anteriores de comprobación de teléfono mediante ficha corresponden a versiones previas. Los estados de envío, el registro persistente y el bloqueo de reenvíos inciertos se conservan. La prueba real sigue pendiente de ejecutar en el equipo del usuario.
-
-## Corrección 1.5 · activación nativa y diagnóstico de foco
-
-La activación usa las funciones nativas de Windows SetForegroundWindow y, si hace falta, AttachThreadInput solo durante la activación, con separación posterior de las colas. No modifica parámetros del sistema. La comprobación acepta el HWND principal y los procesos hijos WebView de esa aplicación; sigue rechazando aplicaciones ajenas. El editor UIA específico debe mantener el foco antes de Ctrl+V y Enter.
-
-Si falla, guarda automáticamente diagnostico-foco.json con los identificadores y el nombre del proceso activo, sin texto de conversaciones. El registro visible muestra si llegó a abrir chat, pegar y accionar Enter. La ejecución real en Windows sigue pendiente de validar. Se mantiene el flujo sin ficha del contacto.
-
-## Corrección 1.6 · teclas virtuales explícitas
-
-Ctrl+V y Enter usan ahora eventos nativos con códigos de tecla virtual (Control=0x11, V=0x56, Enter=0x0D), comprobando foco de ventana y editor antes de cada pulsación. No se usa VK_PACKET para el atajo. Los modificadores se liberan incluso ante errores. Si la lectura del texto no coincide, guarda diagnostico-editor.json con los contenidos esperados/leídos del editor; puede contener el mensaje y permanece local. No reintenta el envío ni pulsa Enter si no verifica el texto. Validación real en el equipo del usuario pendiente.
-
-## Corrección 1.7 · mensaje precargado en el enlace nativo
-
-El diagnóstico del equipo confirmó que Ctrl+V no dejó texto en el editor: ValuePattern, TextPattern y el hijo Text devolvieron solo un salto de línea. Esta revisión pasa el texto Unicode codificado directamente en whatsapp://send?phone=NUMERO&text=MENSAJE. Espera hasta leer el texto exacto en el editor y acciona el botón accesible Enviar mediante UIA. No usa Ctrl+V ni Enter para esta ruta. Si el texto no se carga o no coincide, se detiene y guarda el diagnóstico; no reintenta.
-
-Esta sección sustituye las descripciones de portapapeles y teclado de versiones anteriores. WhatsApp controla la precarga del borrador en el chat solicitado. La ejecución real de la nueva ruta sigue pendiente de validar en el computador del usuario.
-
-## Corrección 1.8 · lectura exacta de emojis desde el editor
-
-El diagnóstico de WhatsApp Business mostró que TextPattern y ValuePattern insertan un salto después de 👋 y no exponen 🌿. Cuando esa lectura no coincide, esta revisión hace clic en el editor identificado por UIA (posición derivada del control, sin coordenadas fijas), selecciona y copia su contenido mediante Ctrl+A/C, y comprueba el texto Unicode completo del portapapeles. Un marcador aleatorio detecta si la copia no llegó a realizarse. Solo acepta igualdad completa; no ignora emojis faltantes ni caracteres extra. La selección se retira con Flecha Derecha y se restaura el texto Unicode previo del portapapeles.
-
-La comparación posterior admite la representación accesible exacta del borrador que ya fue comprobado por copia Unicode, acompañada de nueva burbuja saliente, estado enviado y editor vacío. Si no puede comprobarla, conserva resultado incierto y no repite el envío. La ejecución real en el computador del usuario está pendiente de validar.
-
-## Corrección 1.9 · confirmar después de enviar y reconciliar la prueba existente
-
-La captura del usuario confirmó el primer envío real. El programa falló después al exigir primer plano durante la lectura de confirmación. Esta revisión ya no activa ventanas, pulsa teclas, copia ni exige primer plano después de Enviar: lee la conversación vinculada por UIA y comprueba que el proceso y el editor no cambien. También consulta ValuePattern y LegacyIAccessible para el contenido de las burbujas. Si no puede confirmarlo, guarda diagnostico-envio.json y conserva el estado incierto sin reintentar.
-
-Para la prueba ya visible en tu WhatsApp, escribe el mismo número y pulsa **Registrar prueba ya enviada · sin reenviar**. Ese botón es tu confirmación manual explícita; no es una comprobación automática de UIA ni acredita entrega o lectura. Solo modifica una prueba local del mensaje fijo que haya alcanzado la acción de envío. Conserva el estado anterior en test_reviews y no modifica campañas, teléfonos remotos ni pendientes de sincronización.
-
-No pulses Enviar una prueba si el mensaje ya salió. Usa el botón de registro para conservar esa evidencia sin crear otro envío. La automatización de confirmación revisada aún debe validarse en el Windows real; los tests realizados aquí usan datos y controles simulados.
+La versión anterior envió la prueba personal según la conversación y captura del usuario. Esta actualización se verifica con pruebas automatizadas de estados y bloqueo de duplicados; su continuidad real en Windows debe validarse en el computador del usuario. Registrar una observación manual no equivale a confirmación automática UIA.
