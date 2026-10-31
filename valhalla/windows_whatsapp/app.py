@@ -10,7 +10,7 @@ import uuid
 import traceback
 import tkinter as tk
 from tkinter import messagebox, ttk
-from core import API, Journal, Runner, Stopped, TEST_MESSAGE, phone
+from core import API, Journal, Runner, Stopped, TEST_MESSAGE, CAMPAIGN_MESSAGE, phone
 
 FOLDER=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'ValhallaWhatsApp'
 
@@ -18,11 +18,14 @@ class App:
     def __init__(self,root):
         self.root=root;self.minimized_for_send=False;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False
         self.journal=Journal(FOLDER/'registro.sqlite3');self.api=None;self.data=None
-        root.title('Valhalla · WhatsApp Windows v1.11');root.geometry('840x650')
+        root.title('Valhalla · WhatsApp Windows v1.12');root.geometry('900x900')
         frame=ttk.Frame(root,padding=16);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='1 · Prueba exclusivamente con tu propio número',font=('',12,'bold')).pack(anchor='w')
         self.number=tk.StringVar();ttk.Entry(frame,textvariable=self.number).pack(fill='x',pady=6)
-        ttk.Label(frame,text=TEST_MESSAGE).pack(anchor='w')
+        ttk.Label(frame,text='Mensaje de campaña · editable · {nombre} se personaliza por destinatario').pack(anchor='w')
+        self.message_editor=tk.Text(frame,height=12,wrap='word')
+        self.message_editor.insert('1.0',CAMPAIGN_MESSAGE);self.message_editor.pack(fill='x')
+        ttk.Button(frame,text='Copiar este mensaje para la campaña de Valhalla',command=self.copy_message).pack(anchor='w')
         self.test_button=ttk.Button(frame,text='Enviar una prueba a mi número',command=self.test);self.test_button.pack(anchor='w',pady=6)
         self.observed_button=ttk.Button(frame,text='Registrar prueba ya enviada · sin reenviar',command=self.confirm_observed_test);self.observed_button.pack(anchor='w')
         ttk.Label(frame,text='2 · Conecta una campaña desde Administración → WhatsApp',font=('',12,'bold')).pack(anchor='w',pady=(15,0))
@@ -88,18 +91,23 @@ class App:
     def adapter(self):
         from windows_uia import WhatsApp
         return WhatsApp(FOLDER,self.gate)
+    def copy_message(self):
+        self.root.clipboard_clear();self.root.clipboard_append(self.message_editor.get('1.0','end-1c'))
+        self.log('Mensaje copiado. Pégalo en el mensaje de la campaña del panel antes de generar su clave.')
     def test(self):
         try:p=phone(self.number.get())
         except ValueError as e:messagebox.showerror('Número',str(e));return
+        message=self.message_editor.get('1.0','end-1c').replace('{nombre}','Carlos')
+        if not message.strip():messagebox.showerror('Mensaje','Escribe el mensaje antes de probar.');return
         if self.journal.test_history(p) and not messagebox.askyesno('Nueva prueba manual', 'Ya hay una prueba registrada para este número. Revisa primero tu conversación. ¿Confirmas que la revisaste y autorizas UN NUEVO mensaje de prueba a tu propio teléfono? No se borrará el intento anterior.') :return
-        if not messagebox.askyesno('Prueba única',f'¿Confirmas que +{p} es tu propio número?\nSe pulsará Enviar automáticamente una sola vez.\n\n{TEST_MESSAGE}'):return
+        if not messagebox.askyesno('Prueba única',f'¿Confirmas que +{p} es tu propio número?\nSe pulsará Enviar automáticamente una sola vez.\n\n{message}'):return
         def work():
-            Runner(self.journal,self.adapter(),self.gate,self.log).run_one('prueba-'+uuid.uuid4().hex,{'phone':p,'message':TEST_MESSAGE},test=True)
+            Runner(self.journal,self.adapter(),self.gate,self.log).run_one('prueba-'+uuid.uuid4().hex,{'phone':p,'message':message},test=True)
         self.task(work,hide=True)
     def confirm_observed_test(self):
         try:
             p=phone(self.number.get())
-            self.journal.confirm_observed_test(p)
+            self.journal.confirm_observed_test(p,self.message_editor.get('1.0','end-1c').replace('{nombre}','Carlos'))
             self.log('Prueba registrada como enviada por tu confirmación. No se envió otro mensaje.')
             self.log('La confirmación es manual; no acredita entrega ni lectura por el destinatario.')
         except ValueError as error:messagebox.showerror('Registro de prueba',str(error))

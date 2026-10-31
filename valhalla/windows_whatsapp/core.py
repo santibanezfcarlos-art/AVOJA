@@ -8,6 +8,8 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
+CAMPAIGN_MESSAGE = 'Hola, {nombre} 👋\n\n¡Te hemos echado de menos en Valhalla! 💚 Queremos invitarte a conocer nuestra nueva plataforma, para que organizar tus atenciones sea mucho más fácil.\n\n🌐 https://valhallaoffice.cl\n\n📅 Compra horas y reserva tu box según la disponibilidad.\n\n⏳ Tus horas no vencen: úsalas a tu ritmo.\n\n🔑 Recibe tu código de acceso automáticamente por correo a las 22:00 del día anterior a tu reserva.\n\n🔄 Si cambian tus planes, puedes reagendar tu reserva una vez, con al menos 2 horas de anticipación, incluso para otro horario del mismo día.\n\nSi tienes dudas o necesitas ayuda para comenzar, escríbenos por aquí 😊\n\n¡Te esperamos!\nEquipo Valhalla Office 🌿\n\nSi prefieres no recibir estas novedades, responde BAJA.'
+
 TEST_MESSAGE = '¡Hola! 👋 Prueba de Valhalla Office.\nEmojis, tildes y conexión: todo en orden. 🌿'
 
 def phone(value):
@@ -49,9 +51,9 @@ class Journal:
         with self.db() as c:c.execute('DELETE FROM outbox WHERE id=?',(id,))
     def test_history(self,p):
         with self.db() as c:return c.execute("SELECT state FROM attempts WHERE campaign LIKE 'prueba-%' AND phone=?",(p,)).fetchall()
-    def confirm_observed_test(self,p):
+    def confirm_observed_test(self,p,message=TEST_MESSAGE):
         # This explicit UI action applies only to the fixed self-test, never a campaign.
-        p=phone(p);expected=hashlib.sha256(TEST_MESSAGE.encode()).hexdigest()
+        p=phone(p);expected=hashlib.sha256(message.encode()).hexdigest()
         with self.db() as c:
             row=c.execute("SELECT campaign,state,message_hash,attempt FROM attempts WHERE campaign LIKE 'prueba-%' AND phone=? ORDER BY rowid DESC LIMIT 1",(p,)).fetchone()
             if not row or row[2]!=expected or row[3]!='test':raise ValueError('No hay una prueba local de este mensaje para ese número.')
