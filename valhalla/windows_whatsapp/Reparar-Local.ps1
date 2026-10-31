@@ -47,6 +47,7 @@ print('Reparacion instalada. Registro de envios conservado. No se envio ningun m
 '@
 $python = Join-Path $dir '.venv\Scripts\python.exe'
 if (!(Test-Path -LiteralPath $python)) { throw 'No existe el entorno de la carpeta seleccionada.' }
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $repair | & $python -X utf8 -
 if ($LASTEXITCODE -ne 0) { throw 'Reparacion detenida. No se iniciara el programa.' }
 & (Join-Path $dir 'Iniciar-Valhalla.ps1')
