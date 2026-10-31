@@ -4,7 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
-from core import normalized
+from core import normalized, Stopped
 
 DEFAULT_PROFILE = {
     'composer': {'control_type':'Edit','name_regex':r'(?i)^(Type a message|Escribe un mensaje|Escribir un mensaje|Mensaje)$'},
@@ -41,14 +41,50 @@ class WhatsApp:
         profile=self.folder/'uia-profile.json'
         if not profile.exists():profile.write_text(json.dumps(DEFAULT_PROFILE,indent=2,ensure_ascii=False),encoding='utf-8')
         self.profile=json.loads(profile.read_text(encoding='utf-8'))
-    def find_window(self):
-        windows=[]
+    def process_name(self,pid):
+        try:return self.psutil.Process(pid).name().lower()
+        except (self.psutil.Error,RuntimeError):return ''
+    def inventory(self):
+        # Inspect process identity first; never accept Chrome/Edge based on a title.
+        native={'whatsapp.exe','whatsapp.root.exe'}
+        candidates=[];metadata=[]
         for w in self.desktop.windows():
             try:
-                proc=self.psutil.Process(w.process_id())
-                if proc.name().lower()=='whatsapp.exe' and w.is_visible():windows.append(w)
-            except (self.psutil.Error,RuntimeError):continue
-        require(len(windows)==1,'No hay una única ventana visible del proceso WhatsApp.exe.')
+                if not w.is_visible():continue
+                pid=w.process_id();name=self.process_name(pid)
+                title=w.element_info.name or ''
+                recognized=name in native
+                if name=='applicationframehost.exe':
+                    # Older Store apps may have a host-owned top-level window.
+                    child_pids={n.element_info.process_id for n in w.descendants()}
+                    recognized=any(self.process_name(p) in native for p in child_pids)
+                if recognized or 'whatsapp' in title.lower() or 'whatsapp' in name:
+                    metadata.append({'pid':pid,'process':name,'handle':w.handle,
+                                     'title':title if recognized else '(ventana con WhatsApp en el título)',
+                                     'native_identity':recognized,'foreground':self.win32gui.GetForegroundWindow()==w.handle})
+                if recognized:candidates.append(w)
+            except Exception:
+                # One inaccessible window must not suppress the rest of the inventory.
+                continue
+        return candidates,metadata
+    def find_window(self):
+        windows,_=self.inventory()
+        # Multiple WhatsApp windows can be legitimate (main window, call, pop-up).
+        # Require a unique accessible composer; never choose an arbitrary window.
+        editors=[]
+        for w in windows:
+            try:
+                count=sum(matches(n,self.profile['composer']) for n in w.descendants())
+                if count==1:editors.append(w)
+            except Exception:continue
+        if len(editors)==1:windows=editors
+        elif len(editors)>1:
+            foreground=[w for w in editors if self.win32gui.GetForegroundWindow()==w.handle]
+            if len(foreground)==1:windows=foreground
+            else:windows=editors
+        require(len(windows)==1,
+                'No se identificó una ventana nativa única de WhatsApp ('+str(len(windows))+
+                ' candidatas). Pulsa Diagnosticar UIA; ahora genera un informe incluso sin detectar la ventana.')
         self.window=windows[0];self.pid=self.window.process_id();self.hwnd=self.window.handle
     def foreground(self):
         require(self.window is not None and self.win32gui.IsWindow(self.hwnd),'WhatsApp ya no está disponible.')
@@ -74,8 +110,11 @@ class WhatsApp:
             try:
                 self.find_window();self.window.set_focus();self.foreground()
                 self.one(self.profile['composer']);return
-            except Exception:time.sleep(.4)
-        raise VerificationError('WhatsApp no abrió un chat accesible dentro de 25 segundos.')
+            except Stopped:raise
+            except Exception as error:
+                last_error=getattr(error,'safe_reason','No fue posible leer los controles UIA.')
+                time.sleep(.4)
+        raise VerificationError('WhatsApp no abrió un chat accesible. '+last_error)
     def verify_recipient(self,p):
         self.foreground()
         composer=self.one(self.profile['composer']); cr=composer.rectangle()
@@ -147,12 +186,20 @@ class WhatsApp:
             time.sleep(.4)
         raise VerificationError('Enviar fue accionado, pero no se comprobó una nueva burbuja saliente con texto exacto y estado enviado. No reenviar.')
     def diagnose(self):
-        self.find_window()
-        # Local-only diagnostic may contain private chat text. Never uploaded automatically.
-        rows=[]
-        for n in [self.window]+self.nodes():
-            i=n.element_info
-            rows.append({'type':i.control_type,'auto_id':i.automation_id,'name':i.name,'runtime_id':i.runtime_id})
+        # Always produce useful metadata, even when detection itself fails.
+        windows,metadata=self.inventory()
+        report={'version':'1.1','windows':metadata,'native_candidates':len(windows),'controls':[],
+                'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
+        try:
+            self.find_window()
+            for n in [self.window]+self.nodes():
+                try:
+                    i=n.element_info
+                    report['controls'].append({'type':i.control_type,'auto_id':i.automation_id,
+                                               'name':i.name,'runtime_id':i.runtime_id})
+                except Exception:continue
+        except Exception as error:
+            report['detection_error']=getattr(error,'safe_reason','No fue posible leer los controles UIA.')
         path=self.folder/'diagnostico-uia-privado.json'
-        path.write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+        path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
         return path

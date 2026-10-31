@@ -66,3 +66,11 @@ Pasaron 19 pruebas específicas de campañas y automatización. Se probaron en u
 Los conteos de producción requieren iniciar sesión como administrador: el programa los consulta en vivo al conectar. No se presentan 618/32/586 como cifras verificadas.
 
 La revisión general ejecutó 288 pruebas con 4 fallos. Se reprodujeron los mismos cuatro en la revisión original `65aa4e6`, sin estos cambios: anticipación de reservas por lote, enlaces de correo, disponibilidad con una fecha pasada y entrega Skedu con fecha vencida. No se modificaron esas funciones.
+
+## Corrección 1.1 · detección de ventanas
+
+La detección inicial exigía una sola ventana llamada WhatsApp.exe y el diagnóstico fallaba si no la encontraba. Esta revisión admite también WhatsApp.Root.exe y ventanas antiguas alojadas por ApplicationFrameHost.exe, siempre comprobando un proceso hijo nativo de WhatsApp. Distingue ventanas auxiliares mediante el editor accesible; no acepta una pestaña de Chrome/Edge como aplicación nativa.
+
+Diagnosticar UIA ahora genera el archivo incluso sin detectar WhatsApp, con los procesos relevantes y el motivo de detección. No hace envíos. Para actualizar, cierra el programa anterior, extrae el ZIP actualizado y ejecuta Iniciar.cmd. Conserva el registro de intentos en LOCALAPPDATA.
+
+Primero ejecuta Diagnosticar UIA en esta revisión. No repitas la prueba de envío hasta resolver la identificación de la aplicación. La corrección pasó siete pruebas de detección con ventanas simuladas; la compatibilidad real con tu equipo sigue pendiente.
