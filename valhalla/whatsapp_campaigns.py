@@ -83,6 +83,7 @@ def report(store):
             record['registered'] = any(e in users for e in record['emails'])
             contacts.append(record)
         return {'contacts': contacts, 'campaigns': [dict(r) for r in c.execute('SELECT * FROM whatsapp_campaigns ORDER BY id DESC')],
+                'runner_attempts': [dict(r) for r in c.execute('SELECT campaign_id,phone,status,reason,updated_at FROM whatsapp_runner_attempts')],
                 'progress': [dict(r) for r in c.execute('SELECT * FROM whatsapp_progress')], 'default_message': DEFAULT_MESSAGE,
                 'matching_note': 'Cruce por correo exacto; no se presume coincidencia por nombre.'}
 
@@ -125,6 +126,8 @@ def action(store, actor, body, operation):
         if operation == 'open': status = 'opened'
         if status not in ('opened','sent_manual','skipped','pending'): raise ValueError('Estado inválido.')
         old = c.execute('SELECT status FROM whatsapp_progress WHERE campaign_id=? AND phone=?',(campaign['id'],phone)).fetchone()
+        if operation == 'open' and c.execute('SELECT 1 FROM whatsapp_runner_attempts WHERE campaign_id=? AND phone=?',(campaign['id'],phone)).fetchone():
+            raise ValueError('Existe un intento del programa Windows. Revisa su registro antes de enviar manualmente.')
         if operation == 'open' and old and old['status']=='sent_manual':
             raise ValueError('Ya está marcado como enviado. Restablece a pendiente si necesitas abrirlo otra vez.')
         c.execute('INSERT INTO whatsapp_progress VALUES(?,?,?,?) ON CONFLICT(campaign_id,phone) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at',
