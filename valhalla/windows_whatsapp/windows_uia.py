@@ -289,7 +289,7 @@ class WhatsApp:
             return True
         return False
     def editor_report(self,editor,message):
-        report={'version':'1.8','expected':message,'accessible_name':editor.element_info.name,'clipboard_read':getattr(self,'last_clipboard_read',None)}
+        report={'version':'1.9','expected':message,'accessible_name':editor.element_info.name,'clipboard_read':getattr(self,'last_clipboard_read',None)}
         for name,read in [('value_pattern',lambda:editor.iface_value.CurrentValue),
                           ('text_pattern',lambda:editor.iface_text.DocumentRange.GetText(-1))]:
             try:report[name]=read()
@@ -316,10 +316,14 @@ class WhatsApp:
                 last_error=getattr(error,'safe_reason','No fue posible leer los controles UIA.')
                 time.sleep(.4)
         raise VerificationError('WhatsApp no abrió un chat accesible. '+last_error)
-    def verify_recipient(self,p):
+    def verify_recipient(self,p,foreground_required=True):
         # User-selected workflow: rely on the requested native deep link, then bind
         # the resulting editor for the whole attempt. No contact-profile navigation.
-        self.foreground()
+        if foreground_required:self.foreground()
+        else:
+            # Post-send confirmation only reads UIA. Background focus is irrelevant.
+            require(self.window is not None and self.win32gui.IsWindow(self.hwnd),'WhatsApp ya no está disponible.')
+            require(self.window.process_id()==self.pid,'Cambió el proceso de WhatsApp.')
         require(p==self.phone,'El número solicitado cambió durante el intento.')
         editor=self.one(self.profile['composer'])
         signature=(tuple(editor.element_info.runtime_id or ()),editor.element_info.name)
@@ -365,29 +369,51 @@ class WhatsApp:
         self.foreground()
         try:button.invoke()
         except Exception:raise VerificationError('La acción Enviar quedó incierta. No se repetirá automáticamente.')
+    def sent_report(self,message):
+        # Read-only evidence; never clicks, focuses, copies or sends after Enviar.
+        report={'version':'1.9','expected':message,'verified_draft_projection':getattr(self,'message_projection',None),'rows':[]}
+        for row in self.outgoing():
+            info={'runtime_id':row.element_info.runtime_id,'new':tuple(row.element_info.runtime_id) not in getattr(self,'before',set()),'controls':[]}
+            for n in control_tree(row):
+                record={'type':n.element_info.control_type,'name':n.element_info.name}
+                for key,read in [('text',lambda:n.iface_text.DocumentRange.GetText(-1)),
+                                 ('value',lambda:n.iface_value.CurrentValue),
+                                 ('legacy_value',lambda:n.iface_legacy_iaccessible.CurrentValue),
+                                 ('legacy_description',lambda:n.iface_legacy_iaccessible.CurrentDescription)]:
+                    try:record[key]=read()
+                    except Exception:pass
+                info['controls'].append(record)
+            report['rows'].append(info)
+        path=self.folder/'diagnostico-envio.json';path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+        return path
     def verify_sent(self,message):
         deadline=time.monotonic()+20
         while time.monotonic()<deadline:
-            self.gate();self.verify_recipient(self.phone)
+            self.gate();self.verify_recipient(self.phone,foreground_required=False)
             for row in self.outgoing():
                 if tuple(row.element_info.runtime_id) in self.before:continue
                 children=control_tree(row)
                 texts=[normalized(n.element_info.name or '') for n in children]
                 content_values=list(texts)
                 for n in children:
-                    try:content_values.append(normalized(n.iface_text.DocumentRange.GetText(-1)).strip('\n'))
-                    except Exception:pass
+                    for read in (lambda:n.iface_text.DocumentRange.GetText(-1),lambda:n.iface_value.CurrentValue,lambda:n.iface_legacy_iaccessible.CurrentValue):
+                        try:
+                            value=read()
+                            if isinstance(value,str):content_values.append(normalized(value).strip('\n'))
+                        except Exception:pass
                 status_labels=[t for t in texts if t and t!=normalized(message)]
                 if normalized(message) not in content_values and getattr(self,'message_projection',None) not in content_values:continue
                 if any(re.search(self.profile['pending_regex'],t) for t in status_labels):continue
                 if any(re.fullmatch(self.profile['sent_status_regex'],t) for t in status_labels) and self.read_edit(self.one(self.profile['composer']))=='':
                     return
             time.sleep(.4)
-        raise VerificationError('Enviar fue accionado, pero no se comprobó una nueva burbuja saliente con texto exacto y estado enviado. No reenviar.')
+        try:self.sent_report(message)
+        except Exception:pass
+        raise VerificationError('Enviar fue accionado, pero falta comprobarlo en UIA. Revisa la conversación y diagnostico-envio.json. No reenviar.')
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.8','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.9','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

@@ -154,6 +154,28 @@ class Desktop(unittest.TestCase):
         with self.assertRaises(OSError):runner.run_one('1',self.item)
         self.assertEqual(ui.sent,1);self.assertEqual(self.state(),'runner_confirmed_ui')
         self.assertEqual([row[2] for row in self.j.pending()],['runner_confirmed_ui'])
+    def test_manual_observation_records_only_existing_actioned_self_test(self):
+        p=self.item['phone']
+        with self.assertRaises(ValueError):self.j.confirm_observed_test(p)
+        self.j.begin('prueba-review',p,core.TEST_MESSAGE,'test')
+        self.j.state('prueba-review',p,'runner_failed')
+        with self.assertRaises(ValueError):self.j.confirm_observed_test(p)
+        self.j.state('prueba-review',p,'runner_uncertain')
+        self.j.confirm_observed_test(p);self.j.confirm_observed_test(p)
+        self.assertTrue(self.j.test_passed())
+        self.assertEqual(self.state(),'test_confirmed_by_user')
+        with self.j.db() as c:
+            self.assertEqual(c.execute('SELECT previous_state FROM test_reviews').fetchall(),[('runner_uncertain',)])
+        self.assertEqual(self.j.pending(),[])
+    def test_manual_review_does_not_modify_client_campaigns_or_other_message(self):
+        p=self.item['phone']
+        self.j.begin('123',p,core.TEST_MESSAGE,'remote-attempt')
+        self.j.state('123',p,'runner_uncertain')
+        with self.assertRaises(ValueError):self.j.confirm_observed_test(p)
+        self.j.begin('prueba-other',p,'Otro texto','test')
+        self.j.state('prueba-other',p,'runner_uncertain')
+        with self.assertRaises(ValueError):self.j.confirm_observed_test(p)
+        self.assertFalse(self.j.test_passed())
     def test_write_ahead_failure_never_sends(self):
         class BrokenAPI:
             def call(self,op,**body):return {'attempt':'a',**self.item} if op=='claim' else {'ok':True}

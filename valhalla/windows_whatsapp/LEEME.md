@@ -114,3 +114,11 @@ Esta sección sustituye las descripciones de portapapeles y teclado de versiones
 El diagnóstico de WhatsApp Business mostró que TextPattern y ValuePattern insertan un salto después de 👋 y no exponen 🌿. Cuando esa lectura no coincide, esta revisión hace clic en el editor identificado por UIA (posición derivada del control, sin coordenadas fijas), selecciona y copia su contenido mediante Ctrl+A/C, y comprueba el texto Unicode completo del portapapeles. Un marcador aleatorio detecta si la copia no llegó a realizarse. Solo acepta igualdad completa; no ignora emojis faltantes ni caracteres extra. La selección se retira con Flecha Derecha y se restaura el texto Unicode previo del portapapeles.
 
 La comparación posterior admite la representación accesible exacta del borrador que ya fue comprobado por copia Unicode, acompañada de nueva burbuja saliente, estado enviado y editor vacío. Si no puede comprobarla, conserva resultado incierto y no repite el envío. La ejecución real en el computador del usuario está pendiente de validar.
+
+## Corrección 1.9 · confirmar después de enviar y reconciliar la prueba existente
+
+La captura del usuario confirmó el primer envío real. El programa falló después al exigir primer plano durante la lectura de confirmación. Esta revisión ya no activa ventanas, pulsa teclas, copia ni exige primer plano después de Enviar: lee la conversación vinculada por UIA y comprueba que el proceso y el editor no cambien. También consulta ValuePattern y LegacyIAccessible para el contenido de las burbujas. Si no puede confirmarlo, guarda diagnostico-envio.json y conserva el estado incierto sin reintentar.
+
+Para la prueba ya visible en tu WhatsApp, escribe el mismo número y pulsa **Registrar prueba ya enviada · sin reenviar**. Ese botón es tu confirmación manual explícita; no es una comprobación automática de UIA ni acredita entrega o lectura. Solo modifica una prueba local del mensaje fijo que haya alcanzado la acción de envío. Conserva el estado anterior en test_reviews y no modifica campañas, teléfonos remotos ni pendientes de sincronización.
+
+No pulses Enviar una prueba si el mensaje ya salió. Usa el botón de registro para conservar esa evidencia sin crear otro envío. La automatización de confirmación revisada aún debe validarse en el Windows real; los tests realizados aquí usan datos y controles simulados.

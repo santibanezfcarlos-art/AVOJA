@@ -136,6 +136,33 @@ class Detection(unittest.TestCase):
         adapter.read_edit=lambda edit:''
         adapter.clipboard_text=lambda edit:self.fail('Do not select/copy a blank editor')
         self.assertFalse(adapter.message_matches(None,'Prueba'))
+    def test_post_send_chat_check_reads_background_without_activating(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        editor=Window(1,111,'Escribir un mensaje para Persona')
+        adapter.one=lambda selector:editor;adapter.profile=module.DEFAULT_PROFILE
+        adapter.window=Window(1,100);adapter.hwnd=100;adapter.pid=1
+        adapter.win32gui=SimpleNamespace(IsWindow=lambda h:True)
+        adapter.phone='56911111111'
+        adapter.chat_signature=(tuple(editor.element_info.runtime_id),editor.element_info.name)
+        adapter.foreground=lambda:self.fail('Read-only confirmation must not require foreground')
+        self.assertTrue(adapter.verify_recipient('56911111111',foreground_required=False))
+        editor.element_info.name='Otra conversación'
+        with self.assertRaises(module.VerificationError):adapter.verify_recipient('56911111111',foreground_required=False)
+    def test_successful_post_send_confirmation_is_entirely_read_only(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp);checks=[]
+        message='¡Hola! 👋\nConexión 🌿'
+        body=Window(1,201,message);body.element_info.control_type='Text'
+        status=Window(1,202,'17:14 Entregado ');status.element_info.control_type='Button'
+        row=Window(1,200,children=[body,status])
+        adapter.gate=lambda:None;adapter.phone='56911111111';adapter.before=set()
+        adapter.verify_recipient=lambda p,foreground_required=True:checks.append(foreground_required)
+        adapter.outgoing=lambda:[row];adapter.profile=module.DEFAULT_PROFILE
+        adapter.one=lambda selector:None;adapter.read_edit=lambda editor:''
+        adapter.foreground=lambda:self.fail('No foreground check after send')
+        adapter.activate_window=lambda:self.fail('No window activation after send')
+        adapter.emit_key=lambda *args:self.fail('No keyboard actions after send')
+        adapter.verify_sent(message)
+        self.assertEqual(checks,[False])
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)

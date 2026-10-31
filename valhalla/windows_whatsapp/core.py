@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -26,7 +27,8 @@ class Journal:
               campaign TEXT, phone TEXT, message_hash TEXT, attempt TEXT,
               state TEXT, reason TEXT, PRIMARY KEY(campaign,phone));
               CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY, attempt TEXT,status TEXT,reason TEXT);
-              CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT);''')
+              CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT);
+              CREATE TABLE IF NOT EXISTS test_reviews (id INTEGER PRIMARY KEY,campaign TEXT,phone TEXT,previous_state TEXT,reviewed_at TEXT,source TEXT);''')
             # Preserve recovery as a durable result to synchronize on reconnect.
             c.execute("INSERT INTO outbox(attempt,status,reason) SELECT attempt,'runner_uncertain','Interrupción: revisión manual requerida' FROM attempts WHERE attempt!='test' AND state IN ('runner_claimed','runner_prepared','runner_actioned')")
             # Crash recovery is conservative, even if the click probably never happened.
@@ -47,6 +49,20 @@ class Journal:
         with self.db() as c:c.execute('DELETE FROM outbox WHERE id=?',(id,))
     def test_history(self,p):
         with self.db() as c:return c.execute("SELECT state FROM attempts WHERE campaign LIKE 'prueba-%' AND phone=?",(p,)).fetchall()
+    def confirm_observed_test(self,p):
+        # This explicit UI action applies only to the fixed self-test, never a campaign.
+        p=phone(p);expected=hashlib.sha256(TEST_MESSAGE.encode()).hexdigest()
+        with self.db() as c:
+            row=c.execute("SELECT campaign,state,message_hash,attempt FROM attempts WHERE campaign LIKE 'prueba-%' AND phone=? ORDER BY rowid DESC LIMIT 1",(p,)).fetchone()
+            if not row or row[2]!=expected or row[3]!='test':raise ValueError('No hay una prueba local de este mensaje para ese número.')
+            if row[1] not in ('runner_actioned','runner_uncertain','runner_confirmed_ui','test_confirmed_by_user'):
+                raise ValueError('La última prueba no llegó a accionar Enviar. No se modifica su registro.')
+            if row[1]!='test_confirmed_by_user':
+                c.execute('INSERT INTO test_reviews(campaign,phone,previous_state,reviewed_at,source) VALUES(?,?,?,?,?)',
+                          (row[0],p,row[1],datetime.now(timezone.utc).isoformat(),'user_observed_sent'))
+                c.execute("UPDATE attempts SET state='test_confirmed_by_user',reason='El usuario confirmó el mensaje visible en su conversación; no se reenvió' WHERE campaign=? AND phone=?",(row[0],p))
+            c.execute("INSERT OR REPLACE INTO meta VALUES('test_passed','user_observed_sent')")
+            return row[0]
     def test_passed(self):
         with self.db() as c:return bool(c.execute("SELECT 1 FROM meta WHERE key='test_passed'").fetchone())
     def pass_test(self):

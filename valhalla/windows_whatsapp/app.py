@@ -17,12 +17,13 @@ class App:
     def __init__(self,root):
         self.root=root;self.minimized_for_send=False;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False
         self.journal=Journal(FOLDER/'registro.sqlite3');self.api=None;self.data=None
-        root.title('Valhalla · WhatsApp Windows v1.8');root.geometry('840x650')
+        root.title('Valhalla · WhatsApp Windows v1.9');root.geometry('840x650')
         frame=ttk.Frame(root,padding=16);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='1 · Prueba exclusivamente con tu propio número',font=('',12,'bold')).pack(anchor='w')
         self.number=tk.StringVar();ttk.Entry(frame,textvariable=self.number).pack(fill='x',pady=6)
         ttk.Label(frame,text=TEST_MESSAGE).pack(anchor='w')
         self.test_button=ttk.Button(frame,text='Enviar una prueba a mi número',command=self.test);self.test_button.pack(anchor='w',pady=6)
+        self.observed_button=ttk.Button(frame,text='Registrar prueba ya enviada · sin reenviar',command=self.confirm_observed_test);self.observed_button.pack(anchor='w')
         ttk.Label(frame,text='2 · Conecta una campaña desde Administración → WhatsApp',font=('',12,'bold')).pack(anchor='w',pady=(15,0))
         self.token=tk.StringVar();ttk.Entry(frame,textvariable=self.token,show='•').pack(fill='x',pady=6)
         self.connect_button=ttk.Button(frame,text='Cargar selección y conteos actuales (sin enviar)',command=self.connect);self.connect_button.pack(anchor='w')
@@ -51,7 +52,7 @@ class App:
                     self.busy=False
                     if self.minimized_for_send:
                         self.minimized_for_send=False;self.root.deiconify()
-                    for b in (self.test_button,self.connect_button,self.start_button,self.diag_button):b.configure(state='normal')
+                    for b in (self.test_button,self.observed_button,self.connect_button,self.start_button,self.diag_button):b.configure(state='normal')
         except queue.Empty:pass
         self.root.after(100,self.poll)
     def gate(self):
@@ -66,7 +67,7 @@ class App:
         self.busy=True;self.pause.clear();self.stop.clear()
         self.minimized_for_send=hide
         if hide:self.root.iconify()
-        for b in (self.test_button,self.connect_button,self.start_button,self.diag_button):b.configure(state='disabled')
+        for b in (self.test_button,self.observed_button,self.connect_button,self.start_button,self.diag_button):b.configure(state='disabled')
         def work():
             # COM initialization is required on this worker, not only the Tk main thread.
             import pythoncom
@@ -87,6 +88,13 @@ class App:
         def work():
             Runner(self.journal,self.adapter(),self.gate,self.log).run_one('prueba-'+uuid.uuid4().hex,{'phone':p,'message':TEST_MESSAGE},test=True)
         self.task(work,hide=True)
+    def confirm_observed_test(self):
+        try:
+            p=phone(self.number.get())
+            self.journal.confirm_observed_test(p)
+            self.log('Prueba registrada como enviada por tu confirmación. No se envió otro mensaje.')
+            self.log('La confirmación es manual; no acredita entrega ni lectura por el destinatario.')
+        except ValueError as error:messagebox.showerror('Registro de prueba',str(error))
     def connect(self):
         token=self.token.get().strip()
         if not token:return
