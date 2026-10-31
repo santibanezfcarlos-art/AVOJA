@@ -102,3 +102,9 @@ Si falla, guarda automáticamente diagnostico-foco.json con los identificadores 
 ## Corrección 1.6 · teclas virtuales explícitas
 
 Ctrl+V y Enter usan ahora eventos nativos con códigos de tecla virtual (Control=0x11, V=0x56, Enter=0x0D), comprobando foco de ventana y editor antes de cada pulsación. No se usa VK_PACKET para el atajo. Los modificadores se liberan incluso ante errores. Si la lectura del texto no coincide, guarda diagnostico-editor.json con los contenidos esperados/leídos del editor; puede contener el mensaje y permanece local. No reintenta el envío ni pulsa Enter si no verifica el texto. Validación real en el equipo del usuario pendiente.
+
+## Corrección 1.7 · mensaje precargado en el enlace nativo
+
+El diagnóstico del equipo confirmó que Ctrl+V no dejó texto en el editor: ValuePattern, TextPattern y el hijo Text devolvieron solo un salto de línea. Esta revisión pasa el texto Unicode codificado directamente en whatsapp://send?phone=NUMERO&text=MENSAJE. Espera hasta leer el texto exacto en el editor y acciona el botón accesible Enviar mediante UIA. No usa Ctrl+V ni Enter para esta ruta. Si el texto no se carga o no coincide, se detiene y guarda el diagnóstico; no reintenta.
+
+Esta sección sustituye las descripciones de portapapeles y teclado de versiones anteriores. WhatsApp controla la precarga del borrador en el chat solicitado. La ejecución real de la nueva ruta sigue pendiente de validar en el computador del usuario.

@@ -102,7 +102,7 @@ class Backend(unittest.TestCase):
 
 class FakeUI:
     def __init__(self,fail=None):self.fail=fail;self.sent=0
-    def open_chat(self,p):pass
+    def open_chat(self,p,message):pass
     def verify_recipient(self,p):
         if self.fail=='recipient':raise RuntimeError('wrong recipient')
     def prepare(self,m):pass

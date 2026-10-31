@@ -58,17 +58,26 @@ class Detection(unittest.TestCase):
         self.assertEqual(module.editor_text('Borrador\r\n',paragraph=True),'Borrador')
         self.assertEqual(module.editor_text('¡Hola! 👋\r\nConexión 🌿\r\n',paragraph=True),'¡Hola! 👋\nConexión 🌿')
         self.assertEqual(module.editor_text(' '),' ')
-    def test_send_enter_is_bound_to_focused_editor(self):
-        adapter=module.WhatsApp.__new__(module.WhatsApp)
-        keys=[]
-        node=SimpleNamespace(element_info=SimpleNamespace(element=SimpleNamespace(CurrentHasKeyboardFocus=True)),type_keys=lambda *a,**kw:keys.append((a,kw)))
-        adapter.focus_editor=lambda:node;adapter.gate=lambda:None;adapter.foreground=lambda:None
-        adapter.expected_message='Prueba';adapter.verify_content=lambda message:None
-        adapter.emit_key=lambda vk,flags:keys.append((vk,flags))
-        adapter.send();self.assertEqual(keys,[(0x0D,0),(0x0D,2)])
-        node.element_info.element.CurrentHasKeyboardFocus=False
+    def test_send_invokes_only_unique_verified_button(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp);calls=[]
+        adapter.gate=lambda:None;adapter.foreground=lambda:None
+        adapter.expected_message='Prueba';adapter.verify_content=lambda message:calls.append('verified')
+        adapter.profile=module.DEFAULT_PROFILE
+        button=SimpleNamespace(invoke=lambda:calls.append('invoked'))
+        adapter.one=lambda selector:button
+        adapter.send();self.assertEqual(calls,['verified','invoked'])
+        def mismatch(message):raise module.VerificationError('mismatch')
+        adapter.verify_content=mismatch
         with self.assertRaises(module.VerificationError):adapter.send()
-        self.assertEqual(len(keys),2)
+        self.assertEqual(calls,['verified','invoked'])
+    def test_native_link_preserves_unicode_and_line_breaks(self):
+        from urllib.parse import urlparse,parse_qs
+        msg='¡Hola, Ángela! 👋\nConexión 🌿 & +'
+        url=module.native_chat_url('56911111111',msg)
+        parsed=urlparse(url)
+        self.assertEqual(parsed.scheme,'whatsapp')
+        self.assertEqual(parse_qs(parsed.query),{'phone':['56911111111'],'text':[msg]})
+        with self.assertRaises(module.VerificationError):module.native_chat_url('invalid',msg)
     def test_bound_chat_check_does_not_open_profile(self):
         adapter=module.WhatsApp.__new__(module.WhatsApp)
         editor=Window(1,111,'Escribir un mensaje para Persona')

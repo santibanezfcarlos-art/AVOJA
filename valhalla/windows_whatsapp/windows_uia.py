@@ -4,6 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
+from urllib.parse import urlencode, quote
 from core import normalized, Stopped
 
 DEFAULT_PROFILE = {
@@ -29,6 +30,12 @@ def matches(node,selector):
     if selector.get('name_regex') and not re.search(selector['name_regex'],i.name or ''):return False
     if selector.get('auto_id_regex') and not re.search(selector['auto_id_regex'],i.automation_id or ''):return False
     return node.is_visible() and node.is_enabled()
+
+def native_chat_url(p,message):
+    require(re.fullmatch(r'569\d{8}',p) is not None,'Teléfono inválido.')
+    url='whatsapp://send?'+urlencode({'phone':p,'text':message},quote_via=quote,encoding='utf-8',errors='strict')
+    require(len(url)<30000,'El mensaje excede el tamaño del enlace que admite el lanzador de Windows.')
+    return url
 
 def process_in_family(pid,root_pid,parent_pid):
     if not pid or not root_pid:return False
@@ -233,7 +240,7 @@ class WhatsApp:
             # Release modifiers even if a keyboard event or focus check fails.
             for key in sorted(down,reverse=True):self.emit_key(key,2)
     def editor_report(self,editor,message):
-        report={'version':'1.6','expected':message,'accessible_name':editor.element_info.name}
+        report={'version':'1.7','expected':message,'accessible_name':editor.element_info.name}
         for name,read in [('value_pattern',lambda:editor.iface_value.CurrentValue),
                           ('text_pattern',lambda:editor.iface_text.DocumentRange.GetText(-1))]:
             try:report[name]=read()
@@ -241,10 +248,10 @@ class WhatsApp:
         try:report['child_texts']=[n.element_info.name for n in control_tree(editor) if n.element_info.control_type=='Text']
         except Exception:pass
         (self.folder/'diagnostico-editor.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    def open_chat(self,p):
+    def open_chat(self,p,message):
         self.phone=p;self.chat_signature=None
         settle=time.monotonic()+1
-        os.startfile('whatsapp://send?phone='+p)
+        os.startfile(native_chat_url(p,message))
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:
             self.gate()
@@ -271,21 +278,17 @@ class WhatsApp:
                 'Cambió la conversación después de abrir el enlace. No se enviará.')
         return True
     def prepare(self,message):
-        self.foreground();edit=self.one(self.profile['composer'])
-        require(self.read_edit(edit)=='','Hay un borrador previo. No se sobrescribirá ni enviará.')
-        import win32clipboard
-        edit=self.focus_editor()
-        win32clipboard.OpenClipboard()
-        try:
-            win32clipboard.EmptyClipboard()
-            win32clipboard.SetClipboardText(message,win32clipboard.CF_UNICODETEXT)
-        finally:win32clipboard.CloseClipboard()
-        self.gate();self.foreground()
-        require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de pegar; no se pegará.')
-        self.native_keys(edit,[(0x11,0),(0x56,0),(0x56,2),(0x11,2)])
-        deadline=time.monotonic()+4
-        while self.read_edit(edit)!=normalized(message) and time.monotonic()<deadline:
-            self.gate();self.foreground();time.sleep(.1)
+        # The native protocol loads Unicode text directly into the requested chat.
+        # No clipboard or synthetic paste is used on this WhatsApp WebView build.
+        deadline=time.monotonic()+12
+        while True:
+            self.gate();self.foreground()
+            edit=self.one(self.profile['composer'])
+            if self.read_edit(edit)==normalized(message):break
+            if time.monotonic()>=deadline:
+                self.editor_report(edit,message)
+                raise VerificationError('WhatsApp no cargó el texto del enlace. Se guardó diagnostico-editor.json; no se enviará.')
+            time.sleep(.2)
         self.verify_content(message)
         self.before={tuple(n.element_info.runtime_id) for n in self.outgoing()}
     def verify_content(self,message):
@@ -307,13 +310,12 @@ class WhatsApp:
             if row is not None and row.element_info.control_type=='DataItem':rows.append(row)
         return unique_controls(rows)
     def send(self):
-        # Enter is explicitly targeted at the verified composer, never an arbitrary active window.
-        self.gate();edit=self.focus_editor()
+        self.gate();self.foreground()
         self.verify_content(self.expected_message)
+        button=self.one(self.profile['send'])
         self.foreground()
-        require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de Enter. El intento queda incierto.')
-        try:self.native_keys(edit,[(0x0D,0),(0x0D,2)])
-        except Exception:raise VerificationError('No se confirmó la acción Enter. El intento queda incierto; no se repetirá.')
+        try:button.invoke()
+        except Exception:raise VerificationError('La acción Enviar quedó incierta. No se repetirá automáticamente.')
     def verify_sent(self,message):
         deadline=time.monotonic()+20
         while time.monotonic()<deadline:
@@ -336,7 +338,7 @@ class WhatsApp:
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.6','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.7','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()
