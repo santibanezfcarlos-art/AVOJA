@@ -65,11 +65,11 @@ class Detection(unittest.TestCase):
         adapter.profile=module.DEFAULT_PROFILE
         button=SimpleNamespace(invoke=lambda:calls.append('invoked'))
         adapter.one=lambda selector:button
-        adapter.send();self.assertEqual(calls,['verified','invoked'])
+        adapter.send();self.assertEqual(calls,['invoked'])
         def mismatch(message):raise module.VerificationError('mismatch')
-        adapter.verify_content=mismatch
+        adapter.expected_message=None
         with self.assertRaises(module.VerificationError):adapter.send()
-        self.assertEqual(calls,['verified','invoked'])
+        self.assertEqual(calls,['invoked'])
     def test_native_link_preserves_unicode_and_line_breaks(self):
         from urllib.parse import urlparse,parse_qs
         msg='¡Hola, Ángela! 👋\nConexión 🌿 & +'

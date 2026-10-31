@@ -141,6 +141,12 @@ class Desktop(unittest.TestCase):
         self.assertTrue(runner.run_one('2',self.item))
         self.assertEqual(ui.sent,2)
 
+    def test_only_one_content_verification_per_recipient(self):
+        ui=FakeUI();calls=[]
+        ui.verify_content=lambda message:calls.append(message)
+        self.assertTrue(self.run_with(ui).run_one('single',self.item))
+        self.assertEqual(calls,[self.item['message']]);self.assertEqual(ui.sent,1)
+
     def test_restart_blocks_prepared_attempt(self):
         self.j.begin('1',self.item['phone'],self.item['message'],'a')
         self.j.state('1',self.item['phone'],'runner_prepared')

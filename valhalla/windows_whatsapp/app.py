@@ -18,7 +18,7 @@ class App:
     def __init__(self,root):
         self.root=root;self.minimized_for_send=False;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False
         self.journal=Journal(FOLDER/'registro.sqlite3');self.api=None;self.data=None
-        root.title('Valhalla · WhatsApp Windows v1.12');root.geometry('900x900')
+        root.title('Valhalla · WhatsApp Windows v1.13');root.geometry('900x900')
         frame=ttk.Frame(root,padding=16);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='1 · Prueba exclusivamente con tu propio número',font=('',12,'bold')).pack(anchor='w')
         self.number=tk.StringVar();ttk.Entry(frame,textvariable=self.number).pack(fill='x',pady=6)
@@ -134,7 +134,7 @@ class App:
                 runner=Runner(self.journal,self.adapter(),self.gate,self.log,self.api)
                 for item in fresh['recipients']:
                     self.gate();runner.run_one(fresh['campaign_id'],item)
-                    for _ in range(30):self.gate();time.sleep(.1)
+                    for _ in range(8):self.gate();time.sleep(.1)
                 self.log('Cola finalizada. Comprobado en interfaz no significa entregado.')
             self.task(work,hide=True)
         ttk.Button(review,text='Iniciar envío de esta selección',command=start).pack(pady=10)

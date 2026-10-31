@@ -310,7 +310,7 @@ class WhatsApp:
         (self.folder/'diagnostico-editor.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     def open_chat(self,p,message):
         self.phone=p;self.chat_signature=None
-        settle=time.monotonic()+1
+        settle=time.monotonic()+1.5
         os.startfile(native_chat_url(p,message))
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:
@@ -342,26 +342,22 @@ class WhatsApp:
                 'Cambió la conversación después de abrir el enlace. No se enviará.')
         return True
     def prepare(self,message):
-        # The native protocol loads Unicode text directly into the requested chat.
-        # No clipboard or synthetic paste is used on this WhatsApp WebView build.
-        deadline=time.monotonic()+12
+        # Capture prior outgoing rows before the single full draft verification.
+        self.expected_message=None
+        self.before={tuple(n.element_info.runtime_id) for n in self.outgoing()}
+    def verify_content(self,message):
+        # One logical full verification per recipient; wait for native text loading.
+        deadline=time.monotonic()+15
         while True:
             self.gate();self.foreground()
             edit=self.one(self.profile['composer'])
-            if self.message_matches(edit,message):break
+            if self.message_matches(edit,message):
+                self.expected_message=message
+                return
             if time.monotonic()>=deadline:
                 self.editor_report(edit,message)
-                raise VerificationError('No se pudo verificar el texto completo, incluida su copia Unicode. Se guardó diagnostico-editor.json; no se enviará.')
-            time.sleep(.2)
-        self.verify_content(message)
-        self.before={tuple(n.element_info.runtime_id) for n in self.outgoing()}
-    def verify_content(self,message):
-        self.foreground()
-        edit=self.one(self.profile['composer'])
-        if not self.message_matches(edit,message):
-            self.editor_report(edit,message)
-            raise VerificationError('El texto pegado no coincide. Se guardó diagnostico-editor.json; no se pulsará Enter.')
-        self.expected_message=message
+                raise VerificationError('El texto no coincide tras esperar su carga. Se guardó diagnostico-editor.json; no se enviará.')
+            time.sleep(.3)
     def outgoing(self):
         rows=[]
         for marker in self.nodes():
@@ -375,7 +371,7 @@ class WhatsApp:
         return unique_controls(rows)
     def send(self):
         self.gate();self.foreground()
-        self.verify_content(self.expected_message)
+        require(bool(getattr(self,'expected_message',None)),'Falta la comprobación del mensaje. No se enviará.')
         button=self.one(self.profile['send'])
         self.foreground()
         try:button.invoke()
@@ -398,7 +394,7 @@ class WhatsApp:
         path=self.folder/'diagnostico-envio.json';path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
         return path
     def verify_sent(self,message):
-        deadline=time.monotonic()+20
+        deadline=time.monotonic()+3
         while time.monotonic()<deadline:
             self.gate();self.verify_recipient(self.phone,foreground_required=False)
             for row in self.outgoing():
@@ -418,8 +414,7 @@ class WhatsApp:
                 if any(re.fullmatch(self.profile['sent_status_regex'],t) for t in status_labels) and self.read_edit(self.one(self.profile['composer']))=='':
                     return
             time.sleep(.4)
-        try:self.sent_report(message)
-        except Exception:pass
+        # Do not dump full conversation trees on every unconfirmed send.
         raise ConfirmationPending()
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.

@@ -113,14 +113,15 @@ class Runner:
             self.gate();self.ui.verify_recipient(p)
             self.log('Chat abierto. Comprobando el mensaje cargado…')
             self.ui.prepare(message)
-            self.gate();self.ui.verify_recipient(p);self.ui.verify_content(message)
+            self.gate()
+            self.ui.verify_recipient(p);self.ui.verify_content(message)
             record('runner_prepared')
             self.gate()
             if self.api:self.api.call('check',attempt=aid)
-            self.ui.verify_recipient(p);self.ui.verify_content(message)
+            self.ui.verify_recipient(p)
             # Write-ahead: crash/timeout at the next line can never cause an automatic retry.
             actioned=True;record('runner_actioned')
-            self.gate();self.ui.verify_recipient(p);self.ui.verify_content(message)
+            self.gate();self.ui.verify_recipient(p)
             self.log('Mensaje comprobado. Accionando Enviar…')
             self.ui.send()
             send_returned=True
