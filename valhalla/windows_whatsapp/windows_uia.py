@@ -22,18 +22,30 @@ class VerificationError(Exception):
 def require(condition,reason):
     if not condition:raise VerificationError(reason)
 
+def invalid_notices(nodes):
+    candidates=[n for n in nodes if n.element_info.control_type in ('Dialog','Window') and (n.element_info.name or '').strip().lower()!='whatsapp']
+    for button in nodes:
+        if button.element_info.control_type!='Button' or not re.fullmatch(r'(?i)(ok|aceptar|cerrar|cancelar|cancel|close)',button.element_info.name or ''):continue
+        parent=button
+        for _ in range(4):
+            try:parent=parent.parent()
+            except Exception:break
+            if parent is None:break
+            candidates.append(parent)
+    result=[]
+    for dialog in candidates:
+        try:children=control_tree(dialog,limit=64)
+        except Exception:continue
+        if any(n.element_info.control_type in ('Edit','DataItem') for n in children):continue
+        labels=' '.join(n.element_info.name or '' for n in children)
+        if re.search(r"(?i)(no (?:está|esta) en whatsapp|no (?:tiene|usa) whatsapp|no es válido|no es valido|isn.t on whatsapp|not (?:on|registered (?:on|with)) whatsapp|phone number.*invalid)",labels):
+            result.append(children)
+    return result
+
 def unavailable_reason(nodes):
-    # Only a dedicated action or an actual dialog; never infer from chat history.
     if any(n.element_info.control_type=='Button' and re.fullmatch(r'(?i)\s*(desbloquear|unblock)\s*',n.element_info.name or '') for n in nodes):
         return 'Contacto bloqueado en WhatsApp. No se desbloqueó ni se envió.'
-    for dialog in nodes:
-        if dialog.element_info.control_type not in ('Window','Dialog'):continue
-        if not getattr(dialog.element_info,'name',''):continue
-        # The main WhatsApp window is not an error dialog.
-        if re.fullmatch(r'(?i)whatsapp',dialog.element_info.name.strip()):continue
-        labels=' '.join(n.element_info.name or '' for n in control_tree(dialog))
-        if re.search(r'(?i)(no (?:está|esta) en whatsapp|no (?:tiene|usa) whatsapp|no es válido|no es valido|isn.t on whatsapp|not (?:on|registered (?:on|with)) whatsapp|phone number.*invalid)',labels):
-            return 'WhatsApp indica número no válido o sin cuenta. No se envió.'
+    if invalid_notices(nodes):return 'WhatsApp indica número no válido o sin cuenta. No se envió.'
     return None
 
 def matches(node,selector):
@@ -332,18 +344,7 @@ class WhatsApp:
             try:
                 self.find_window();self.activate_window();self.foreground()
                 if time.monotonic()>=settle:
-                    nodes=self.nodes();reason=unavailable_reason(nodes)
-                    if reason:
-                        if 'indica número' in reason:
-                            # Dismiss only an identified invalid-number dialog's neutral button.
-                            for dialog in nodes:
-                                if dialog.element_info.control_type not in ('Dialog','Window'):continue
-                                if unavailable_reason([dialog])!=reason:continue
-                                buttons=[n for n in control_tree(dialog) if n.element_info.control_type=='Button' and re.fullmatch(r'(?i)(ok|aceptar|cerrar|cancelar|cancel|close)',n.element_info.name or '')]
-                                if len(buttons)==1:
-                                    self.foreground();buttons[0].invoke()
-                                    break
-                        raise RecipientUnavailable(reason)
+                    self.check_unavailable()
                 editor=self.one(self.profile['composer'])
                 if time.monotonic()<settle:
                     time.sleep(.1);continue
@@ -362,6 +363,16 @@ class WhatsApp:
                 raise VerificationError('No se puede leer WhatsApp. Detenido para revisar la aplicación.') from None
             raise RecipientUnavailable('El chat no cargó un editor utilizable dentro de 25 segundos. No se envió; causa sin confirmar.')
         raise VerificationError('WhatsApp no abrió un chat accesible. '+last_error)
+    def check_unavailable(self):
+        nodes=self.nodes();reason=unavailable_reason(nodes)
+        if not reason:return
+        if 'indica número' in reason:
+            for children in invalid_notices(nodes):
+                buttons=[n for n in children if n.element_info.control_type=='Button' and re.fullmatch(r'(?i)(ok|aceptar|cerrar|cancelar|cancel|close)',n.element_info.name or '')]
+                if len(buttons)==1:
+                    self.foreground();buttons[0].invoke()
+                    break
+        raise RecipientUnavailable(reason)
     def verify_recipient(self,p,foreground_required=True):
         # User-selected workflow: rely on the requested native deep link, then bind
         # the resulting editor for the whole attempt. No contact-profile navigation.
@@ -385,6 +396,7 @@ class WhatsApp:
         deadline=time.monotonic()+15
         while True:
             self.gate();self.foreground()
+            self.check_unavailable()
             edit=self.one(self.profile['composer'])
             if self.message_matches(edit,message):
                 self.expected_message=message

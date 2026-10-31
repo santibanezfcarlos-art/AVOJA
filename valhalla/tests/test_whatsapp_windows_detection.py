@@ -219,6 +219,21 @@ class UnavailableDetection(unittest.TestCase):
         with patch.object(module,'control_tree',return_value=[dialog,text]):
             self.assertIn('sin cuenta',module.unavailable_reason([dialog]))
 
+    def test_unnamed_webview_notice_found_from_ok_button(self):
+        parent=SimpleNamespace(element_info=SimpleNamespace(control_type='Pane',name=''))
+        text=SimpleNamespace(element_info=SimpleNamespace(control_type='Text',name='El número no está en WhatsApp'))
+        button=SimpleNamespace(element_info=SimpleNamespace(control_type='Button',name='OK'),parent=lambda:parent)
+        parent.parent=lambda:None
+        with patch.object(module,'control_tree',return_value=[parent,text,button]):
+            self.assertIn('sin cuenta',module.unavailable_reason([text,button]))
+    def test_late_notice_is_checked_before_message_read(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        adapter.gate=lambda:None;adapter.foreground=lambda:None
+        def notice():raise core.RecipientUnavailable('Número sin WhatsApp')
+        adapter.check_unavailable=notice
+        adapter.one=lambda selector:self.fail('Must not read old composer after error alert')
+        with self.assertRaises(core.RecipientUnavailable):adapter.verify_content('Mensaje')
+
     def test_chat_text_is_not_a_block_or_invalid_number_signal(self):
         node=SimpleNamespace(element_info=SimpleNamespace(control_type='Text',name='Este número no tiene WhatsApp. Desbloquear'))
         self.assertIsNone(module.unavailable_reason([node]))
