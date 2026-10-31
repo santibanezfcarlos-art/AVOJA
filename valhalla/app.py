@@ -334,6 +334,8 @@ class Store:
                 c.execute("ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'accreditation'")
             from whatsapp_campaigns import initialize
             initialize(c)
+            import whatsapp_runner
+            whatsapp_runner.initialize(c)
 
     @contextmanager
     def connection(self, write=False):
@@ -1630,6 +1632,18 @@ class Handler(BaseHTTPRequestHandler):
             if origin and origin not in ('http://' + self.headers.get('Host', ''), 'https://' + self.headers.get('Host', '')):
                 raise Problem('Origen no permitido.', 403)
             body = self.body()
+            if self.path.startswith('/api/whatsapp-runner/'):
+                import whatsapp_runner
+                try:
+                    authorization = self.headers.get('Authorization', '')
+                    token = authorization[7:] if authorization.startswith('Bearer ') else ''
+                    result = whatsapp_runner.api(self.server.store, token, self.path.rsplit('/',1)[-1], body)
+                except PermissionError as error:
+                    raise Problem(str(error), 403) from error
+                except (ValueError, TypeError) as error:
+                    raise Problem(str(error)) from error
+                self.respond(result)
+                return
             if self.path == '/api/microsoft/start':
                 self.start_microsoft()
                 return
@@ -1705,6 +1719,14 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/discounts/quote':
                 with store.connection() as c:result=store.discount_quote(c,body.get('catalog_id'),body.get('discount_code',''))
                 self.respond(result);return
+            elif self.path == '/api/admin/whatsapp/runner-connect':
+                self.admin(user)
+                import whatsapp_runner
+                try:
+                    self.respond(whatsapp_runner.issue(store,user['id'],body))
+                except (ValueError, TypeError) as error:
+                    raise Problem(str(error)) from error
+                return
             elif self.path in ('/api/admin/whatsapp/preview','/api/admin/whatsapp/import','/api/admin/whatsapp/campaign','/api/admin/whatsapp/open','/api/admin/whatsapp/status','/api/admin/whatsapp/optout'):
                 self.admin(user)
                 self.respond(store.whatsapp_action(user['id'],body,self.path.rsplit('/',1)[-1]))
