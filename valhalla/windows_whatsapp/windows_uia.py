@@ -30,6 +30,15 @@ def matches(node,selector):
     if selector.get('auto_id_regex') and not re.search(selector['auto_id_regex'],i.automation_id or ''):return False
     return node.is_visible() and node.is_enabled()
 
+def process_in_family(pid,root_pid,parent_pid):
+    if not pid or not root_pid:return False
+    seen=set()
+    for _ in range(12):
+        if pid==root_pid:return True
+        if not pid or pid in seen:return False
+        seen.add(pid);pid=parent_pid(pid)
+    return False
+
 def editor_text(value,paragraph=False):
     value=normalized(value)
     if not value.replace('\n',''):return ''
@@ -70,8 +79,9 @@ class WhatsApp:
         # Imports stay lazy so the state machine can be tested on Linux.
         import psutil
         import win32gui
+        import win32process
         from pywinauto import Desktop
-        self.psutil=psutil;self.win32gui=win32gui;self.desktop=Desktop(backend='uia')
+        self.psutil=psutil;self.win32gui=win32gui;self.win32process=win32process;self.desktop=Desktop(backend='uia')
         self.folder=Path(folder);self.gate=gate;self.window=None;self.before=set()
         profile=self.folder/'uia-profile.json'
         if not profile.exists():profile.write_text(json.dumps(DEFAULT_PROFILE,indent=2,ensure_ascii=False),encoding='utf-8')
@@ -129,11 +139,64 @@ class WhatsApp:
                 'No se identificó una ventana nativa única de WhatsApp ('+str(len(windows))+
                 ' candidatas). Pulsa Diagnosticar UIA; ahora genera un informe incluso sin detectar la ventana.')
         self.window=windows[0];self.pid=self.window.process_id();self.hwnd=self.window.handle
+    def owns_foreground(self):
+        active=self.win32gui.GetForegroundWindow()
+        if not active:return False
+        if self.win32gui.GetAncestor(active,2)==self.win32gui.GetAncestor(self.hwnd,2):return True
+        # WinUI/WebView may activate a different native HWND owned by the app's
+        # child process. HWND equality alone falsely rejects that genuine editor.
+        try:
+            active_pid=self.win32process.GetWindowThreadProcessId(active)[1]
+            return process_in_family(active_pid,self.pid,lambda pid:self.psutil.Process(pid).ppid())
+        except Exception:return False
+    def focus_report(self,stage):
+        try:
+            active=self.win32gui.GetForegroundWindow()
+            active_pid=self.win32process.GetWindowThreadProcessId(active)[1] if active else 0
+            record={'stage':stage,'whatsapp_hwnd':self.hwnd,'whatsapp_pid':self.pid,
+                    'foreground_hwnd':active,'foreground_pid':active_pid,
+                    'foreground_process':self.process_name(active_pid),'belongs_to_whatsapp':self.owns_foreground()}
+            path=self.folder/'diagnostico-foco.json'
+            records=json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
+            records.append(record);path.write_text(json.dumps(records[-30:],ensure_ascii=False,indent=2),encoding='utf-8')
+        except Exception:pass
+    def activate_window(self):
+        require(self.window is not None and self.win32gui.IsWindow(self.hwnd),'WhatsApp ya no está disponible.')
+        require(self.window.process_id()==self.pid,'Cambió el proceso de WhatsApp.')
+        self.focus_report('antes_de_activar')
+        if self.win32gui.IsIconic(self.hwnd):self.win32gui.ShowWindow(self.hwnd,9)
+        if not self.owns_foreground():
+            try:
+                self.win32gui.BringWindowToTop(self.hwnd)
+                self.win32gui.SetForegroundWindow(self.hwnd)
+            except Exception:pass
+        if not self.owns_foreground():
+            # Join input queues only for activation, and always detach afterwards.
+            # This uses the standard Windows API; no foreground-lock settings change.
+            import ctypes
+            current=ctypes.windll.kernel32.GetCurrentThreadId()
+            active=self.win32gui.GetForegroundWindow()
+            target_thread=self.win32process.GetWindowThreadProcessId(self.hwnd)[0]
+            active_thread=self.win32process.GetWindowThreadProcessId(active)[0] if active else 0
+            attached=[]
+            try:
+                for thread in set((target_thread,active_thread)):
+                    if thread and thread!=current and ctypes.windll.user32.AttachThreadInput(current,thread,True):attached.append(thread)
+                self.win32gui.BringWindowToTop(self.hwnd)
+                self.win32gui.SetForegroundWindow(self.hwnd)
+            except Exception:pass
+            finally:
+                for thread in attached:ctypes.windll.user32.AttachThreadInput(current,thread,False)
+        deadline=time.monotonic()+1
+        while not self.owns_foreground() and time.monotonic()<deadline:self.gate();time.sleep(.05)
+        self.focus_report('después_de_activar')
+        require(self.owns_foreground(),'Windows no activó WhatsApp. Se guardó diagnostico-foco.json; no se pegará ni enviará.')
     def foreground(self):
         require(self.window is not None and self.win32gui.IsWindow(self.hwnd),'WhatsApp ya no está disponible.')
         require(self.window.process_id()==self.pid,'Cambió el proceso de WhatsApp.')
-        active=self.win32gui.GetForegroundWindow()
-        require(self.win32gui.GetAncestor(active,2)==self.win32gui.GetAncestor(self.hwnd,2),'WhatsApp perdió el primer plano. No se enviará.')
+        if not self.owns_foreground():
+            self.focus_report('foco_perdido')
+            raise VerificationError('WhatsApp perdió el foco. Se guardó diagnostico-foco.json con el proceso activo. No se enviará.')
         require(self.window.is_visible() and self.window.is_enabled(),'Ventana de WhatsApp bloqueada o no disponible.')
     def nodes(self):return control_tree(self.window)[1:]
     def one(self,selector):
@@ -148,7 +211,7 @@ class WhatsApp:
             try:return editor_text(node.iface_value.CurrentValue)
             except Exception:raise VerificationError('El campo no permite comprobar el texto mediante accesibilidad.')
     def focus_editor(self):
-        self.foreground();edit=self.one(self.profile['composer']);edit.set_focus()
+        self.activate_window();edit=self.one(self.profile['composer']);edit.set_focus()
         self.foreground()
         require(edit.element_info.element.CurrentHasKeyboardFocus,'El editor de WhatsApp no tiene el foco; no se pegará ni enviará.')
         return edit
@@ -160,7 +223,7 @@ class WhatsApp:
         while time.monotonic()<deadline:
             self.gate()
             try:
-                self.find_window();self.window.set_focus();self.foreground()
+                self.find_window();self.activate_window();self.foreground()
                 editor=self.one(self.profile['composer'])
                 if time.monotonic()<settle:
                     time.sleep(.1);continue
@@ -244,7 +307,7 @@ class WhatsApp:
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.4','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.5','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

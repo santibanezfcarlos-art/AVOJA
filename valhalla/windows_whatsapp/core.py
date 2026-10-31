@@ -87,8 +87,10 @@ class Runner:
             if self.api:self.api.flush(self.j)
             self.log(state+(' · '+reason if reason else ''))
         try:
+            self.log('Abriendo el chat…')
             self.gate();self.ui.open_chat(p)
             self.gate();self.ui.verify_recipient(p)
+            self.log('Chat abierto. Preparando y pegando el mensaje…')
             self.ui.prepare(message)
             self.gate();self.ui.verify_recipient(p);self.ui.verify_content(message)
             record('runner_prepared')
@@ -98,6 +100,7 @@ class Runner:
             # Write-ahead: crash/timeout at the next line can never cause an automatic retry.
             actioned=True;record('runner_actioned')
             self.gate();self.ui.verify_recipient(p);self.ui.verify_content(message)
+            self.log('Mensaje comprobado. Accionando Enter…')
             self.ui.send()
             self.ui.verify_sent(message)
             confirmed=True

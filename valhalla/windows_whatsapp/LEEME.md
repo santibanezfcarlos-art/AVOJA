@@ -92,3 +92,9 @@ La ejecución real en Windows sigue pendiente. En esta versión es válido que n
 Por indicación expresa del usuario, se elimina la navegación a la ficha del contacto. El flujo es abrir whatsapp://send?phone=NUMERO, enfocar el editor UIA, pegar Unicode, comprobar el contenido y pulsar Enter en ese editor. El programa se minimiza durante el intento y reaparece al terminar. Si se cambia la conversación o el primer plano, se detiene.
 
 En este modo el teléfono procede del enlace nativo solicitado: NO se verifica independientemente en la ficha. Se comprueba que el editor y el nombre accesible de la conversación resultante permanezcan iguales durante el intento. Las descripciones anteriores de comprobación de teléfono mediante ficha corresponden a versiones previas. Los estados de envío, el registro persistente y el bloqueo de reenvíos inciertos se conservan. La prueba real sigue pendiente de ejecutar en el equipo del usuario.
+
+## Corrección 1.5 · activación nativa y diagnóstico de foco
+
+La activación usa las funciones nativas de Windows SetForegroundWindow y, si hace falta, AttachThreadInput solo durante la activación, con separación posterior de las colas. No modifica parámetros del sistema. La comprobación acepta el HWND principal y los procesos hijos WebView de esa aplicación; sigue rechazando aplicaciones ajenas. El editor UIA específico debe mantener el foco antes de Ctrl+V y Enter.
+
+Si falla, guarda automáticamente diagnostico-foco.json con los identificadores y el nombre del proceso activo, sin texto de conversaciones. El registro visible muestra si llegó a abrir chat, pegar y accionar Enter. La ejecución real en Windows sigue pendiente de validar. Se mantiene el flujo sin ficha del contacto.

@@ -79,6 +79,22 @@ class Detection(unittest.TestCase):
         with self.assertRaises(module.VerificationError):adapter.verify_recipient('56922222222')
         editor.element_info.name='Escribir un mensaje para Otro contacto'
         with self.assertRaises(module.VerificationError):adapter.verify_recipient('56911111111')
+    def test_webview_process_family(self):
+        parents={30:20,20:10,10:1,40:1,50:50}
+        self.assertTrue(module.process_in_family(30,10,parents.get))
+        self.assertTrue(module.process_in_family(10,10,parents.get))
+        self.assertFalse(module.process_in_family(40,10,parents.get))
+        self.assertFalse(module.process_in_family(50,10,parents.get))
+        self.assertFalse(module.process_in_family(0,10,parents.get))
+    def test_native_webview_foreground_is_accepted_but_unrelated_app_is_not(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        adapter.hwnd=100;adapter.pid=10
+        adapter.win32gui=SimpleNamespace(GetForegroundWindow=lambda:200,GetAncestor=lambda h,k:h)
+        adapter.win32process=SimpleNamespace(GetWindowThreadProcessId=lambda h:(1,30))
+        adapter.psutil=SimpleNamespace(Process=lambda pid:SimpleNamespace(ppid=lambda:{30:20,20:10}.get(pid,0)))
+        self.assertTrue(adapter.owns_foreground())
+        adapter.win32process=SimpleNamespace(GetWindowThreadProcessId=lambda h:(1,40))
+        self.assertFalse(adapter.owns_foreground())
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)
