@@ -55,6 +55,18 @@ class Campaigns(unittest.TestCase):
         action(self.store,self.actor,self.body,'import')
         self.assertTrue(report(self.store)['contacts'][0]['registered'])
 
+    def test_direct_web_link_preserves_emoji_and_cleans_rich_text_links(self):
+        action(self.store,self.actor,self.body,'import')
+        message='Hola, {nombre}, 👋\n🌿 ✨ 👉 [https://valhallaoffice.cl](https://valhallaoffice.cl)'
+        cid=action(self.store,self.actor,{'name':'Emojis','message':message},'campaign')['id']
+        result=action(self.store,self.actor,{'phone':'56912345678','campaign_id':cid},'open')
+        parsed=urlparse(result['web_url'])
+        self.assertEqual(parsed.netloc,'web.whatsapp.com')
+        self.assertEqual(parse_qs(parsed.query)['text'],['Hola, Ana, 👋\n🌿 ✨ 👉 https://valhallaoffice.cl'])
+        self.assertNotIn('+',parsed.query)
+        self.assertIn('%F0%9F%91%8B',parsed.query)
+        self.assertEqual(parse_qs(urlparse(result['url']).query)['text'],parse_qs(parsed.query)['text'])
+
     def test_http_owner_only_csrf_and_import(self):
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.store=self.store
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()

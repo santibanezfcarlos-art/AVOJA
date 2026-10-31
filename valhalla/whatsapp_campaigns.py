@@ -5,7 +5,12 @@ import json
 import re
 import zipfile
 from datetime import datetime, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
+
+def clean_message(message):
+    # ChatGPT's rich-text clipboard may include Markdown links; WhatsApp needs plain text.
+    return re.sub(r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)',
+                  lambda m: m.group(2) if m.group(1) == m.group(2) else m.group(1) + ': ' + m.group(2), message)
 
 DEFAULT_MESSAGE = ('Hola, {nombre},\n\n¡Tenemos una noticia! Ya está disponible la nueva plataforma de Valhalla Office: https://valhallaoffice.cl\n\nPuedes revisar disponibilidad, comprar horas y reservar tu box. Para reservar para el día siguiente, puedes hacerlo hasta las 21:30 del día anterior. El código de acceso se envía automáticamente por correo a las 22:00 del día anterior.\n\n¡Te invitamos a conocerla!\nEquipo Valhalla Office\n\nSi prefieres no recibir estas novedades, avísanos por aquí.')
 
@@ -125,5 +130,7 @@ def action(store, actor, body, operation):
         c.execute('INSERT INTO whatsapp_progress VALUES(?,?,?,?) ON CONFLICT(campaign_id,phone) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at',
                   (campaign['id'],phone,status,timestamp))
         store.log(c,actor,'whatsapp_'+status,phone)
-        message = campaign['message'].replace('{nombre}',contact['first_name'])
-        return {'ok':True,'url':'https://wa.me/'+phone+'?'+urlencode({'text':message})} if operation=='open' else {'ok':True}
+        message = clean_message(campaign['message'].replace('{nombre}',contact['first_name']))
+        query = urlencode({'phone':phone,'text':message}, quote_via=quote, encoding='utf-8', errors='strict')
+        return {'ok':True,'url':'https://wa.me/'+phone+'?'+urlencode({'text':message},quote_via=quote),
+                'web_url':'https://web.whatsapp.com/send?'+query} if operation=='open' else {'ok':True}
