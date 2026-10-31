@@ -74,3 +74,9 @@ La detección inicial exigía una sola ventana llamada WhatsApp.exe y el diagnó
 Diagnosticar UIA ahora genera el archivo incluso sin detectar WhatsApp, con los procesos relevantes y el motivo de detección. No hace envíos. Para actualizar, cierra el programa anterior, extrae el ZIP actualizado y ejecuta Iniciar.cmd. Conserva el registro de intentos en LOCALAPPDATA.
 
 Primero ejecuta Diagnosticar UIA en esta revisión. No repitas la prueba de envío hasta resolver la identificación de la aplicación. La corrección pasó siete pruebas de detección con ventanas simuladas; la compatibilidad real con tu equipo sigue pendiente.
+
+## Corrección 1.2 · WhatsApp Business con WebView
+
+Incluye el editor «Escribir un mensaje para…», deduplicación de controles por RuntimeId y lectura del teléfono exacto en la ficha «Info. del contacto». Abre y cierra esa ficha desde el encabezado antes de escribir/enviar, comprobando también que su nombre corresponda a la conversación activa. No usa teléfonos encontrados en el historial. Actualiza los selectores iniciales anteriores conservando configuraciones personalizadas y el registro de envíos.
+
+Esta revisión se preparó a partir de los controles expuestos por la versión del usuario. Su ejecución real aún requiere validación en Windows. Extrae en una carpeta nueva, abre Iniciar.cmd y comprueba el título v1.2. Puedes realizar una nueva prueba manual a tu propio número; los intentos anteriores no se borran ni se reintentan solos. Durante la verificación verás abrirse y cerrarse la ficha del contacto varias veces.

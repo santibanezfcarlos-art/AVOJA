@@ -32,6 +32,26 @@ class Detection(unittest.TestCase):
         adapter.win32gui=SimpleNamespace(GetForegroundWindow=lambda:foreground)
         adapter.profile=module.DEFAULT_PROFILE
         return adapter
+    def test_duplicate_webview_controls_are_one_element(self):
+        edit=Window(1,111,'Escribir un mensaje para Persona')
+        edit.element_info.control_type='Edit'
+        other=Window(1,222,'Escribir un mensaje para Otra persona')
+        other.element_info.control_type='Edit'
+        self.assertEqual(module.unique_controls([edit]*79),[edit])
+        self.assertEqual(len(module.unique_controls([edit,other])),2)
+        self.assertTrue(module.matches(edit,module.DEFAULT_PROFILE['composer']))
+        self.assertFalse(module.matches(Window(1,333,'Buscar un chat o iniciar uno nuevo'),module.DEFAULT_PROFILE['composer']))
+    def test_contact_phone_requires_profile_context_and_exact_phone(self):
+        texts=['Info. del contacto','Info. y número de teléfono','Contacto prueba','+56 9 1111 1111']
+        module.verify_contact_details(texts,'Contacto prueba','56911111111')
+        for bad in (texts[:-1],texts+['+56 9 2222 2222'],texts[2:]):
+            with self.assertRaises(module.VerificationError):module.verify_contact_details(bad,'Contacto prueba','56911111111')
+        with self.assertRaises(module.VerificationError):module.verify_contact_details(texts,'Otro contacto','56911111111')
+        with self.assertRaises(module.VerificationError):module.verify_contact_details(texts,'Contacto prueba','56922222222')
+    def test_control_walk_deduplicates_runtime_ids(self):
+        editor=Window(1,111,'Escribir un mensaje para Persona')
+        root=Window(1,100,children=[editor]*79)
+        self.assertEqual(module.control_tree(root),[root,editor])
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)
