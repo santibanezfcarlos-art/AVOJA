@@ -220,7 +220,7 @@ class WhatsApp:
             try:return editor_text(node.iface_value.CurrentValue)
             except Exception:raise VerificationError('El campo no permite comprobar el texto mediante accesibilidad.')
     def focus_editor(self):
-        self.activate_window();edit=self.one(self.profile['composer']);edit.set_focus()
+        self.activate_window();edit=self.one(self.profile['composer']);edit.click_input()
         self.foreground()
         require(edit.element_info.element.CurrentHasKeyboardFocus,'El editor de WhatsApp no tiene el foco; no se pegará ni enviará.')
         return edit
@@ -239,8 +239,57 @@ class WhatsApp:
         finally:
             # Release modifiers even if a keyboard event or focus check fails.
             for key in sorted(down,reverse=True):self.emit_key(key,2)
+    def clipboard_text(self,editor):
+        # Focus the actual contenteditable via its UIA rectangle. No fixed coordinates.
+        # Then read the clipboard's plain Unicode selection, including embedded emoji.
+        import win32clipboard
+        import secrets
+        editor=self.focus_editor()
+        sentinel='valhalla-read-'+secrets.token_hex(16)
+        previous=None
+        win32clipboard.OpenClipboard()
+        try:
+            if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):previous=win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+            win32clipboard.EmptyClipboard();win32clipboard.SetClipboardText(sentinel,win32clipboard.CF_UNICODETEXT)
+        finally:win32clipboard.CloseClipboard()
+        value=None
+        try:
+            self.native_keys(editor,[(0x11,0),(0x41,0),(0x41,2),(0x11,2)])
+            self.native_keys(editor,[(0x11,0),(0x43,0),(0x43,2),(0x11,2)])
+            deadline=time.monotonic()+1.5
+            while time.monotonic()<deadline:
+                self.gate();self.foreground()
+                win32clipboard.OpenClipboard()
+                try:
+                    if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
+                        candidate=win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+                        if candidate!=sentinel:value=normalized(candidate);break
+                finally:win32clipboard.CloseClipboard()
+                time.sleep(.05)
+            self.last_clipboard_read=value
+            return value
+        finally:
+            # Arrow Right removes the selection without changing its contents.
+            if self.owns_foreground() and editor.element_info.element.CurrentHasKeyboardFocus:
+                self.native_keys(editor,[(0x27,0),(0x27,2)])
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+                if previous is not None:win32clipboard.SetClipboardText(previous,win32clipboard.CF_UNICODETEXT)
+            finally:win32clipboard.CloseClipboard()
+    def message_matches(self,editor,message):
+        current=self.read_edit(editor)
+        if current==normalized(message):
+            self.message_projection=current
+            return True
+        if current and self.clipboard_text(editor)==normalized(message):
+            # This exact projection was independently bound to the complete Unicode
+            # draft via clipboard; do not remove arbitrary emoji or whitespace.
+            self.message_projection=current
+            return True
+        return False
     def editor_report(self,editor,message):
-        report={'version':'1.7','expected':message,'accessible_name':editor.element_info.name}
+        report={'version':'1.8','expected':message,'accessible_name':editor.element_info.name,'clipboard_read':getattr(self,'last_clipboard_read',None)}
         for name,read in [('value_pattern',lambda:editor.iface_value.CurrentValue),
                           ('text_pattern',lambda:editor.iface_text.DocumentRange.GetText(-1))]:
             try:report[name]=read()
@@ -284,17 +333,17 @@ class WhatsApp:
         while True:
             self.gate();self.foreground()
             edit=self.one(self.profile['composer'])
-            if self.read_edit(edit)==normalized(message):break
+            if self.message_matches(edit,message):break
             if time.monotonic()>=deadline:
                 self.editor_report(edit,message)
-                raise VerificationError('WhatsApp no cargó el texto del enlace. Se guardó diagnostico-editor.json; no se enviará.')
+                raise VerificationError('No se pudo verificar el texto completo, incluida su copia Unicode. Se guardó diagnostico-editor.json; no se enviará.')
             time.sleep(.2)
         self.verify_content(message)
         self.before={tuple(n.element_info.runtime_id) for n in self.outgoing()}
     def verify_content(self,message):
         self.foreground()
         edit=self.one(self.profile['composer'])
-        if self.read_edit(edit)!=normalized(message):
+        if not self.message_matches(edit,message):
             self.editor_report(edit,message)
             raise VerificationError('El texto pegado no coincide. Se guardó diagnostico-editor.json; no se pulsará Enter.')
         self.expected_message=message
@@ -329,7 +378,7 @@ class WhatsApp:
                     try:content_values.append(normalized(n.iface_text.DocumentRange.GetText(-1)).strip('\n'))
                     except Exception:pass
                 status_labels=[t for t in texts if t and t!=normalized(message)]
-                if normalized(message) not in content_values:continue
+                if normalized(message) not in content_values and getattr(self,'message_projection',None) not in content_values:continue
                 if any(re.search(self.profile['pending_regex'],t) for t in status_labels):continue
                 if any(re.fullmatch(self.profile['sent_status_regex'],t) for t in status_labels) and self.read_edit(self.one(self.profile['composer']))=='':
                     return
@@ -338,7 +387,7 @@ class WhatsApp:
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.7','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.8','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

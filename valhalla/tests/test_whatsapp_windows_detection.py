@@ -118,6 +118,24 @@ class Detection(unittest.TestCase):
         adapter.emit_key=fail_on_v
         with self.assertRaises(RuntimeError):adapter.native_keys(editor,[(0x11,0),(0x56,0)])
         self.assertEqual(events,[(0x11,0),(0x11,2)])
+    def test_unicode_draft_verification_requires_exact_copy_when_uia_is_lossy(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        message='¡Hola! 👋\nConexión 🌿'
+        adapter.read_edit=lambda edit:'¡Hola! 👋\n\nConexión '
+        adapter.clipboard_text=lambda edit:message
+        self.assertTrue(adapter.message_matches(None,message))
+        self.assertEqual(adapter.message_projection,'¡Hola! 👋\n\nConexión ')
+        adapter.clipboard_text=lambda edit:'¡Hola! 👋\nConexión '
+        self.assertFalse(adapter.message_matches(None,message))
+        adapter.clipboard_text=lambda edit:message+'�'
+        self.assertFalse(adapter.message_matches(None,message))
+        adapter.clipboard_text=lambda edit:None
+        self.assertFalse(adapter.message_matches(None,message))
+    def test_empty_editor_is_not_accepted_as_complete_message(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        adapter.read_edit=lambda edit:''
+        adapter.clipboard_text=lambda edit:self.fail('Do not select/copy a blank editor')
+        self.assertFalse(adapter.message_matches(None,'Prueba'))
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)

@@ -108,3 +108,9 @@ Ctrl+V y Enter usan ahora eventos nativos con códigos de tecla virtual (Control
 El diagnóstico del equipo confirmó que Ctrl+V no dejó texto en el editor: ValuePattern, TextPattern y el hijo Text devolvieron solo un salto de línea. Esta revisión pasa el texto Unicode codificado directamente en whatsapp://send?phone=NUMERO&text=MENSAJE. Espera hasta leer el texto exacto en el editor y acciona el botón accesible Enviar mediante UIA. No usa Ctrl+V ni Enter para esta ruta. Si el texto no se carga o no coincide, se detiene y guarda el diagnóstico; no reintenta.
 
 Esta sección sustituye las descripciones de portapapeles y teclado de versiones anteriores. WhatsApp controla la precarga del borrador en el chat solicitado. La ejecución real de la nueva ruta sigue pendiente de validar en el computador del usuario.
+
+## Corrección 1.8 · lectura exacta de emojis desde el editor
+
+El diagnóstico de WhatsApp Business mostró que TextPattern y ValuePattern insertan un salto después de 👋 y no exponen 🌿. Cuando esa lectura no coincide, esta revisión hace clic en el editor identificado por UIA (posición derivada del control, sin coordenadas fijas), selecciona y copia su contenido mediante Ctrl+A/C, y comprueba el texto Unicode completo del portapapeles. Un marcador aleatorio detecta si la copia no llegó a realizarse. Solo acepta igualdad completa; no ignora emojis faltantes ni caracteres extra. La selección se retira con Flecha Derecha y se restaura el texto Unicode previo del portapapeles.
+
+La comparación posterior admite la representación accesible exacta del borrador que ya fue comprobado por copia Unicode, acompañada de nueva burbuja saliente, estado enviado y editor vacío. Si no puede comprobarla, conserva resultado incierto y no repite el envío. La ejecución real en el computador del usuario está pendiente de validar.
