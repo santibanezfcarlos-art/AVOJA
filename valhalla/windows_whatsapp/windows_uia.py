@@ -79,8 +79,10 @@ class WhatsApp:
         # Imports stay lazy so the state machine can be tested on Linux.
         import psutil
         import win32gui
+        import win32api
         import win32process
         from pywinauto import Desktop
+        self.emit_key=lambda vk,flags:win32api.keybd_event(vk,0,flags,0)
         self.psutil=psutil;self.win32gui=win32gui;self.win32process=win32process;self.desktop=Desktop(backend='uia')
         self.folder=Path(folder);self.gate=gate;self.window=None;self.before=set()
         profile=self.folder/'uia-profile.json'
@@ -215,6 +217,30 @@ class WhatsApp:
         self.foreground()
         require(edit.element_info.element.CurrentHasKeyboardFocus,'El editor de WhatsApp no tiene el foco; no se pegará ni enviará.')
         return edit
+    def native_keys(self,editor,events):
+        # Explicit virtual keys: Ctrl+V must not become Ctrl+Unicode/VK_PACKET.
+        down=set()
+        try:
+            for key,flags in events:
+                if not flags & 2:
+                    self.foreground()
+                    require(editor.element_info.element.CurrentHasKeyboardFocus,
+                            'El editor perdió el foco antes de la tecla. No se continúa.')
+                self.emit_key(key,flags)
+                if flags & 2:down.discard(key)
+                else:down.add(key)
+        finally:
+            # Release modifiers even if a keyboard event or focus check fails.
+            for key in sorted(down,reverse=True):self.emit_key(key,2)
+    def editor_report(self,editor,message):
+        report={'version':'1.6','expected':message,'accessible_name':editor.element_info.name}
+        for name,read in [('value_pattern',lambda:editor.iface_value.CurrentValue),
+                          ('text_pattern',lambda:editor.iface_text.DocumentRange.GetText(-1))]:
+            try:report[name]=read()
+            except Exception as error:report[name+'_error']=type(error).__name__
+        try:report['child_texts']=[n.element_info.name for n in control_tree(editor) if n.element_info.control_type=='Text']
+        except Exception:pass
+        (self.folder/'diagnostico-editor.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     def open_chat(self,p):
         self.phone=p;self.chat_signature=None
         settle=time.monotonic()+1
@@ -256,7 +282,7 @@ class WhatsApp:
         finally:win32clipboard.CloseClipboard()
         self.gate();self.foreground()
         require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de pegar; no se pegará.')
-        edit.type_keys('^v',set_foreground=False)
+        self.native_keys(edit,[(0x11,0),(0x56,0),(0x56,2),(0x11,2)])
         deadline=time.monotonic()+4
         while self.read_edit(edit)!=normalized(message) and time.monotonic()<deadline:
             self.gate();self.foreground();time.sleep(.1)
@@ -264,7 +290,10 @@ class WhatsApp:
         self.before={tuple(n.element_info.runtime_id) for n in self.outgoing()}
     def verify_content(self,message):
         self.foreground()
-        require(self.read_edit(self.one(self.profile['composer']))==normalized(message),'El borrador no coincide exactamente: texto, emojis o saltos de línea.')
+        edit=self.one(self.profile['composer'])
+        if self.read_edit(edit)!=normalized(message):
+            self.editor_report(edit,message)
+            raise VerificationError('El texto pegado no coincide. Se guardó diagnostico-editor.json; no se pulsará Enter.')
         self.expected_message=message
     def outgoing(self):
         rows=[]
@@ -283,7 +312,7 @@ class WhatsApp:
         self.verify_content(self.expected_message)
         self.foreground()
         require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de Enter. El intento queda incierto.')
-        try:edit.type_keys('{ENTER}',set_foreground=False)
+        try:self.native_keys(edit,[(0x0D,0),(0x0D,2)])
         except Exception:raise VerificationError('No se confirmó la acción Enter. El intento queda incierto; no se repetirá.')
     def verify_sent(self,message):
         deadline=time.monotonic()+20
@@ -307,7 +336,7 @@ class WhatsApp:
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.5','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.6','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

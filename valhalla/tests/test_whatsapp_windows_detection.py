@@ -64,10 +64,11 @@ class Detection(unittest.TestCase):
         node=SimpleNamespace(element_info=SimpleNamespace(element=SimpleNamespace(CurrentHasKeyboardFocus=True)),type_keys=lambda *a,**kw:keys.append((a,kw)))
         adapter.focus_editor=lambda:node;adapter.gate=lambda:None;adapter.foreground=lambda:None
         adapter.expected_message='Prueba';adapter.verify_content=lambda message:None
-        adapter.send();self.assertEqual(keys,[(('{ENTER}',),{'set_foreground':False})])
+        adapter.emit_key=lambda vk,flags:keys.append((vk,flags))
+        adapter.send();self.assertEqual(keys,[(0x0D,0),(0x0D,2)])
         node.element_info.element.CurrentHasKeyboardFocus=False
         with self.assertRaises(module.VerificationError):adapter.send()
-        self.assertEqual(len(keys),1)
+        self.assertEqual(len(keys),2)
     def test_bound_chat_check_does_not_open_profile(self):
         adapter=module.WhatsApp.__new__(module.WhatsApp)
         editor=Window(1,111,'Escribir un mensaje para Persona')
@@ -95,6 +96,19 @@ class Detection(unittest.TestCase):
         self.assertTrue(adapter.owns_foreground())
         adapter.win32process=SimpleNamespace(GetWindowThreadProcessId=lambda h:(1,40))
         self.assertFalse(adapter.owns_foreground())
+    def test_paste_virtual_keys_and_modifier_cleanup(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp);events=[]
+        editor=SimpleNamespace(element_info=SimpleNamespace(element=SimpleNamespace(CurrentHasKeyboardFocus=True)))
+        adapter.foreground=lambda:None;adapter.emit_key=lambda vk,flags:events.append((vk,flags))
+        adapter.native_keys(editor,[(0x11,0),(0x56,0),(0x56,2),(0x11,2)])
+        self.assertEqual(events,[(0x11,0),(0x56,0),(0x56,2),(0x11,2)])
+        events.clear()
+        def fail_on_v(vk,flags):
+            if vk==0x56 and flags==0:raise RuntimeError('failed')
+            events.append((vk,flags))
+        adapter.emit_key=fail_on_v
+        with self.assertRaises(RuntimeError):adapter.native_keys(editor,[(0x11,0),(0x56,0)])
+        self.assertEqual(events,[(0x11,0),(0x11,2)])
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)

@@ -98,3 +98,7 @@ En este modo el teléfono procede del enlace nativo solicitado: NO se verifica i
 La activación usa las funciones nativas de Windows SetForegroundWindow y, si hace falta, AttachThreadInput solo durante la activación, con separación posterior de las colas. No modifica parámetros del sistema. La comprobación acepta el HWND principal y los procesos hijos WebView de esa aplicación; sigue rechazando aplicaciones ajenas. El editor UIA específico debe mantener el foco antes de Ctrl+V y Enter.
 
 Si falla, guarda automáticamente diagnostico-foco.json con los identificadores y el nombre del proceso activo, sin texto de conversaciones. El registro visible muestra si llegó a abrir chat, pegar y accionar Enter. La ejecución real en Windows sigue pendiente de validar. Se mantiene el flujo sin ficha del contacto.
+
+## Corrección 1.6 · teclas virtuales explícitas
+
+Ctrl+V y Enter usan ahora eventos nativos con códigos de tecla virtual (Control=0x11, V=0x56, Enter=0x0D), comprobando foco de ventana y editor antes de cada pulsación. No se usa VK_PACKET para el atajo. Los modificadores se liberan incluso ante errores. Si la lectura del texto no coincide, guarda diagnostico-editor.json con los contenidos esperados/leídos del editor; puede contener el mensaje y permanece local. No reintenta el envío ni pulsa Enter si no verifica el texto. Validación real en el equipo del usuario pendiente.
