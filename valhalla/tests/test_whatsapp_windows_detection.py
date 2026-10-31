@@ -52,6 +52,22 @@ class Detection(unittest.TestCase):
         editor=Window(1,111,'Escribir un mensaje para Persona')
         root=Window(1,100,children=[editor]*79)
         self.assertEqual(module.control_tree(root),[root,editor])
+    def test_empty_webview_paragraph_is_not_a_draft(self):
+        for value in ('','\n','\r\n','\r','\n\n'):
+            self.assertEqual(module.editor_text(value),'')
+        self.assertEqual(module.editor_text('Borrador\r\n',paragraph=True),'Borrador')
+        self.assertEqual(module.editor_text('¡Hola! 👋\r\nConexión 🌿\r\n',paragraph=True),'¡Hola! 👋\nConexión 🌿')
+        self.assertEqual(module.editor_text(' '),' ')
+    def test_send_enter_is_bound_to_focused_editor(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        keys=[]
+        node=SimpleNamespace(element_info=SimpleNamespace(element=SimpleNamespace(CurrentHasKeyboardFocus=True)),type_keys=lambda *a,**kw:keys.append((a,kw)))
+        adapter.focus_editor=lambda:node;adapter.gate=lambda:None;adapter.foreground=lambda:None
+        adapter.expected_message='Prueba';adapter.verify_content=lambda message:None
+        adapter.send();self.assertEqual(keys,[(('{ENTER}',),{'set_foreground':False})])
+        node.element_info.element.CurrentHasKeyboardFocus=False
+        with self.assertRaises(module.VerificationError):adapter.send()
+        self.assertEqual(len(keys),1)
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)

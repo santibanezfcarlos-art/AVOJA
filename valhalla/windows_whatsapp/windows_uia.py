@@ -30,6 +30,11 @@ def matches(node,selector):
     if selector.get('auto_id_regex') and not re.search(selector['auto_id_regex'],i.automation_id or ''):return False
     return node.is_visible() and node.is_enabled()
 
+def editor_text(value,paragraph=False):
+    value=normalized(value)
+    if not value.replace('\n',''):return ''
+    return value.removesuffix('\n') if paragraph else value
+
 def unique_controls(nodes):
     """WebView can expose the identical UIA element through many host branches."""
     result=[];seen=set()
@@ -135,13 +140,17 @@ class WhatsApp:
         require(len(found)==1,'Control UIA ausente o ambiguo; revisa uia-profile.json y Diagnosticar.')
         return found[0]
     def read_edit(self,node):
-        try:return normalized(node.iface_value.CurrentValue)
+        # WebView's empty editor contains a paragraph newline, not a real draft.
+        # Prefer TextPattern (document contents), never the accessible name/placeholder.
+        try:return editor_text(node.iface_text.DocumentRange.GetText(-1),paragraph=True)
         except Exception:
-            try:
-                # TextPattern includes the editor's final paragraph terminator.
-                value=normalized(node.iface_text.DocumentRange.GetText(-1))
-                return value.removesuffix('\n')
+            try:return editor_text(node.iface_value.CurrentValue)
             except Exception:raise VerificationError('El campo no permite comprobar el texto mediante accesibilidad.')
+    def focus_editor(self):
+        self.foreground();edit=self.one(self.profile['composer']);edit.set_focus()
+        self.foreground()
+        require(edit.element_info.element.CurrentHasKeyboardFocus,'El editor de WhatsApp no tiene el foco; no se pegará ni enviará.')
+        return edit
     def open_chat(self,p):
         self.phone=p
         os.startfile('whatsapp://send?phone='+p)
@@ -210,30 +219,25 @@ class WhatsApp:
     def prepare(self,message):
         self.foreground();edit=self.one(self.profile['composer'])
         require(self.read_edit(edit)=='','Hay un borrador previo. No se sobrescribirá ni enviará.')
-        # ValuePattern writes Unicode directly; it does not press keys into another window or alter the clipboard.
-        try:edit.iface_value.SetValue(message)
-        except Exception:
-            # Some WhatsApp versions expose a read-only TextPattern. Paste only after
-            # verifying the exact UIA element owns keyboard focus in WhatsApp.
-            import win32clipboard
-            edit.set_focus();self.foreground()
-            require(edit.element_info.element.CurrentHasKeyboardFocus,'El editor no tiene el foco de teclado; no se pegará.')
-            win32clipboard.OpenClipboard()
-            try:
-                win32clipboard.EmptyClipboard()
-                win32clipboard.SetClipboardText(message,win32clipboard.CF_UNICODETEXT)
-            finally:win32clipboard.CloseClipboard()
-            self.gate();self.foreground()
-            require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de pegar; no se pegará.')
-            edit.type_keys('^v',set_foreground=False)
-            deadline=time.monotonic()+3
-            while self.read_edit(edit)!=normalized(message) and time.monotonic()<deadline:time.sleep(.1)
+        import win32clipboard
+        edit=self.focus_editor()
+        win32clipboard.OpenClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardText(message,win32clipboard.CF_UNICODETEXT)
+        finally:win32clipboard.CloseClipboard()
+        self.gate();self.foreground()
+        require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de pegar; no se pegará.')
+        edit.type_keys('^v',set_foreground=False)
+        deadline=time.monotonic()+4
+        while self.read_edit(edit)!=normalized(message) and time.monotonic()<deadline:
+            self.gate();self.foreground();time.sleep(.1)
         self.verify_content(message)
         self.before={tuple(n.element_info.runtime_id) for n in self.outgoing()}
     def verify_content(self,message):
         self.foreground()
         require(self.read_edit(self.one(self.profile['composer']))==normalized(message),'El borrador no coincide exactamente: texto, emojis o saltos de línea.')
-        self.one(self.profile['send'])
+        self.expected_message=message
     def outgoing(self):
         rows=[]
         for marker in self.nodes():
@@ -246,10 +250,13 @@ class WhatsApp:
             if row is not None and row.element_info.control_type=='DataItem':rows.append(row)
         return unique_controls(rows)
     def send(self):
-        self.foreground();button=self.one(self.profile['send'])
-        # Invoke directly on the accessibility element. No mouse coordinates and no Enter.
-        try:button.invoke()
-        except Exception:raise VerificationError('La acción Enviar no pudo confirmarse. El intento queda incierto.')
+        # Enter is explicitly targeted at the verified composer, never an arbitrary active window.
+        self.gate();edit=self.focus_editor()
+        self.verify_content(self.expected_message)
+        self.foreground()
+        require(edit.element_info.element.CurrentHasKeyboardFocus,'Cambió el foco antes de Enter. El intento queda incierto.')
+        try:edit.type_keys('{ENTER}',set_foreground=False)
+        except Exception:raise VerificationError('No se confirmó la acción Enter. El intento queda incierto; no se repetirá.')
     def verify_sent(self,message):
         deadline=time.monotonic()+20
         while time.monotonic()<deadline:
@@ -272,7 +279,7 @@ class WhatsApp:
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.2','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.3','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

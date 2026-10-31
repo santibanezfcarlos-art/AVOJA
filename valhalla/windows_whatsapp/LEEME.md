@@ -80,3 +80,9 @@ Primero ejecuta Diagnosticar UIA en esta revisión. No repitas la prueba de env�
 Incluye el editor «Escribir un mensaje para…», deduplicación de controles por RuntimeId y lectura del teléfono exacto en la ficha «Info. del contacto». Abre y cierra esa ficha desde el encabezado antes de escribir/enviar, comprobando también que su nombre corresponda a la conversación activa. No usa teléfonos encontrados en el historial. Actualiza los selectores iniciales anteriores conservando configuraciones personalizadas y el registro de envíos.
 
 Esta revisión se preparó a partir de los controles expuestos por la versión del usuario. Su ejecución real aún requiere validación en Windows. Extrae en una carpeta nueva, abre Iniciar.cmd y comprueba el título v1.2. Puedes realizar una nueva prueba manual a tu propio número; los intentos anteriores no se borran ni se reintentan solos. Durante la verificación verás abrirse y cerrarse la ficha del contacto varias veces.
+
+## Corrección 1.3 · pegar + Enter
+
+El editor vacío de WebView puede devolver un salto de párrafo; ahora se reconoce como vacío. Se da preferencia al contenido TextPattern en vez del nombre accesible o placeholder. Los borradores con texto y los espacios siguen bloqueados. Por indicación del usuario, la escritura utiliza portapapeles Unicode y Ctrl+V; el envío utiliza Enter dirigido al editor identificado por UIA, después de comprobar su foco, el primer plano, el teléfono y el contenido exacto. Se mantiene el bloqueo de intentos inciertos y la comprobación posterior. El portapapeles se sustituye por el mensaje.
+
+La ejecución real en Windows sigue pendiente. En esta versión es válido que no aparezca un botón Enviar accesible, ya que se usa Enter en el control comprobado. Las secciones anteriores que describen la invocación del botón o escritura ValuePattern corresponden a versiones anteriores.
