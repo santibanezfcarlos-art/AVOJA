@@ -132,7 +132,8 @@ class WhatsApp:
     def foreground(self):
         require(self.window is not None and self.win32gui.IsWindow(self.hwnd),'WhatsApp ya no está disponible.')
         require(self.window.process_id()==self.pid,'Cambió el proceso de WhatsApp.')
-        require(self.win32gui.GetForegroundWindow()==self.hwnd,'WhatsApp perdió el primer plano. No se enviará.')
+        active=self.win32gui.GetForegroundWindow()
+        require(self.win32gui.GetAncestor(active,2)==self.win32gui.GetAncestor(self.hwnd,2),'WhatsApp perdió el primer plano. No se enviará.')
         require(self.window.is_visible() and self.window.is_enabled(),'Ventana de WhatsApp bloqueada o no disponible.')
     def nodes(self):return control_tree(self.window)[1:]
     def one(self,selector):
@@ -152,69 +153,33 @@ class WhatsApp:
         require(edit.element_info.element.CurrentHasKeyboardFocus,'El editor de WhatsApp no tiene el foco; no se pegará ni enviará.')
         return edit
     def open_chat(self,p):
-        self.phone=p
+        self.phone=p;self.chat_signature=None
+        settle=time.monotonic()+1
         os.startfile('whatsapp://send?phone='+p)
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:
             self.gate()
             try:
                 self.find_window();self.window.set_focus();self.foreground()
-                self.one(self.profile['composer']);return
+                editor=self.one(self.profile['composer'])
+                if time.monotonic()<settle:
+                    time.sleep(.1);continue
+                self.chat_signature=(tuple(editor.element_info.runtime_id or ()),editor.element_info.name)
+                return
             except Stopped:raise
             except Exception as error:
                 last_error=getattr(error,'safe_reason','No fue posible leer los controles UIA.')
                 time.sleep(.4)
         raise VerificationError('WhatsApp no abrió un chat accesible. '+last_error)
-    def contact_panel(self):
-        headings=[n for n in self.nodes() if n.element_info.control_type=='Text' and n.element_info.name=='Info. del contacto']
-        if not headings:return None
-        require(len(headings)==1,'La ficha del contacto es ambigua.')
-        parent=headings[0]
-        for _ in range(8):
-            parent=parent.parent()
-            if parent is None:break
-            nodes=control_tree(parent)
-            if any(matches(n,self.profile['composer']) for n in nodes):break
-            close=[n for n in nodes if n.element_info.control_type=='Button' and n.element_info.name=='Cerrar']
-            labels=[n for n in nodes if n.element_info.control_type=='Text' and n.element_info.name=='Info. y número de teléfono']
-            if len(close)==1 and len(labels)==1:return nodes,close[0]
-        raise VerificationError('No se identificó un panel de información separado del historial.')
     def verify_recipient(self,p):
+        # User-selected workflow: rely on the requested native deep link, then bind
+        # the resulting editor for the whole attempt. No contact-profile navigation.
         self.foreground()
-        composer=self.one(self.profile['composer']);cr=composer.rectangle()
-        # First permit a phone explicitly exposed by a dedicated chat-header button.
-        headers=[]
-        for node in self.nodes():
-            if node.element_info.control_type!='Button' or not node.is_visible():continue
-            name=node.element_info.name or '';r=node.rectangle()
-            if re.fullmatch(r'[+\d\s()\-\u200e\u200f]+',name) and re.sub(r'\D','',name)==p and r.left>=cr.left-10 and r.bottom<cr.top:headers.append(node)
-        if len(headers)==1:return True
-        expected_name=re.sub(r'(?i)^(?:Escribir un mensaje|Escribe un mensaje|Type a message) (?:para|to) ', '',composer.element_info.name)
-        require(expected_name!=composer.element_info.name,'El editor no expone el nombre de la conversación activa.')
-        # Discard any previously open profile; open it from THIS chat's observed header control.
-        opened=self.contact_panel()
-        if opened:
-            opened[1].invoke()
-            deadline=time.monotonic()+4
-            while self.contact_panel() is not None and time.monotonic()<deadline:self.gate();time.sleep(.1)
-            require(self.contact_panel() is None,'No se cerró la ficha anterior.')
-        profile_button=self.one({'control_type':'Button','name':'Información del perfil'})
-        self.foreground();profile_button.invoke()
-        deadline=time.monotonic()+6;panel=None
-        while time.monotonic()<deadline:
-            self.gate();self.foreground();panel=self.contact_panel()
-            if panel:break
-            time.sleep(.15)
-        require(panel is not None,'No se abrió la ficha accesible del contacto.')
-        nodes,close=panel
-        texts=[n.element_info.name or '' for n in nodes if n.element_info.control_type=='Text']
-        verify_contact_details(texts,expected_name,p)
-        self.foreground();close.invoke()
-        deadline=time.monotonic()+4
-        while self.contact_panel() is not None and time.monotonic()<deadline:self.gate();time.sleep(.1)
-        require(self.contact_panel() is None,'La ficha sigue abierta; no se escribirá ni enviará.')
-        self.foreground()
-        require(self.one(self.profile['composer']).element_info.name==composer.element_info.name,'Cambió la conversación durante la verificación.')
+        require(p==self.phone,'El número solicitado cambió durante el intento.')
+        editor=self.one(self.profile['composer'])
+        signature=(tuple(editor.element_info.runtime_id or ()),editor.element_info.name)
+        require(self.chat_signature is not None and signature==self.chat_signature,
+                'Cambió la conversación después de abrir el enlace. No se enviará.')
         return True
     def prepare(self,message):
         self.foreground();edit=self.one(self.profile['composer'])
@@ -279,7 +244,7 @@ class WhatsApp:
     def diagnose(self):
         # Always produce useful metadata, even when detection itself fails.
         windows,metadata=self.inventory()
-        report={'version':'1.3','windows':metadata,'native_candidates':len(windows),'controls':[],
+        report={'version':'1.4','windows':metadata,'native_candidates':len(windows),'controls':[],
                 'note':'No se escribió ni envió ningún mensaje durante este diagnóstico.'}
         try:
             self.find_window()

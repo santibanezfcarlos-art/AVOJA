@@ -15,9 +15,9 @@ FOLDER=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'ValhallaWhatsApp'
 
 class App:
     def __init__(self,root):
-        self.root=root;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False
+        self.root=root;self.minimized_for_send=False;self.messages=queue.Queue();self.pause=threading.Event();self.stop=threading.Event();self.busy=False;self.minimized_for_send=False
         self.journal=Journal(FOLDER/'registro.sqlite3');self.api=None;self.data=None
-        root.title('Valhalla · WhatsApp Windows v1.3');root.geometry('840x650')
+        root.title('Valhalla · WhatsApp Windows v1.4');root.geometry('840x650')
         frame=ttk.Frame(root,padding=16);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='1 · Prueba exclusivamente con tu propio número',font=('',12,'bold')).pack(anchor='w')
         self.number=tk.StringVar();ttk.Entry(frame,textvariable=self.number).pack(fill='x',pady=6)
@@ -49,6 +49,8 @@ class App:
                     self.data=value;c=value['counts'];self.summary.set(f"{value['campaign_name']} · {len(value['recipients'])} pendientes seleccionados. Contactos actuales: {c['total']} · con coincidencia {c['registered']} · sin coincidencia {c['not_registered']} · bajas {c['opted_out']}.")
                 elif kind=='done':
                     self.busy=False
+                    if self.minimized_for_send:
+                        self.minimized_for_send=False;self.root.deiconify()
                     for b in (self.test_button,self.connect_button,self.start_button,self.diag_button):b.configure(state='normal')
         except queue.Empty:pass
         self.root.after(100,self.poll)
@@ -59,9 +61,11 @@ class App:
     def toggle(self):
         if self.pause.is_set():self.pause.clear();self.log('Continuando; se verificará la ventana otra vez.')
         else:self.pause.set();self.log('Pausa solicitada. No se iniciarán nuevas acciones de envío.')
-    def task(self,fn):
+    def task(self,fn,hide=False):
         if self.busy:return
         self.busy=True;self.pause.clear();self.stop.clear()
+        self.minimized_for_send=hide
+        if hide:self.root.iconify()
         for b in (self.test_button,self.connect_button,self.start_button,self.diag_button):b.configure(state='disabled')
         def work():
             # COM initialization is required on this worker, not only the Tk main thread.
@@ -71,7 +75,7 @@ class App:
             except Stopped:self.log('Detenido. Retomar omite los intentos ya registrados.')
             except Exception as e:self.log(getattr(e,'safe_reason','Operación detenida. No se reenvía. Revisa conexión, registro y diagnóstico UIA.'))
             finally:pythoncom.CoUninitialize();self.messages.put(('done',None))
-        threading.Thread(target=work,daemon=True).start()
+        self.root.after(350 if hide else 0,lambda:threading.Thread(target=work,daemon=True).start())
     def adapter(self):
         from windows_uia import WhatsApp
         return WhatsApp(FOLDER,self.gate)
@@ -82,7 +86,7 @@ class App:
         if not messagebox.askyesno('Prueba única',f'¿Confirmas que +{p} es tu propio número?\nSe pulsará Enviar automáticamente una sola vez.\n\n{TEST_MESSAGE}'):return
         def work():
             Runner(self.journal,self.adapter(),self.gate,self.log).run_one('prueba-'+uuid.uuid4().hex,{'phone':p,'message':TEST_MESSAGE},test=True)
-        self.task(work)
+        self.task(work,hide=True)
     def connect(self):
         token=self.token.get().strip()
         if not token:return
@@ -108,7 +112,7 @@ class App:
                     self.gate();runner.run_one(fresh['campaign_id'],item)
                     for _ in range(30):self.gate();time.sleep(.1)
                 self.log('Cola finalizada. Comprobado en interfaz no significa entregado.')
-            self.task(work)
+            self.task(work,hide=True)
         ttk.Button(review,text='Iniciar envío de esta selección',command=start).pack(pady=10)
         ttk.Button(review,text='Cancelar',command=review.destroy).pack()
     def diagnose(self):

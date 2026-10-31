@@ -68,6 +68,17 @@ class Detection(unittest.TestCase):
         node.element_info.element.CurrentHasKeyboardFocus=False
         with self.assertRaises(module.VerificationError):adapter.send()
         self.assertEqual(len(keys),1)
+    def test_bound_chat_check_does_not_open_profile(self):
+        adapter=module.WhatsApp.__new__(module.WhatsApp)
+        editor=Window(1,111,'Escribir un mensaje para Persona')
+        editor.element_info.control_type='Edit'
+        adapter.foreground=lambda:None;adapter.one=lambda selector:editor
+        adapter.profile=module.DEFAULT_PROFILE;adapter.phone='56911111111'
+        adapter.chat_signature=(tuple(editor.element_info.runtime_id),editor.element_info.name)
+        self.assertTrue(adapter.verify_recipient('56911111111'))
+        with self.assertRaises(module.VerificationError):adapter.verify_recipient('56922222222')
+        editor.element_info.name='Escribir un mensaje para Otro contacto'
+        with self.assertRaises(module.VerificationError):adapter.verify_recipient('56911111111')
     def test_root_executable(self):
         adapter=self.make([Window(1,100)],{1:'WhatsApp.Root.exe'})
         adapter.find_window();self.assertEqual(adapter.hwnd,100)

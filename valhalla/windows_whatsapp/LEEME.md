@@ -86,3 +86,9 @@ Esta revisión se preparó a partir de los controles expuestos por la versión d
 El editor vacío de WebView puede devolver un salto de párrafo; ahora se reconoce como vacío. Se da preferencia al contenido TextPattern en vez del nombre accesible o placeholder. Los borradores con texto y los espacios siguen bloqueados. Por indicación del usuario, la escritura utiliza portapapeles Unicode y Ctrl+V; el envío utiliza Enter dirigido al editor identificado por UIA, después de comprobar su foco, el primer plano, el teléfono y el contenido exacto. Se mantiene el bloqueo de intentos inciertos y la comprobación posterior. El portapapeles se sustituye por el mensaje.
 
 La ejecución real en Windows sigue pendiente. En esta versión es válido que no aparezca un botón Enviar accesible, ya que se usa Enter en el control comprobado. Las secciones anteriores que describen la invocación del botón o escritura ValuePattern corresponden a versiones anteriores.
+
+## Corrección 1.4 · flujo directo sin ficha
+
+Por indicación expresa del usuario, se elimina la navegación a la ficha del contacto. El flujo es abrir whatsapp://send?phone=NUMERO, enfocar el editor UIA, pegar Unicode, comprobar el contenido y pulsar Enter en ese editor. El programa se minimiza durante el intento y reaparece al terminar. Si se cambia la conversación o el primer plano, se detiene.
+
+En este modo el teléfono procede del enlace nativo solicitado: NO se verifica independientemente en la ficha. Se comprueba que el editor y el nombre accesible de la conversación resultante permanezcan iguales durante el intento. Las descripciones anteriores de comprobación de teléfono mediante ficha corresponden a versiones previas. Los estados de envío, el registro persistente y el bloqueo de reenvíos inciertos se conservan. La prueba real sigue pendiente de ejecutar en el equipo del usuario.
