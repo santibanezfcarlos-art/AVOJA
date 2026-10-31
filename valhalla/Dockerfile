@@ -8,6 +8,7 @@ RUN python -m pip install --no-cache-dir tzdata==2025.2 cryptography==46.0.2 ope
     && mkdir -p /app/data \
     && chown valhalla:valhalla /app/data
 COPY skedu_contacts.py app.py mailer.py payments.py notifications.py google_auth.py microsoft_auth.py rules.py ttlock_daily.py ttlock_worker.py ttlock_manual_test.py ttlock_recipients.py ttlock_distribution.py ttlock_distribution_preview.py ttlock_email_html.py ./
+COPY whatsapp_campaigns.py ./
 COPY static ./static
 USER valhalla
 EXPOSE 8080

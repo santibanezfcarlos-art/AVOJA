@@ -332,6 +332,8 @@ class Store:
                 c.execute("ALTER TABLE packages ADD COLUMN source TEXT NOT NULL DEFAULT 'simulated'")
             if 'kind' not in columns:
                 c.execute("ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'accreditation'")
+            from whatsapp_campaigns import initialize
+            initialize(c)
 
     @contextmanager
     def connection(self, write=False):
@@ -348,6 +350,17 @@ class Store:
             raise
         finally:
             c.close()
+
+    def whatsapp_report(self):
+        from whatsapp_campaigns import report
+        return report(self)
+
+    def whatsapp_action(self, actor, body, operation):
+        from whatsapp_campaigns import action
+        try:
+            return action(self, actor, body, operation)
+        except (ValueError, TypeError) as error:
+            raise Problem(str(error)) from error
 
     def log(self, c, actor, action, target):
         c.execute('INSERT INTO audit(actor_id,action,target,created_at) VALUES (?,?,?,?)',
@@ -1548,6 +1561,9 @@ class Handler(BaseHTTPRequestHandler):
                 data['webpay_mode'] = getattr(getattr(self.server, 'webpay', None), 'mode', 'disabled')
                 data['email_delivery_available'] = bool(getattr(self.server, 'email_delivery', None) and self.server.email_delivery.configured)
                 self.respond(data)
+            elif route.path == '/api/admin/whatsapp':
+                self.admin(user)
+                self.respond(self.server.store.whatsapp_report())
             elif route.path == '/api/admin/daily-contacts':
                 self.admin(user)
                 self.respond(self.server.store.daily_contacts(parse_qs(route.query).get('date',[''])[0]))
@@ -1689,6 +1705,10 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/discounts/quote':
                 with store.connection() as c:result=store.discount_quote(c,body.get('catalog_id'),body.get('discount_code',''))
                 self.respond(result);return
+            elif self.path in ('/api/admin/whatsapp/preview','/api/admin/whatsapp/import','/api/admin/whatsapp/campaign','/api/admin/whatsapp/open','/api/admin/whatsapp/status','/api/admin/whatsapp/optout'):
+                self.admin(user)
+                self.respond(store.whatsapp_action(user['id'],body,self.path.rsplit('/',1)[-1]))
+                return
             elif self.path == '/api/admin/discounts':
                 self.admin(user)
                 self.respond(store.save_discount(user['id'],body));return
