@@ -171,6 +171,41 @@ class GoogleCalendarWriterTests(unittest.TestCase):
         self.assertEqual(len(client(transport).list_busy(START,END)),1)
         self.assertEqual(seen[1]["pageToken"],"NEXT")
 
+    def test_oauth_primary_calendar_blocks_personal_commitments(self):
+        starts = datetime(2026, 11, 2, 9, 0, tzinfo=TZ)
+        ends = starts + timedelta(minutes=45)
+        queried = []
+        def transport(method, path, params, body):
+            queried.append(path)
+            if path == "/calendars/primary/events":
+                return {"items": [{"start": {"dateTime": starts.isoformat()},
+                                   "end": {"dateTime": (starts + timedelta(hours=4)).isoformat()},
+                                   "status": "confirmed", "transparency": "opaque"}]}
+            return {"items": []}
+        with patch.dict(os.environ, {"PSICOLOGIA_GOOGLE_AUTH_MODE": "oauth"}, clear=True):
+            adapter = client(transport)
+            self.assertFalse(adapter.is_free(starts, ends))
+        self.assertEqual(len(queried), 2)
+        self.assertIn("/calendars/primary/events", queried)
+
+    def test_oauth_long_availability_snapshot_and_deduplication(self):
+        start = datetime(2026, 11, 2, tzinfo=TZ)
+        end = start + timedelta(days=22)
+        event = {"start": {"dateTime": (start + timedelta(hours=9)).isoformat()},
+                 "end": {"dateTime": (start + timedelta(hours=13)).isoformat()}}
+        with patch.dict(os.environ, {"PSICOLOGIA_GOOGLE_AUTH_MODE": "oauth"}, clear=True):
+            adapter = client(lambda *args: {"items": [event]})
+            self.assertEqual(len(adapter.list_busy(start, end)), 1)
+
+    def test_oauth_secondary_calendar_failure_fails_closed(self):
+        with patch.dict(os.environ, {"PSICOLOGIA_GOOGLE_AUTH_MODE": "oauth"}, clear=True):
+            def transport(method, path, params, body):
+                if path == "/calendars/primary/events":
+                    raise CalendarHttpError(403)
+                return {"items": []}
+            with self.assertRaises(CalendarHttpError):
+                client(transport).list_busy(START, END)
+
     def test_invalid_credentials_json_is_safely_rejected(self):
         with patch.dict(os.environ, {
             "PSICOLOGIA_GOOGLE_CALENDAR_ID": "mycalendar",
