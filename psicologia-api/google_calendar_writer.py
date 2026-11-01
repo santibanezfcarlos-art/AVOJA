@@ -192,7 +192,10 @@ class CalendarWriter:
         If either calendar is unavailable, fail closed instead of selling an occupied slot.
         """
         self._check()
-        _validate_time_window(start, end)
+        if (not isinstance(start, datetime) or not isinstance(end, datetime)
+                or not start.tzinfo or not end.tzinfo or end <= start
+                or end - start > timedelta(days=23)):
+            raise CalendarIntegrationError("Rango de consulta inválido")
         base = {"timeMin": start.isoformat(), "timeMax": end.isoformat(),
                 "singleEvents": "true", "showDeleted": "false", "maxResults": "2500"}
         paths = [self._calendar_path]
