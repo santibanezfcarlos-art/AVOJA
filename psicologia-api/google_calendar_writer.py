@@ -171,10 +171,17 @@ class CalendarWriter:
                 raw = resp.read(300000)
             return json.loads(raw.decode("utf-8"))
         except HTTPError as exc:
+            print("PSC_CALENDAR_CONNECTION: http_status=" + str(exc.code), flush=True)
             raise CalendarHttpError(exc.code) from None
         except (URLError, OSError, ValueError, KeyError, TypeError, ImportError):
             raise CalendarIntegrationError("No se pudo conectar a Google Calendar") from None
-        except Exception:
+        except Exception as exc:
+            # Registrar solo códigos conocidos, nunca tokens ni cuerpos de Google.
+            code = "unknown"
+            for arg in exc.args:
+                if isinstance(arg, dict) and arg.get("error") in ("invalid_grant", "invalid_client", "unauthorized_client", "access_denied"):
+                    code = arg["error"]
+            print("PSC_CALENDAR_CONNECTION: kind=" + type(exc).__name__ + " code=" + code, flush=True)
             # Incluye fallos de firma OAuth; jamás registrar valores secretos.
             raise CalendarIntegrationError("Google Calendar no pudo autorizar la operación") from None
 
