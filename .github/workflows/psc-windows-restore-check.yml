@@ -29,3 +29,12 @@ jobs:
           if (-not $source.Contains('docker rm --force --volumes')) { throw 'Missing cleanup' }
           if (-not $source.Contains('Get-FileHash')) { throw 'Missing SHA256 check' }
           'PSC_POWERSHELL_PARSE_OK'
+
+  container-prerequisites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check official PostgreSQL 18 container includes tools
+        run: |
+          docker pull postgres:18-bookworm
+          docker run --rm --network none postgres:18-bookworm sh -ec 'command -v openssl; command -v pg_restore; command -v createdb; command -v pg_isready'
