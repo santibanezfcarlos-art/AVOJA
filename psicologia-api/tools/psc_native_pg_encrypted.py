@@ -9,6 +9,7 @@ Must be transferred OFF Render and restored independently before cutover.
 Requires: pg_dump/pg_restore >=18, openssl, Python3.
 """
 from datetime import datetime, timezone
+import argparse
 from getpass import getpass
 import hashlib
 import json
@@ -104,6 +105,9 @@ def openssl_pass_command(parameters, passphrase, *, capture=False):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="PSC encrypted native PostgreSQL backup")
+    parser.add_argument("--send", action="store_true", help="Send encrypted file via Magic-Wormhole")
+    args = parser.parse_args()
     os.umask(0o077)
     if not os.environ.get("RENDER") or not os.path.ismount("/var/data"):
         raise RuntimeError("Se requiere Shell pagada de Render con disco montado")
@@ -114,6 +118,8 @@ def main():
     dump_exe, restore_exe = require_client("pg_dump"), require_client("pg_restore")
     if not shutil.which("openssl"):
         raise RuntimeError("OpenSSL no disponible")
+    if args.send and not shutil.which("wormhole"):
+        raise RuntimeError("Magic-Wormhole no disponible en Render")
     # Leave a safe space margin: no need to fill the 1 GB shared disk.
     stats = os.statvfs(str(ROOT))
     free = stats.f_bavail * stats.f_frsize
@@ -183,6 +189,17 @@ def main():
             "restored_to_separate_postgres": False,
             "production_modified": False,
         }, ensure_ascii=False), flush=True)
+        if args.send:
+            print("PSC_NATIVE_TRANSFER_READY: enviar solo el archivo CIFRADO.", flush=True)
+            print("En Windows, usar el comando wormhole receive que aparezca en Render.", flush=True)
+            transfer = subprocess.run(
+                ["wormhole", "send", str(ciphertext)],
+                timeout=1800, check=False,
+            )
+            if transfer.returncode:
+                print("PSC_WORMHOLE_TRANSFER_NOT_CONFIRMED: respaldo cifrado conservado.", flush=True)
+            else:
+                print("PSC_WORMHOLE_TRANSFER_FINISHED: verificar SHA256 en Windows.", flush=True)
     finally:
         # Never leave a full plaintext backup on the production disk.
         raw.unlink(missing_ok=True)
