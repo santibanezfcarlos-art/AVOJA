@@ -207,7 +207,7 @@ def main():
                     WHERE h.starts_at<%s AND h.ends_at>%s
                     GROUP BY h.status""",(end,start)).fetchall()
                 print("PSC_SLOT_HOLDS slot="+slot+" states="+
-                      str([(x["status"],x["n"],x["demo_count"],x["fonasa_count"]) for x in rows]),flush=True)
+                      str([(x[0],x[1],x[2],x[3]) for x in rows]),flush=True)
         print("PSICOLOGIA_PILOT_SCHEMA: ready", flush=True)
         from demo_notifications import configured as mail_is_ready
         print("PSICOLOGIA_PILOT_EMAIL: " + ("ready" if mail_is_ready() else "not_configured"), flush=True)
