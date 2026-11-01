@@ -5,6 +5,7 @@ on:
     paths:
       - "psicologia-api/tools/psc_*.py"
       - "psicologia-api/tools/psc_render_shell_audit.sh"
+      - "psicologia-api/tools/psc_render_stage_backup.py"
       - "psicologia-api/tools/test_psc_*.py"
       - ".github/workflows/psc-migration-tests.yml"
   workflow_dispatch:
@@ -26,5 +27,7 @@ jobs:
           python-version: "3.11"
       - name: Validate Render shell helper syntax
         run: bash -n psicologia-api/tools/psc_render_shell_audit.sh
+      - name: Compile migration utilities (no production connections)
+        run: python -m compileall -q psicologia-api/tools/psc_*.py
       - name: Run isolated tests (stdlib only)
         run: python -m unittest discover -s psicologia-api/tools -p 'test_psc_*.py' -v
