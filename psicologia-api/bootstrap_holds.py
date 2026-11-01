@@ -208,6 +208,44 @@ def main():
                     GROUP BY h.status""",(end,start)).fetchall()
                 print("PSC_SLOT_HOLDS slot="+slot+" states="+
                       str([(x[0],x[1],x[2],x[3]) for x in rows]),flush=True)
+            # One-time exact-slot cleanup authorized on 2026-11-01.
+            # No payment, receipt or invoice records are changed.
+            targeted=[
+                ("2026-11-02T14:00","demo"),
+                ("2026-11-04T09:00","demo"),
+                ("2026-11-04T10:00","fonasa"),
+            ]
+            plans=[]
+            for stamp,expected in targeted:
+                edge=datetime.fromisoformat(stamp).replace(tzinfo=tz)
+                matched=conn.execute("""SELECT h.id,h.status,
+                        (d.order_id IS NOT NULL) AS is_demo,
+                        (f.source_id IS NOT NULL) AS is_fonasa
+                    FROM psychology_booking_holds h
+                    LEFT JOIN psychology_demo_payments d ON d.hold_id=h.id
+                    LEFT JOIN psychology_fonasa_bookings f ON f.hold_id=h.id
+                    WHERE h.starts_at=%s FOR UPDATE""",(edge,)).fetchall()
+                if len(matched)!=1:
+                    print("PSC_OWNER_SLOT_RELEASE slot="+stamp+" state=skipped_exact_match_count_"+str(len(matched)),flush=True)
+                    plans=[]
+                    break
+                hold_id,status,is_demo,is_fonasa=matched[0]
+                if (status not in ("CONFIRMED","CANCELLED")
+                        or bool(is_demo)!=(expected=="demo")
+                        or bool(is_fonasa)!=(expected=="fonasa")):
+                    print("PSC_OWNER_SLOT_RELEASE slot="+stamp+" state=skipped_source_or_status_mismatch",flush=True)
+                    plans=[]
+                    break
+                plans.append((stamp,hold_id,status))
+            if len(plans)==len(targeted):
+                for stamp,hold_id,status in plans:
+                    if status=="CONFIRMED":
+                        changed=conn.execute("""UPDATE psychology_booking_holds
+                            SET status='CANCELLED',updated_at=now()
+                            WHERE id=%s AND status='CONFIRMED'""",(hold_id,)).rowcount
+                        print("PSC_OWNER_SLOT_RELEASE slot="+stamp+" updated="+str(changed),flush=True)
+                    else:
+                        print("PSC_OWNER_SLOT_RELEASE slot="+stamp+" already_released",flush=True)
         print("PSICOLOGIA_PILOT_SCHEMA: ready", flush=True)
         from demo_notifications import configured as mail_is_ready
         print("PSICOLOGIA_PILOT_EMAIL: " + ("ready" if mail_is_ready() else "not_configured"), flush=True)
