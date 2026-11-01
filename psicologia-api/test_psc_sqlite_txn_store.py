@@ -41,6 +41,12 @@ CREATE TABLE psychology_demo_payments (
  calendar_event_id TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
  verified_at TEXT,patient_name TEXT
 );
+CREATE TABLE psychology_demo_notifications (
+ order_id TEXT NOT NULL REFERENCES psychology_demo_payments(order_id),
+ recipient_role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+ attempted_at TEXT,sent_at TEXT, timezone_correction_sent_at TEXT,
+ PRIMARY KEY(order_id,recipient_role)
+);
 CREATE TABLE psychology_google_oauth (
  key TEXT PRIMARY KEY,encrypted_refresh_token TEXT NOT NULL,updated_at TEXT NOT NULL
 );
@@ -156,6 +162,54 @@ class SQLiteTxnTests(unittest.TestCase):
         self.assertEqual(self.store.encrypted_google_oauth(),"gAAAA-CIPHERTEXT-NOT-PLAINTEXT")
         with self.assertRaises(ValueError):
             self.store.encrypted_google_oauth("any-other-key")
+
+    def _authorized_order(self):
+        hold=self.reserve()
+        self.store.mark_payment_pending(
+            hold["id"],"paid-order","paid-session","psicoterapia",30000,
+            "patient@invalid.test",now=NOW)
+        self.store.complete_payment("paid-order","paid-session",30000,"approved",now=NOW)
+        return hold
+
+    def test_calendar_confirmation_is_atomic_and_idempotent(self):
+        hold=self._authorized_order()
+        self.assertEqual(self.store.calendar_confirmed("paid-order","calendar-verified-1",now=NOW),"CONFIRMED")
+        self.assertEqual(self.store.calendar_confirmed("paid-order","calendar-verified-1",now=NOW),"CONFIRMED")
+        with sqlite3.connect(self.path) as db:
+            row=db.execute("SELECT status FROM psychology_booking_holds WHERE id=?", (hold["id"],)).fetchone()
+            notify=db.execute("SELECT recipient_role,status FROM psychology_demo_notifications ORDER BY recipient_role").fetchall()
+        self.assertEqual(row[0],"CONFIRMED")
+        self.assertEqual(notify,[("patient","pending"),("professional","pending")])
+        with self.assertRaises(StorageConflict):
+            self.store.calendar_confirmed("paid-order","another-event",now=NOW)
+
+    def test_calendar_failure_remains_blocked_pending_reconciliation(self):
+        self._authorized_order()
+        self.assertEqual(self.store.calendar_failed("paid-order",now=NOW),"RECONCILIATION_REQUIRED")
+        with self.assertRaises(StorageConflict):
+            self.reserve()
+        with self.assertRaises(StorageConflict):
+            self.store.calendar_confirmed("paid-order","event",now=NOW)
+
+    def test_calendar_pending_rejects_unpaid_orders(self):
+        hold=self.reserve()
+        with self.assertRaises(StorageConflict):
+            self.store.calendar_pending("not-a-real-order",now=NOW)
+        self.store.mark_payment_pending(
+            hold["id"],"pending","session-p","psicoterapia",30000,
+            "patient@invalid.test",now=NOW)
+        with self.assertRaises(StorageConflict):
+            self.store.calendar_pending("pending",now=NOW)
+        self.store.complete_payment("pending","session-p",30000,"approved",now=NOW)
+        self.assertEqual(self.store.calendar_pending("pending",now=NOW),"CALENDAR_PENDING")
+
+    def test_stale_payment_cannot_get_calendar_confirmation(self):
+        self._authorized_order()
+        with self.assertRaises(StorageConflict):
+            self.store.calendar_confirmed("paid-order","event",now=NOW+timedelta(minutes=21))
+        with sqlite3.connect(self.path) as db:
+            count=db.execute("SELECT COUNT(*) FROM psychology_demo_notifications").fetchone()[0]
+        self.assertEqual(count,0)
 
     def register_fonasa(self, ident=None, start=None, token=None):
         identity = ident or str(uuid.uuid4())
