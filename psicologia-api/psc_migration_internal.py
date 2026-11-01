@@ -14,6 +14,7 @@ import time
 from flask import Blueprint, jsonify, request
 
 from psc_holds_sqlite import read_intervals
+from psc_sqlite_txn_store import PSCStore
 
 bp = Blueprint("psc_migration_holds_only", __name__)
 
@@ -26,7 +27,9 @@ def _enabled():
 
 
 def _authorized():
-    if not _enabled():
+    # Authorization is independent of each endpoint's feature flag; the flag
+    # is checked by the route BEFORE this helper is called.
+    if len(os.environ.get("PSC_MIGRATION_BRIDGE_KEY", "")) < 40:
         return False
     if not request.is_json or (request.content_length or 0) > 1024:
         return False
@@ -66,4 +69,28 @@ def holds_only():
         return jsonify(state="INVALID"), 400
     except Exception:
         # Never return paths, calendar details, patients, tokens, errors or SQL.
+        return jsonify(state="UNAVAILABLE"), 503
+
+@bp.post("/internal/psc/migration/oauth-ciphertext")
+def oauth_ciphertext():
+    """Opt-in private migration RPC: Fernet ciphertext only, never plaintext.
+
+    The recipient still needs the existing Fernet key to decrypt locally. The
+    feature is OFF unless intentionally activated on the paid service.
+    """
+    if os.environ.get("PSC_MIGRATION_OAUTH_READ_ENABLED") != "true":
+        return jsonify(state="DISABLED"), 503
+    if not _authorized():
+        return jsonify(state="NOT_AUTHORIZED"), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data != {"key":"owner"}:
+        return jsonify(state="INVALID"), 400
+    try:
+        secret = PSCStore().encrypted_google_oauth("owner")
+        if not secret:
+            return jsonify(state="UNAVAILABLE"), 503
+        reply=jsonify(state="OK", encrypted_refresh_token=secret)
+        reply.headers["Cache-Control"]="no-store"
+        return reply
+    except Exception:
         return jsonify(state="UNAVAILABLE"), 503
