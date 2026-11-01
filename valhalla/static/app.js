@@ -1,4 +1,4 @@
-let adminAgendaView='day';
+let adminAgendaView='week';
 let adminCalScrollPosition=null;
 /* Read-only weekly administration calendar. Data comes exclusively from /api/admin. */
 let adminCalWeek = '';
@@ -357,7 +357,7 @@ function shell() {
   menuScrollLeft=navigation.scrollLeft;navigation.onscroll=()=>{menuScrollLeft=navigation.scrollLeft;};
   const resend=document.querySelector('#resend-email');if(resend)resend.onclick=async()=>{resend.disabled=true;try{const result=await api('email-verification/resend',{});toast(result.message||'Tu correo ya está confirmado.');await reload();}catch(e){toast(e.message);}finally{resend.disabled=false;}};
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=async()=>{activeProfile=b.dataset.mode;multiBooking=false;selectedBookings=[];view=adminMode()?'admin':'overview';modifying=null;try{await reload();}catch(e){toast(e.message);}});
-  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;modifying=null;render().catch(e=>toast(e.message));});
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;if(view==='availability'&&adminMode()){adminAgendaView='week';adminCalScrollPosition=null;}modifying=null;render().catch(e=>toast(e.message));});
   document.querySelectorAll('[data-logout]').forEach(b=>b.onclick=async()=>{try{await api('logout',{});state=null;selectedDate='';contactsDate='';dailyContacts=null;view='overview';auth();}catch(e){toast(e.message);}});
 }
 function head(title,subtitle,action='') {return `<div class="page-head"><div><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`;}
