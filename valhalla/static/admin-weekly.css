@@ -1,0 +1,38 @@
+/* Administrative weekly booking calendar - isolated from client booking calendar. */
+.admin-cal-wrap{min-width:0}
+.admin-cal-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.admin-cal-heading h2{margin:0 0 5px}
+.admin-cal-navigation{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.admin-cal-navigation strong{min-width:165px;text-align:center;font-size:.84rem}
+.admin-cal-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0 8px}
+.admin-cal-filters label{display:grid;gap:5px;font-size:.75rem;font-weight:600;min-width:130px;flex:1 1 160px;max-width:290px}
+.admin-cal-filters select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);padding:7px 9px}
+.admin-cal-summary{margin-left:auto;font-size:.78rem;color:var(--ink);padding-bottom:9px}
+.admin-cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.admin-cal-legend-box{display:inline-flex;align-items:center;gap:6px;font-size:.72rem}
+.admin-cal-legend-box:before{content:'';width:10px;height:10px;border-radius:3px;background:var(--box-color)}
+.admin-cal-legend-box.box-1,.admin-cal-event.box-1{--box-color:#7b5bbf;--box-bg:#eee7fa}
+.admin-cal-legend-box.box-2,.admin-cal-event.box-2{--box-color:#2588ad;--box-bg:#e3f3fb}
+.admin-cal-legend-box.box-3,.admin-cal-event.box-3{--box-color:#468a63;--box-bg:#e3f2e6}
+.admin-cal-hint,.admin-cal-footnote{font-size:.72rem;color:var(--muted);line-height:1.5;margin:9px 0}
+.admin-cal-scroll{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:13px;background:white;scrollbar-gutter:stable}
+.admin-cal-scroll:focus-visible{outline:2px solid var(--green)}
+.admin-cal-grid{display:grid;grid-template-columns:66px repeat(7,minmax(210px,1fr));min-width:1536px}
+.admin-cal-axis{position:sticky;left:0;z-index:5;background:#fff;border-right:1px solid var(--line)}
+.admin-cal-axis-heading{height:62px;padding:16px 5px;font-size:.65rem;color:var(--muted);display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line)}
+.admin-cal-time-body{position:relative;background:#f8faf7}
+.admin-cal-time{position:absolute;right:9px;transform:translateY(-50%);color:#64736c;font-size:.67rem;font-variant-numeric:tabular-nums}
+.admin-cal-time:first-child{transform:translateY(3px)}
+.admin-cal-time:last-child{transform:translateY(-100%)}
+.admin-cal-day-col{min-width:0;border-right:1px solid #e7ebe6}
+.admin-cal-day-header{height:62px;padding:9px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#f9fbf8;border-bottom:1px solid var(--line)}
+.admin-cal-day-header strong{font-size:.78rem;text-transform:capitalize}
+.admin-cal-day-header small{font-size:.65rem;color:var(--muted)}
+.admin-cal-day-header.is-today{background:#eaf3e6;color:#205d44}
+.admin-cal-day-body{position:relative;background-image:linear-gradient(to bottom,#dde5dd 1px,transparent 1px),linear-gradient(to bottom,#edf1ed 1px,transparent 1px);background-size:100% 66px,100% 33px}
+.admin-cal-event{position:absolute;display:flex;flex-direction:column;gap:1px;overflow:hidden;border:1px solid color-mix(in srgb,var(--box-color) 38%,white);border-left:3px solid var(--box-color);border-radius:6px;background:var(--box-bg);color:#243b35;padding:4px 5px;cursor:pointer;text-align:left;font:inherit;line-height:1.16}
+.admin-cal-event:hover,.admin-cal-event:focus-visible{z-index:3;outline:2px solid var(--box-color);box-shadow:0 4px 10px #182d251e}
+.admin-cal-event strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.68rem;font-weight:650;width:100%}
+.admin-cal-event small,.admin-cal-event span{font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;width:100%}
+.admin-cal-event.is-cancelled{opacity:.6;border-style:dashed;text-decoration:line-through}
+@media(max-width:720px){.admin-cal-navigation strong{min-width:130px;font-size:.76rem}.admin-cal-grid{grid-template-columns:54px repeat(7,minmax(180px,1fr));min-width:1314px}.admin-cal-summary{margin-left:0}.admin-cal-heading{gap:6px}.admin-cal-time{right:5px}.admin-cal-filters{gap:8px}.admin-cal-filters label{min-width:135px;flex:1 1 135px}}
