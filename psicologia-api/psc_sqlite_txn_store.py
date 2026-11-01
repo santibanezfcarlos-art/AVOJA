@@ -272,6 +272,150 @@ class PSCStore:
         except sqlite3.Error:
             raise StorageUnavailable("Payment reconciliation failed") from None
 
+    def register_fonasa(self, source_id, hold_id, patient_name, patient_email,
+                        token_sha256, start, end, *, now=None):
+        """Idempotently preserve the deterministic event/hold identity.
+
+        Caller must verify that the Google event exists and is owned BEFORE
+        registering; this method does not contact Google or send emails.
+        """
+        if (not isinstance(source_id, str) or not 1 <= len(source_id) <= 40
+                or not isinstance(patient_name, str) or not 2 <= len(patient_name.strip()) <= 120
+                or not isinstance(patient_email, str) or not 3 <= len(patient_email) <= 254
+                or "@" not in patient_email
+                or not isinstance(token_sha256, str) or len(token_sha256) != 64
+                or any(ch not in "0123456789abcdef" for ch in token_sha256)):
+            raise ValueError("Invalid Fonasa registration")
+        identity = str(uuid.UUID(str(hold_id)))
+        start, end = _utc(start), _utc(end)
+        moment = _utc(now or datetime.now(timezone.utc))
+        day = start.astimezone(TZ).date().isoformat()
+        if (start <= moment or end <= start or end.astimezone(TZ).date().isoformat() != day):
+            raise ValueError("Invalid Fonasa appointment")
+        try:
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                previous = db.execute(
+                    """SELECT f.hold_id,f.patient_name,f.patient_email,f.token_sha256,
+                              h.starts_at,h.ends_at,h.status
+                       FROM psychology_fonasa_bookings f
+                       JOIN psychology_booking_holds h ON h.id=f.hold_id
+                       WHERE f.source_id=?""", (source_id,),
+                ).fetchone()
+                if previous:
+                    if (previous["hold_id"] != identity or
+                        previous["patient_name"] != patient_name or
+                        previous["patient_email"] != patient_email or
+                        not hmac.compare_digest(previous["token_sha256"],token_sha256) or
+                        _read_utc(previous["starts_at"]) != start or
+                        _read_utc(previous["ends_at"]) != end or
+                        previous["status"] != "CONFIRMED"):
+                        raise StorageConflict("Fonasa booking already differs")
+                    return "CONFIRMED"
+                # Existing hold id without source would break Calendar event
+                # ownership/idempotency; reject rather than silently overwrite.
+                if db.execute("SELECT 1 FROM psychology_booking_holds WHERE id=?", (identity,)).fetchone():
+                    raise StorageConflict("Unexpected existing Fonasa hold")
+                self._ensure_available(db, day, start, end, moment)
+                db.execute("INSERT OR IGNORE INTO psychology_booking_days(slot_date) VALUES (?)",(day,))
+                db.execute(
+                    """INSERT INTO psychology_booking_holds
+                       (id,cancel_secret_sha256,slot_date,starts_at,ends_at,service,status,
+                        expires_at,created_at,updated_at)
+                       VALUES (?,?,?,?,?,'psicoterapia','CONFIRMED',?,?,?)""",
+                    (identity,sha256(secrets.token_bytes(32)).hexdigest(),day,
+                     _iso(start),_iso(end),_iso(end),_iso(moment),_iso(moment))
+                )
+                db.execute(
+                    """INSERT INTO psychology_fonasa_bookings
+                       (source_id,hold_id,patient_name,patient_email,token_sha256,created_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (source_id,identity,patient_name,patient_email,token_sha256,_iso(moment))
+                )
+                return "CONFIRMED"
+        except sqlite3.IntegrityError:
+            raise StorageConflict("Duplicate Fonasa reference") from None
+        except sqlite3.Error:
+            raise StorageUnavailable("Fonasa registration unavailable") from None
+
+    def fonasa_by_token(self, token, *, now=None):
+        """Read state without using raw token as a query string or log output."""
+        if not isinstance(token,str) or not token or len(token) > 160:
+            raise ValueError("Invalid token")
+        digest = sha256(token.encode()).hexdigest()
+        try:
+            with self._connect() as db:
+                row = db.execute(
+                    """SELECT f.source_id,f.hold_id,f.redeemed_at,
+                              h.starts_at,h.ends_at,h.status
+                       FROM psychology_fonasa_bookings f
+                       JOIN psychology_booking_holds h ON h.id=f.hold_id
+                       WHERE f.token_sha256=?""", (digest,)
+                ).fetchone()
+                if not row:
+                    return {"state":"INVALID"}
+                moment = _utc(now or datetime.now(timezone.utc))
+                if row["status"]!="CONFIRMED" or row["redeemed_at"]:
+                    state="USED"
+                elif _read_utc(row["starts_at"])-moment < timedelta(hours=24):
+                    state="TOO_LATE"
+                else:
+                    state="ELIGIBLE"
+                # Does not emit patient name, email or token hash.
+                return {"state":state,"source_id":row["source_id"],
+                        "hold_id":row["hold_id"]}
+        except sqlite3.Error:
+            raise StorageUnavailable("Fonasa lookup unavailable") from None
+
+    def finalize_fonasa_reschedule(self, source_id, old_start, new_start,
+                                    new_end, *, now=None):
+        """Persist a one-time reschedule AFTER Google confirmed the new event.
+
+        On conflict or write failure, the caller must restore the Google event
+        to old_start and report reconciliation if that compensation fails.
+        """
+        now=_utc(now or datetime.now(timezone.utc))
+        old_start,new_start,new_end=(_utc(x) for x in (old_start,new_start,new_end))
+        if new_start <= now or new_end <= new_start:
+            raise ValueError("Invalid new appointment")
+        new_day = new_start.astimezone(TZ).date().isoformat()
+        if new_end.astimezone(TZ).date().isoformat() != new_day:
+            raise ValueError("Appointment crosses Chile day")
+        try:
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row=db.execute(
+                    """SELECT f.hold_id,f.redeemed_at,h.starts_at,h.status
+                       FROM psychology_fonasa_bookings f
+                       JOIN psychology_booking_holds h ON h.id=f.hold_id
+                       WHERE f.source_id=?""",(source_id,)
+                ).fetchone()
+                if not row or row["status"]!="CONFIRMED" or row["redeemed_at"]:
+                    raise StorageConflict("Fonasa link already used or missing")
+                if _read_utc(row["starts_at"]) != old_start:
+                    raise StorageConflict("Fonasa original time mismatch")
+                if old_start-now < timedelta(hours=24):
+                    raise StorageConflict("Fonasa rebooking deadline passed")
+                self._ensure_available(db,new_day,new_start,new_end,now,exclude_hold=row["hold_id"])
+                db.execute("INSERT OR IGNORE INTO psychology_booking_days(slot_date) VALUES (?)",(new_day,))
+                updated=db.execute(
+                    """UPDATE psychology_fonasa_bookings
+                       SET redeemed_at=?,old_starts_at=?,new_starts_at=?
+                       WHERE source_id=? AND redeemed_at IS NULL""",
+                    (_iso(now),_iso(old_start),_iso(new_start),source_id)
+                )
+                if updated.rowcount != 1:
+                    raise StorageConflict("Fonasa link already redeemed")
+                db.execute(
+                    """UPDATE psychology_booking_holds SET slot_date=?,starts_at=?,ends_at=?,
+                              expires_at=?,updated_at=? WHERE id=? AND status='CONFIRMED'""",
+                    (new_day,_iso(new_start),_iso(new_end),_iso(new_end),
+                     _iso(now),row["hold_id"])
+                )
+                return "REBOOKED"
+        except sqlite3.Error:
+            raise StorageUnavailable("Fonasa reschedule storage failed") from None
+
     def encrypted_google_oauth(self, key="owner"):
         """Read ONLY Fernet-encrypted ciphertext, never decrypted credentials."""
         if key != "owner":
