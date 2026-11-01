@@ -405,6 +405,45 @@ if os.environ.get("RENDER"):
     threading.Thread(target=_recover_operator_confirmed_sii_20261030,daemon=True).start()
 
 
+
+def _calendar_source_diagnostic_20261101():
+    """Read-only, no patient data: three owner-selected 2026-11 slots."""
+    import logging
+    import time as _time
+    _time.sleep(3)
+    report=logging.getLogger("psc_calendar_origin")
+    windows=("2026-11-02T14:00","2026-11-04T09:00","2026-11-04T10:00")
+    try:
+        from billing import db
+        from fonasa_internal import _schema
+        with db() as c:
+            _schema(c)
+            for target in windows:
+                day,clock=target.split("T")
+                prod=c.execute("""SELECT state,COUNT(*) AS n FROM production_payments
+                    WHERE starts_at LIKE ? GROUP BY state""",(target+"%",)).fetchall()
+                fonasa=c.execute("""SELECT state,COUNT(*) AS n FROM fonasa_intake
+                    WHERE requested_date=? AND requested_time=? GROUP BY state""",(day,clock)).fetchall()
+                report.warning("PSC_SLOT_ORIGIN slot=%s production=%s fonasa=%s",
+                    target,[(x["state"],x["n"]) for x in prod],
+                    [(x["state"],x["n"]) for x in fonasa])
+        try:
+            feed=_load_busy_intervals()
+            for target in windows:
+                start=datetime.fromisoformat(target).replace(tzinfo=TZ)
+                end=start+timedelta(minutes=45)
+                count=sum(start<y and x<end for x,y in (feed or []))
+                report.warning("PSC_SLOT_ICAL slot=%s overlaps=%d",target,count)
+        except Exception as exc:
+            report.warning("PSC_SLOT_ICAL error_type=%s",type(exc).__name__)
+    except Exception as exc:
+        report.warning("PSC_SLOT_DIAGNOSTIC error_type=%s",type(exc).__name__)
+
+
+if os.environ.get("RENDER"):
+    threading.Thread(target=_calendar_source_diagnostic_20261101,daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
