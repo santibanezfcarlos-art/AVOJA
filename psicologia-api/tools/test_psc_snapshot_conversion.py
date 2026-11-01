@@ -68,6 +68,13 @@ class ConvertTests(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual(json.loads(run.stdout)["status"], "SQLITE_STAGING_VERIFIED")
             self.assertEqual(original.read_bytes(), before)
+            reconciliation = subprocess.run(
+                [sys.executable, str(TOOLS / "psc_verify_conversion.py"),
+                 "--snapshot", str(original), "--sqlite", str(destination)],
+                capture_output=True, text=True, check=False
+            )
+            self.assertEqual(reconciliation.returncode, 0, reconciliation.stderr)
+            self.assertEqual(json.loads(reconciliation.stdout)["status"], "EXACT_RECONCILIATION_OK")
             with sqlite3.connect(destination) as con:
                 self.assertEqual(con.execute("PRAGMA integrity_check").fetchone()[0], "ok")
                 self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
@@ -85,6 +92,27 @@ class ConvertTests(unittest.TestCase):
                 capture_output=True, text=True, check=False
             )
             self.assertNotEqual(second.returncode, 0)
+
+    def test_reconciliation_detects_modified_staging_data(self):
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            original = folder / "snapshot.json"
+            destination = folder / "converted.sqlite3"
+            original.write_text(json.dumps(fixture()), encoding="utf-8")
+            subprocess.run(
+                [sys.executable, str(TOOLS / "psc_import_snapshot_sqlite.py"),
+                 "--input", str(original), "--output", str(destination)],
+                capture_output=True, check=True
+            )
+            with sqlite3.connect(destination) as con:
+                con.execute("UPDATE psychology_google_oauth SET encrypted_refresh_token='INVALID'")
+            check = subprocess.run(
+                [sys.executable, str(TOOLS / "psc_verify_conversion.py"),
+                 "--snapshot", str(original), "--sqlite", str(destination)],
+                capture_output=True, text=True, check=False
+            )
+            self.assertNotEqual(check.returncode, 0)
+            self.assertNotIn("CIPHERTEXT", check.stderr)
 
     def test_rejects_broken_foreign_key_and_removes_partial_output(self):
         with tempfile.TemporaryDirectory() as td:
