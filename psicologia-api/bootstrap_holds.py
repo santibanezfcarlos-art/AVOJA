@@ -192,6 +192,22 @@ def main():
         sql = Path(__file__).with_name("schema_holds.sql").read_text("utf-8")
         with psycopg.connect(url, connect_timeout=10, application_name="psychology-pilot-bootstrap") as conn:
             conn.execute(sql)
+            # Read-only calendar provenance probe for three expressly named future slots.
+            from datetime import datetime, timedelta
+            from zoneinfo import ZoneInfo
+            tz=ZoneInfo("America/Santiago")
+            for slot in ("2026-11-02T14:00","2026-11-04T09:00","2026-11-04T10:00"):
+                start=datetime.fromisoformat(slot).replace(tzinfo=tz)
+                end=start+timedelta(minutes=45)
+                rows=conn.execute("""SELECT h.status, COUNT(*) AS n,
+                      COUNT(d.order_id) AS demo_count, COUNT(f.source_id) AS fonasa_count
+                    FROM psychology_booking_holds h
+                    LEFT JOIN psychology_demo_payments d ON d.hold_id=h.id
+                    LEFT JOIN psychology_fonasa_bookings f ON f.hold_id=h.id
+                    WHERE h.starts_at<%s AND h.ends_at>%s
+                    GROUP BY h.status""",(end,start)).fetchall()
+                print("PSC_SLOT_HOLDS slot="+slot+" states="+
+                      str([(x["status"],x["n"],x["demo_count"],x["fonasa_count"]) for x in rows]),flush=True)
         print("PSICOLOGIA_PILOT_SCHEMA: ready", flush=True)
         from demo_notifications import configured as mail_is_ready
         print("PSICOLOGIA_PILOT_EMAIL: " + ("ready" if mail_is_ready() else "not_configured"), flush=True)
