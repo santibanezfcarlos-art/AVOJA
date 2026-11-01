@@ -157,3 +157,46 @@ dialog:has(.room-photo-full){width:min(880px,calc(100% - 28px));max-height:90dvh
 .admin-cal-event small,.admin-cal-event span{font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;width:100%}
 .admin-cal-event.is-cancelled{opacity:.6;border-style:dashed;text-decoration:line-through}
 @media(max-width:720px){.admin-cal-navigation strong{min-width:130px;font-size:.76rem}.admin-cal-grid{grid-template-columns:54px repeat(7,minmax(180px,1fr));min-width:1314px}.admin-cal-summary{margin-left:0}.admin-cal-heading{gap:6px}.admin-cal-time{right:5px}.admin-cal-filters{gap:8px}.admin-cal-filters label{min-width:135px;flex:1 1 135px}}
+
+
+/* Calendar week layout: only active in the read-only administration agenda. */
+.main:has(.admin-week-shell){max-width:none;width:100%;padding-left:clamp(14px,2vw,38px);padding-right:clamp(14px,2vw,38px)}
+.admin-week-shell{width:100%;min-width:0;display:flex;flex-direction:column;gap:16px}
+.admin-week-shell .page-head{margin-bottom:0}
+.admin-week-shell .admin-agenda-switch{margin:0;display:flex;align-items:center;gap:8px}
+.admin-week-shell .admin-cal-wrap{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 18px 14px;min-width:0;width:100%}
+.admin-week-shell .admin-cal-heading{gap:14px}
+.admin-week-shell .admin-cal-heading h2{font-size:1.3rem;line-height:1.25}
+.admin-week-shell .admin-cal-navigation strong{font-size:.91rem;min-width:190px}
+.admin-week-shell .admin-cal-filters{gap:14px;margin:14px 0 12px}
+.admin-week-shell .admin-cal-summary{font-weight:650;font-size:.84rem}
+.admin-week-shell .admin-cal-legend-box{font-size:.78rem}
+.admin-week-shell .admin-cal-scroll{width:100%;height:clamp(580px,calc(100dvh - 340px),980px);min-height:580px;max-height:none;overflow:auto;overscroll-behavior:contain;border-radius:12px;scrollbar-gutter:stable}
+.admin-week-shell .admin-cal-grid{width:100%;min-width:2384px;display:grid;grid-template-columns:74px repeat(7,minmax(330px,1fr));align-items:stretch}
+.admin-week-shell .admin-cal-grid.is-one-box{min-width:1264px;grid-template-columns:74px repeat(7,minmax(170px,1fr))}
+.admin-week-shell .admin-cal-day-col{display:flex;flex-direction:column;min-width:0}
+.admin-week-shell .admin-cal-day-body{flex:none;min-height:0;background-size:100% 84px,100% 42px}
+.admin-week-shell .admin-cal-day-header,.admin-week-shell .admin-cal-axis-heading{position:sticky;top:0;z-index:4;height:68px;min-height:68px;flex-shrink:0;background:#f9fbf8;border-bottom:1px solid var(--line)}
+.admin-week-shell .admin-cal-day-header.is-today{background:#e9f3e9}
+.admin-week-shell .admin-cal-day-header strong{font-size:.87rem;font-weight:700}
+.admin-week-shell .admin-cal-day-header small{font-size:.73rem}
+.admin-week-shell .admin-cal-axis{position:sticky;left:0;z-index:6}
+.admin-week-shell .admin-cal-axis-heading{z-index:7;font-size:.65rem;line-height:1.4;text-align:center;padding:8px 3px}
+.admin-week-shell .admin-cal-time{font-size:.75rem;font-weight:550;right:10px;line-height:1}
+.admin-week-shell .admin-cal-event{padding:6px 7px;gap:2px;border-radius:8px;min-width:0}
+.admin-week-shell .admin-cal-event strong{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:.77rem;line-height:1.15;overflow:hidden;overflow-wrap:anywhere}
+.admin-week-shell .admin-cal-event small,.admin-week-shell .admin-cal-event span{font-size:.7rem;line-height:1.2}
+.admin-week-shell .admin-cal-grid.is-one-box .admin-cal-event strong{font-size:.83rem}
+.admin-week-shell .admin-cal-grid.is-one-box .admin-cal-event small,.admin-week-shell .admin-cal-grid.is-one-box .admin-cal-event span{font-size:.75rem}
+.admin-week-shell .admin-cal-hint{font-size:.75rem}
+@media(max-width:720px){
+  .main:has(.admin-week-shell){padding-left:10px;padding-right:10px}
+  .admin-week-shell{gap:10px}
+  .admin-week-shell .page-head h1{font-size:1.5rem}
+  .admin-week-shell .admin-cal-wrap{padding:12px 9px;border-radius:12px}
+  .admin-week-shell .admin-cal-grid{min-width:2136px;grid-template-columns:60px repeat(7,minmax(296px,1fr))}
+  .admin-week-shell .admin-cal-grid.is-one-box{min-width:1040px;grid-template-columns:60px repeat(7,minmax(140px,1fr))}
+  .admin-week-shell .admin-cal-navigation strong{min-width:120px;font-size:.79rem}
+  .admin-week-shell .admin-cal-scroll{height:calc(100dvh - 285px);min-height:480px}
+  .admin-week-shell .admin-cal-event strong{font-size:.72rem}
+}

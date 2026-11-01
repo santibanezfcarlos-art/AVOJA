@@ -1,4 +1,5 @@
 let adminAgendaView='day';
+let adminCalScrollPosition=null;
 /* Read-only weekly administration calendar. Data comes exclusively from /api/admin. */
 let adminCalWeek = '';
 let adminCalBox = 'all';
@@ -35,7 +36,7 @@ function adminCalBookingCard(b, startHour, rowHeight, filtered) {
   const box=Math.min(3,Math.max(1,Number(b.box)||1));
   const name=escapeHTML(b.name||'Profesional');
   const title=escapeHTML((b.name||'Profesional')+' · '+rooms[box-1]+' · '+sessionRange(b.start)+' · '+(labels[b.status]||b.status));
-  const lane=filtered?'left:3px;width:calc(100% - 6px);':'left:calc('+(box-1)+' * 100% / 3 + 2px);width:calc(100% / 3 - 4px);';
+  const lane=filtered?'left:4px;width:calc(100% - 8px);':'left:calc('+((box-1)*100/3)+'% + 3px);width:calc(33.333333% - 6px);';
   return '<button type="button" class="admin-cal-event box-'+box+(b.status==='cancelled'?' is-cancelled':'')+'" style="top:'+top+'px;height:'+height+'px;'+lane+'" data-admin-cal-open="'+Number(b.id)+'" title="'+title+'" aria-label="'+title+'">'+
     '<strong>'+name+'</strong><small>'+escapeHTML(rooms[box-1])+'</small><span>'+escapeHTML(sessionRange(b.start))+'</span></button>';
 }
@@ -57,7 +58,7 @@ function adminWeeklyCalendar() {
   const endMinutes=bookings.map(b=>adminCalClock(b.start)+(Number(b.duration_minutes)||55));
   const startHour=Math.max(0,Math.min(8,...dayMinutes.map(min=>Math.floor(min/60))));
   const endHour=Math.min(24,Math.max(22,...endMinutes.map(min=>Math.ceil(min/60))));
-  const rowHeight=66;
+  const rowHeight=84;
   const height=(endHour-startHour)*rowHeight;
   const weekEnd=days[6];
   const label=adminCalReadable(monday,{day:'numeric',month:'short'})+' – '+adminCalReadable(weekEnd,{day:'numeric',month:'short',year:'numeric'});
@@ -85,7 +86,7 @@ function adminWeeklyCalendar() {
     '<span class="admin-cal-summary">'+bookings.length+' reservas · '+hours+' horas</span></div>'+
     '<div class="admin-cal-legend">'+rooms.map((room,index)=>'<span class="admin-cal-legend-box box-'+(index+1)+'">'+escapeHTML(room)+'</span>').join('')+'</div>'+
     '<p class="admin-cal-hint">Desplázate horizontalmente para ver toda la semana. Selecciona una reserva para consultar su detalle.</p>'+
-    '<div class="admin-cal-scroll" tabindex="0" aria-label="Calendario de reservas de lunes a domingo"><div class="admin-cal-grid">'+
+    '<div class="admin-cal-scroll" tabindex="0" aria-label="Calendario de reservas de lunes a domingo"><div class="admin-cal-grid '+(filtered?'is-one-box':'is-all-boxes')+'">'+
     '<div class="admin-cal-axis"><div class="admin-cal-axis-heading">GMT-3 / GMT-4*</div><div class="admin-cal-time-body" style="height:'+height+'px">'+timeAxis+'</div></div>'+
     columns+'</div></div>'+
     '<p class="admin-cal-footnote">*Horario local de Chile (America/Santiago), con ajuste automático de horario de verano. Las reservas canceladas no aparecen salvo que las selecciones en Estado.</p></div>';
@@ -94,11 +95,17 @@ function bindAdminWeeklyCalendar() {
   const box=document.querySelector('#admin-cal-box');
   if(!box)return;
   const redraw=()=>render().catch(err=>toast(err.message));
+  const scroll=document.querySelector('.admin-cal-scroll');
+  if(scroll){
+    if(adminCalScrollPosition){scroll.scrollTop=adminCalScrollPosition.top;scroll.scrollLeft=adminCalScrollPosition.left;}
+    else scroll.scrollTop=84;
+    scroll.addEventListener('scroll',()=>{adminCalScrollPosition={top:scroll.scrollTop,left:scroll.scrollLeft};},{passive:true});
+  }
   box.onchange=()=>{adminCalBox=box.value;redraw();};
   document.querySelector('#admin-cal-professional').onchange=event=>{adminCalProfessional=event.target.value;redraw();};
   document.querySelector('#admin-cal-status').onchange=event=>{adminCalStatus=event.target.value;redraw();};
-  document.querySelector('[data-admin-cal-today]').onclick=()=>{adminCalWeek=adminCalMonday(state.today||adminCalDate(new Date().toISOString()));redraw();};
-  document.querySelectorAll('[data-admin-cal-shift]').forEach(button=>button.onclick=()=>{adminCalWeek=adminCalShift(adminCalWeek,Number(button.dataset.adminCalShift));redraw();});
+  document.querySelector('[data-admin-cal-today]').onclick=()=>{adminCalWeek=adminCalMonday(state.today||adminCalDate(new Date().toISOString()));adminCalScrollPosition=null;redraw();};
+  document.querySelectorAll('[data-admin-cal-shift]').forEach(button=>button.onclick=()=>{adminCalWeek=adminCalShift(adminCalWeek,Number(button.dataset.adminCalShift));adminCalScrollPosition=null;redraw();});
   document.querySelectorAll('[data-admin-cal-open]').forEach(button=>button.onclick=()=>{
     const b=adminData.bookings.find(item=>Number(item.id)===Number(button.dataset.adminCalOpen));
     if(!b)return;
@@ -113,7 +120,7 @@ function bindAdminWeeklyCalendar() {
       '<button type="button" class="btn" id="admin-cal-list">Ver en Reservas</button></div>';
     modal.showModal();
     document.querySelector('#admin-cal-close').onclick=()=>modal.close();
-    document.querySelector('#admin-cal-list').onclick=()=>{modal.close();adminTab='bookings';redraw();};
+    document.querySelector('#admin-cal-list').onclick=()=>{modal.close();view='admin';adminTab='bookings';redraw();};
   });
 }
 
@@ -472,7 +479,7 @@ function adminAgendaSwitcher() {
   </div>`;
 }
 async function availability() {
-  if(adminMode()&&adminAgendaView==='week')return head('Agenda y ocupación de los box','Vista semanal para consultar todas las reservas por día, horario y box.')+adminAgendaSwitcher()+'<section class="card admin-week-view">'+adminWeeklyCalendar()+'</section>';
+  if(adminMode()&&adminAgendaView==='week')return '<div class="admin-week-shell">'+head('Agenda y ocupación de los box','Vista semanal para consultar todas las reservas por día, horario y box.')+adminAgendaSwitcher()+adminWeeklyCalendar()+'</div>';
 
   if(selectedDate<scheduleBounds().min)selectedDate=scheduleBounds().min;
   const data=await api((adminMode()?'admin/availability':'availability')+'?date='+selectedDate+(!adminMode()&&modifying?'&reschedule_id='+modifying.id:''));
@@ -909,7 +916,7 @@ function bind() {
     showModal(enabled?'Dar acceso de gestión':'Retirar acceso de gestión',`<p><strong>${escapeHTML(user.name)}</strong> · ${escapeHTML(user.email)}</p><p>${enabled?'Podrá consultar quién ocupa los box, ver pagos y perfiles con saldos y cargar horas para sí o para otras personas. Debe tener su correo confirmado.':'Dejará de tener acceso a la gestión de oficina y conservará su perfil profesional.'}</p>` ,enabled?'Dar acceso':'Retirar acceso',async()=>{await api('admin/management-access',{user_id:user.id,enabled,confirmed:true});toast(enabled?'Acceso de gestión autorizado.':'Acceso de gestión retirado.');});
   });
   bindDiscounts();bindMigration();bindPayments();bindEmailAdmin();bindDailyContacts();bindTransbankAdmin();bindBatchBookings();bindManualCredits();bindManualRules();bindAdminDetails();if(adminMode()&&view==='availability'&&adminAgendaView==='week')bindAdminWeeklyCalendar();
-  document.querySelectorAll('[data-admin-agenda-view]').forEach(button=>button.onclick=()=>{if(!adminMode())return;adminAgendaView=button.dataset.adminAgendaView;render().catch(e=>toast(e.message));});
+  document.querySelectorAll('[data-admin-agenda-view]').forEach(button=>button.onclick=()=>{if(!adminMode())return;adminAgendaView=button.dataset.adminAgendaView;adminCalScrollPosition=null;window.scrollTo(0,0);render().catch(e=>toast(e.message));});
   const refreshAgenda=document.querySelector('#refresh-agenda');if(refreshAgenda)refreshAgenda.onclick=()=>render().catch(e=>toast(e.message));
   bindGallery();
   const linkGoogle=document.querySelector('#link-google');if(linkGoogle)linkGoogle.onclick=()=>continueWithGoogle(true);
