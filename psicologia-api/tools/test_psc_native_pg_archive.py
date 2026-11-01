@@ -6,8 +6,8 @@ from psc_native_pg_encrypted import EXPECTED_TABLES, missing_archive_tables, saf
 class NativeArchiveTests(unittest.TestCase):
     def test_table_schema_and_data_entries_are_required(self):
         toc = "".join(
-            f"123; 1259 9876 TABLE public {table} owner\\n"
-            f"456; 0 9876 TABLE DATA public {table} owner\\n"
+            f"123; 1259 9876 TABLE public {table} owner\n"
+            f"456; 0 9876 TABLE DATA public {table} owner\n"
             for table in sorted(EXPECTED_TABLES)
         )
         self.assertEqual(missing_archive_tables(toc), [])
