@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from getpass import getpass
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import secrets
@@ -127,6 +128,7 @@ def main():
     folder.chmod(0o700)
     raw = folder / "psc_postgres_full.dump"
     ciphertext = folder / "psc_postgres_full.dump.enc"
+    success = False
     try:
         cmd = [dump_exe, "--format=custom", "--no-owner", "--no-privileges",
                "--file", str(raw), *connection_args]
@@ -143,9 +145,11 @@ def main():
             raise RuntimeError("pg_restore no reconoció el respaldo")
         toc_text = toc.stdout.decode("utf-8", "replace")
         missing = [table for table in EXPECTED_TABLES
-                   if not any(line.strip().startswith(";") is False
-                              and ("TABLE " + table + " ") in line
-                              for line in toc_text.splitlines())]
+                   if not any(
+                       not line.lstrip().startswith(";")
+                       and re.search(r"\\bTABLE\\s+(?:public\\s+)?" + re.escape(table) + r"\\b", line)
+                       for line in toc_text.splitlines()
+                   )]
         if missing:
             # Table names are known constants, no patient data.
             raise RuntimeError("Faltan tablas en el respaldo nativo: " + ", ".join(missing))
@@ -169,6 +173,7 @@ def main():
         if raw_hash != verified_hash:
             raise RuntimeError("La copia descifrada no coincide con el original")
         ciphertext.chmod(0o600)
+        success = True
         print(json.dumps({
             "status": "PSC_NATIVE_PG_ENCRYPTED_VERIFIED",
             "file": str(ciphertext),
@@ -181,6 +186,8 @@ def main():
     finally:
         # Never leave a full plaintext backup on the production disk.
         raw.unlink(missing_ok=True)
+        if not success:
+            ciphertext.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
