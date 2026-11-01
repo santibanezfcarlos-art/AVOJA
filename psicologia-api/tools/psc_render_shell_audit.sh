@@ -17,7 +17,7 @@ if [[ -z "${PSICOLOGIA_BILLING_DB:-}" ]]; then
 fi
 echo 'Preparando herramientas aisladas en /tmp; ninguna instalación global...'
 mkdir -p /tmp/psc-migration-deps
-TOOLS_URL='https://raw.githubusercontent.com/santibanezfcarlos-art/AVOJA/maintenance/psc-postgres-to-sqlite-20261101/psicologia-api/tools'
+TOOLS_URL='https://raw.githubusercontent.com/santibanezfcarlos-art/AVOJA/91393851d567ffb3174f5b8667542ef9c1a301b3/psicologia-api/tools'
 curl -fsSL "${TOOLS_URL}/psc_pg_audit_readonly.py" -o /tmp/psc_pg_audit_readonly.py
 curl -fsSL "${TOOLS_URL}/psc_disk_preflight.py" -o /tmp/psc_disk_preflight.py
 python -m pip install --quiet --disable-pip-version-check \
