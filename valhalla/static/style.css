@@ -220,7 +220,7 @@ dialog:has(.room-photo-full){width:min(880px,calc(100% - 28px));max-height:90dvh
 .admin-week-shell .admin-cal-time-body{position:relative;background:#f7faf6}
 .admin-week-shell .admin-cal-hour-label{
   display:flex;justify-content:flex-end;align-items:flex-start;
-  padding:6px 8px 0 0;border-top:1px solid #d4dfd6;
+  padding:6px 8px 0 0;border-top:2px solid #b8c7bc;
   font-size:.74rem;font-weight:650;font-variant-numeric:tabular-nums;color:#526a5e
 }
 .admin-week-shell .admin-cal-end-label{
@@ -230,7 +230,7 @@ dialog:has(.room-photo-full){width:min(880px,calc(100% - 28px));max-height:90dvh
 .admin-week-shell .admin-cal-hour-slot{
   display:grid;grid-template-rows:repeat(3,minmax(0,1fr));
   height:120px;min-height:120px;min-width:0;
-  border-top:1px solid #d4dfd6;background:#fff
+  border-top:2px solid #b8c7bc;background:#fff
 }
 .admin-week-shell .admin-cal-hour-slot:nth-child(even){background:#fafcf9}
 .admin-week-shell .admin-cal-hour-slot.single-box{grid-template-rows:minmax(0,1fr)}
