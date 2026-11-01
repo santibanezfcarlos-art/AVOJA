@@ -149,6 +149,10 @@ class SQLiteTxnTests(unittest.TestCase):
         with sqlite3.connect(self.path) as db:
             states=db.execute("SELECT status FROM psychology_booking_holds WHERE id=?",(hold["id"],)).fetchone()
         self.assertEqual(states[0],"RECONCILIATION_REQUIRED")
+        # A late authorized payment must remain blocked, even after the
+        # original twenty-minute hold timeout has passed.
+        with self.assertRaises(StorageConflict):
+            self.reserve(now=later)
 
     def test_rejection_releases_hold(self):
         hold=self.reserve()
