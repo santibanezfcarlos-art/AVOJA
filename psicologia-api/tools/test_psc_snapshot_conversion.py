@@ -93,6 +93,42 @@ class ConvertTests(unittest.TestCase):
             )
             self.assertNotEqual(second.returncode, 0)
 
+    def test_reconciliation_ignores_postgres_text_collation_order(self):
+        # Simula una ordenación PostgreSQL lingüística distinta del orden
+        # binario SQLite. Los registros deben compararse por llave, no por fila.
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            original = folder / "snapshot.json"
+            destination = folder / "converted.sqlite3"
+            payload = fixture()
+            extra_hold = dict(payload["tables"]["psychology_booking_holds"][0])
+            extra_hold["id"] = "22222222-2222-4222-8222-222222222222"
+            payload["tables"]["psychology_booking_holds"].append(extra_hold)
+            second = dict(payload["tables"]["psychology_fonasa_bookings"][0])
+            second["source_id"] = "a-lower"
+            second["hold_id"] = extra_hold["id"]
+            second["token_sha256"] = "c" * 64
+            payload["tables"]["psychology_fonasa_bookings"][0]["source_id"] = "Z-upper"
+            # Orden inverso al cotejo por BINARY de SQLite.
+            payload["tables"]["psychology_fonasa_bookings"] = [
+                second, payload["tables"]["psychology_fonasa_bookings"][0]
+            ]
+            payload["counts"] = {name: len(rows) for name, rows in payload["tables"].items()}
+            original.write_text(json.dumps(payload), encoding="utf-8")
+            imported = subprocess.run(
+                [sys.executable, str(TOOLS / "psc_import_snapshot_sqlite.py"),
+                 "--input", str(original), "--output", str(destination)],
+                capture_output=True, text=True, check=False
+            )
+            self.assertEqual(imported.returncode, 0, imported.stderr)
+            verified = subprocess.run(
+                [sys.executable, str(TOOLS / "psc_verify_conversion.py"),
+                 "--snapshot", str(original), "--sqlite", str(destination)],
+                capture_output=True, text=True, check=False
+            )
+            self.assertEqual(verified.returncode, 0, verified.stderr)
+            self.assertEqual(json.loads(verified.stdout)["status"], "EXACT_RECONCILIATION_OK")
+
     def test_reconciliation_detects_modified_staging_data(self):
         with tempfile.TemporaryDirectory() as td:
             folder = Path(td)
