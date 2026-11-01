@@ -28,68 +28,63 @@ function adminCalClock(iso) {
 function adminCalReadable(dateKey, opts) {
   return new Intl.DateTimeFormat('es-CL',Object.assign({timeZone:'UTC'},opts)).format(adminCalUTC(dateKey));
 }
-function adminCalBookingCard(b, startHour, rowHeight, filtered) {
-  const startMinutes=adminCalClock(b.start);
-  const duration=Number(b.duration_minutes)||55;
-  const top=Math.max(0,(startMinutes-startHour*60)*rowHeight/60)+2;
-  const height=Math.max(30,duration*rowHeight/60-4);
+
+function adminCalBookingCard(b) {
   const box=Math.min(3,Math.max(1,Number(b.box)||1));
   const name=escapeHTML(b.name||'Profesional');
-  const title=escapeHTML((b.name||'Profesional')+' · '+rooms[box-1]+' · '+sessionRange(b.start)+' · '+(labels[b.status]||b.status));
-  const lane=filtered?'left:4px;width:calc(100% - 8px);':'left:calc('+((box-1)*100/3)+'% + 3px);width:calc(33.333333% - 6px);';
-  return '<button type="button" class="admin-cal-event box-'+box+(b.status==='cancelled'?' is-cancelled':'')+'" style="top:'+top+'px;height:'+height+'px;'+lane+'" data-admin-cal-open="'+Number(b.id)+'" title="'+title+'" aria-label="'+title+'">'+
-    '<strong>'+name+'</strong><small>'+escapeHTML(rooms[box-1])+'</small><span>'+escapeHTML(sessionRange(b.start))+'</span></button>';
+  const full=escapeHTML((b.name||'Profesional')+' · '+rooms[box-1]+' · '+sessionRange(b.start));
+  return '<button type="button" class="admin-cal-event box-'+box+(b.status==='cancelled'?' is-cancelled':'')+
+    '" data-admin-cal-open="'+Number(b.id)+'" title="'+full+'" aria-label="'+full+'">'+
+    '<strong>'+name+'</strong><small>'+escapeHTML(rooms[box-1])+' · '+escapeHTML(hourText(b.start))+'</small></button>';
 }
 function adminWeeklyCalendar() {
   const today=state.today||adminCalDate(new Date().toISOString());
   if(!adminCalWeek)adminCalWeek=adminCalMonday(today);
-  const monday=adminCalMonday(adminCalWeek);
-  const days=Array.from({length:7},(_,index)=>adminCalShift(monday,index));
-  const bookings=adminData.bookings.filter(b=>
+  const monday=adminCalMonday(adminCalWeek), days=Array.from({length:7},(_,i)=>adminCalShift(monday,i));
+  const hours=Array.from({length:15},(_,i)=>i+8);
+  const scoped=adminData.bookings.filter(b=>
     (adminCalStatus==='all'||b.status===adminCalStatus)&&
     (adminCalBox==='all'||String(b.box)===adminCalBox)&&
     (adminCalProfessional==='all'||String(b.user_id)===adminCalProfessional)&&
-    days.includes(adminCalDate(b.start))
-  );
+    days.includes(adminCalDate(b.start)));
+  const bookings=scoped.filter(b=>adminCalClock(b.start)>=480&&adminCalClock(b.start)<1380);
+  const outside=scoped.length-bookings.length;
   const professionals=[...new Map(adminData.bookings.map(b=>[String(b.user_id),{id:String(b.user_id),name:b.name||'Profesional'}])).values()]
     .sort((a,b)=>a.name.localeCompare(b.name,'es'));
-  const filtered=adminCalBox!=='all';
-  const dayMinutes=bookings.map(b=>adminCalClock(b.start));
-  const endMinutes=bookings.map(b=>adminCalClock(b.start)+(Number(b.duration_minutes)||55));
-  const startHour=Math.max(0,Math.min(8,...dayMinutes.map(min=>Math.floor(min/60))));
-  const endHour=Math.min(24,Math.max(22,...endMinutes.map(min=>Math.ceil(min/60))));
-  const rowHeight=84;
-  const height=(endHour-startHour)*rowHeight;
-  const weekEnd=days[6];
-  const label=adminCalReadable(monday,{day:'numeric',month:'short'})+' – '+adminCalReadable(weekEnd,{day:'numeric',month:'short',year:'numeric'});
-  const hours=(bookings.reduce((total,b)=>total+(Number(b.duration_minutes)||55),0)/60).toLocaleString('es-CL',{maximumFractionDigits:1});
-  const boxOptions=rooms.map((room,i)=>'<option value="'+(i+1)+'"'+(adminCalBox===String(i+1)?' selected':'')+'>'+escapeHTML(room)+'</option>').join('');
-  const professionalOptions=professionals.map(p=>'<option value="'+escapeHTML(p.id)+'"'+(adminCalProfessional===p.id?' selected':'')+'>'+escapeHTML(p.name)+'</option>').join('');
-  const statusOptions=[['confirmed','Confirmadas'],['cancelled','Canceladas'],['all','Todas']].map(item=>'<option value="'+item[0]+'"'+(adminCalStatus===item[0]?' selected':'')+'>'+item[1]+'</option>').join('');
-  const timeAxis=Array.from({length:endHour-startHour+1},(_,i)=>'<span class="admin-cal-time" style="top:'+(i*rowHeight)+'px">'+String(startHour+i).padStart(2,'0')+':00</span>').join('');
-  const columns=days.map((date,index)=>{
-    const todayClass=date===today?' is-today':'';
-    const dayEvents=bookings.filter(b=>adminCalDate(b.start)===date);
-    const dayTitle=adminCalReadable(date,{weekday:'short',day:'numeric',month:'short'});
-    const block=dayEvents.map(b=>adminCalBookingCard(b,startHour,rowHeight,filtered)).join('');
-    return '<div class="admin-cal-day-col"><div class="admin-cal-day-header'+todayClass+'"><strong>'+escapeHTML(dayTitle)+'</strong><small>'+dayEvents.length+' reserva'+(dayEvents.length===1?'':'s')+'</small></div>'+
-      '<div class="admin-cal-day-body" style="height:'+height+'px">'+block+'</div></div>';
+  const filtered=adminCalBox!=='all',label=adminCalReadable(monday,{day:'numeric',month:'short'})+' – '+adminCalReadable(days[6],{day:'numeric',month:'short',year:'numeric'});
+  const totalHours=(bookings.reduce((n,b)=>n+(Number(b.duration_minutes)||55),0)/60).toLocaleString('es-CL',{maximumFractionDigits:1});
+  const boxOptions=rooms.map((r,i)=>'<option value="'+(i+1)+'"'+(adminCalBox===String(i+1)?' selected':'')+'>'+escapeHTML(r)+'</option>').join('');
+  const proOptions=professionals.map(p=>'<option value="'+escapeHTML(p.id)+'"'+(adminCalProfessional===p.id?' selected':'')+'>'+escapeHTML(p.name)+'</option>').join('');
+  const statusOptions=[['confirmed','Confirmadas'],['cancelled','Canceladas'],['all','Todas']].map(([v,t])=>'<option value="'+v+'"'+(adminCalStatus===v?' selected':'')+'>'+t+'</option>').join('');
+  const axis=hours.map(h=>'<div class="admin-cal-hour-label">'+String(h).padStart(2,'0')+':00</div>').join('')+'<span class="admin-cal-end-label">23:00</span>';
+  const columns=days.map(day=>{
+    const dayBookings=bookings.filter(b=>adminCalDate(b.start)===day);
+    const slots=hours.map(hour=>{
+      const hourBookings=dayBookings.filter(b=>Math.floor(adminCalClock(b.start)/60)===hour);
+      const lanes=(filtered?[Number(adminCalBox)]:[1,2,3]).map(box=>
+        '<div class="admin-cal-box-lane box-'+box+'">'+hourBookings.filter(b=>Number(b.box)===box).map(adminCalBookingCard).join('')+'</div>').join('');
+      return '<div class="admin-cal-hour-slot'+(filtered?' single-box':'')+'" data-day="'+day+'" data-hour="'+hour+'">'+lanes+'</div>';
+    }).join('');
+    return '<div class="admin-cal-day-col"><div class="admin-cal-day-header'+(day===today?' is-today':'')+'"><strong>'+
+      escapeHTML(adminCalReadable(day,{weekday:'short',day:'numeric',month:'short'}))+'</strong><small>'+dayBookings.length+' reservas</small></div>'+
+      '<div class="admin-cal-day-body">'+slots+'</div></div>';
   }).join('');
-  return '<div class="admin-cal-wrap"><div class="admin-cal-heading"><div><h2>Calendario semanal</h2><p class="section-intro">Ocupación real de los tres box. Solo consulta: no mueve ni altera reservas.</p></div>'+
+  return '<div class="admin-cal-wrap"><div class="admin-cal-heading"><div><h2>Calendario semanal</h2><p class="section-intro">Lunes a domingo, con una fila fija por hora desde las 08:00 hasta las 23:00.</p></div>'+
     '<div class="admin-cal-navigation"><button type="button" class="btn ghost small" data-admin-cal-today>Hoy</button>'+
     '<button type="button" class="btn ghost small" data-admin-cal-shift="-7" aria-label="Semana anterior">‹</button>'+
     '<strong aria-live="polite">'+escapeHTML(label)+'</strong>'+
     '<button type="button" class="btn ghost small" data-admin-cal-shift="7" aria-label="Semana siguiente">›</button></div></div>'+
     '<div class="admin-cal-filters"><label>Box<select id="admin-cal-box"><option value="all">Todos los box</option>'+boxOptions+'</select></label>'+
-    '<label>Profesional<select id="admin-cal-professional"><option value="all">Todos los profesionales</option>'+professionalOptions+'</select></label>'+
+    '<label>Profesional<select id="admin-cal-professional"><option value="all">Todos los profesionales</option>'+proOptions+'</select></label>'+
     '<label>Estado<select id="admin-cal-status">'+statusOptions+'</select></label>'+
-    '<span class="admin-cal-summary">'+bookings.length+' reservas · '+hours+' horas</span></div>'+
-    '<div class="admin-cal-legend">'+rooms.map((room,index)=>'<span class="admin-cal-legend-box box-'+(index+1)+'">'+escapeHTML(room)+'</span>').join('')+'</div>'+
-    '<p class="admin-cal-hint">Desplázate horizontalmente para ver toda la semana. Selecciona una reserva para consultar su detalle.</p>'+
-    '<div class="admin-cal-scroll" tabindex="0" aria-label="Calendario de reservas de lunes a domingo"><div class="admin-cal-grid '+(filtered?'is-one-box':'is-all-boxes')+'">'+
-    '<div class="admin-cal-axis"><div class="admin-cal-axis-heading">GMT-3 / GMT-4*</div><div class="admin-cal-time-body" style="height:'+height+'px">'+timeAxis+'</div></div>'+
+    '<span class="admin-cal-summary">'+bookings.length+' reservas · '+totalHours+' horas</span></div>'+
+    '<div class="admin-cal-legend">'+rooms.map((r,i)=>'<span class="admin-cal-legend-box box-'+(i+1)+'">'+escapeHTML(r)+'</span>').join('')+'</div>'+
+    '<p class="admin-cal-hint">Cada fila representa una hora. Los espacios vacíos indican que el box no tiene una reserva confirmada en ese horario.</p>'+
+    '<div class="admin-cal-scroll" tabindex="0" aria-label="Calendario semanal de ocho a veintitrés horas"><div class="admin-cal-grid '+(filtered?'is-one-box':'is-all-boxes')+'">'+
+    '<div class="admin-cal-axis"><div class="admin-cal-axis-heading">Hora · Chile</div><div class="admin-cal-time-body">'+axis+'</div></div>'+
     columns+'</div></div>'+
-    '<p class="admin-cal-footnote">*Horario local de Chile (America/Santiago), con ajuste automático de horario de verano. Las reservas canceladas no aparecen salvo que las selecciones en Estado.</p></div>';
+    (outside?'<p class="admin-cal-footnote">'+outside+' reserva(s) fuera de la franja de 08:00–23:00, no visible(s) en esta grilla.</p>':'')+
+    '<p class="admin-cal-footnote">Consulta de reservas; no modifica horas ni saldos. Hora local de Chile (America/Santiago).</p></div>';
 }
 function bindAdminWeeklyCalendar() {
   const box=document.querySelector('#admin-cal-box');
@@ -98,7 +93,7 @@ function bindAdminWeeklyCalendar() {
   const scroll=document.querySelector('.admin-cal-scroll');
   if(scroll){
     if(adminCalScrollPosition){scroll.scrollTop=adminCalScrollPosition.top;scroll.scrollLeft=adminCalScrollPosition.left;}
-    else scroll.scrollTop=84;
+    else scroll.scrollTop=0;
     scroll.addEventListener('scroll',()=>{adminCalScrollPosition={top:scroll.scrollTop,left:scroll.scrollLeft};},{passive:true});
   }
   box.onchange=()=>{adminCalBox=box.value;redraw();};

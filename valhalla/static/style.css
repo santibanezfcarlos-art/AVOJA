@@ -200,3 +200,67 @@ dialog:has(.room-photo-full){width:min(880px,calc(100% - 28px));max-height:90dvh
   .admin-week-shell .admin-cal-scroll{height:calc(100dvh - 285px);min-height:480px}
   .admin-week-shell .admin-cal-event strong{font-size:.72rem}
 }
+
+
+/* Fixed 08-23 timetable, independent of the number of bookings. */
+.admin-week-shell .admin-cal-grid,
+.admin-week-shell .admin-cal-grid.is-one-box{
+  display:grid;grid-template-columns:72px repeat(7,minmax(0,1fr));
+  width:100%;min-width:1020px;align-items:start
+}
+.admin-week-shell .admin-cal-scroll{height:clamp(600px,calc(100dvh - 325px),1000px);min-height:600px;overflow:auto}
+.admin-week-shell .admin-cal-axis,.admin-week-shell .admin-cal-day-col{display:flex;flex-direction:column;min-width:0}
+.admin-week-shell .admin-cal-axis-heading,.admin-week-shell .admin-cal-day-header{
+  height:62px;min-height:62px;flex:0 0 62px
+}
+.admin-week-shell .admin-cal-day-body,.admin-week-shell .admin-cal-time-body{
+  display:grid;grid-template-rows:repeat(15,120px);
+  height:1800px;min-height:1800px;width:100%;flex:none;background:none
+}
+.admin-week-shell .admin-cal-time-body{position:relative;background:#f7faf6}
+.admin-week-shell .admin-cal-hour-label{
+  display:flex;justify-content:flex-end;align-items:flex-start;
+  padding:6px 8px 0 0;border-top:1px solid #d4dfd6;
+  font-size:.74rem;font-weight:650;font-variant-numeric:tabular-nums;color:#526a5e
+}
+.admin-week-shell .admin-cal-end-label{
+  position:absolute;right:8px;bottom:0;transform:translateY(-100%);
+  font-size:.74rem;font-weight:650;color:#526a5e
+}
+.admin-week-shell .admin-cal-hour-slot{
+  display:grid;grid-template-rows:repeat(3,minmax(0,1fr));
+  height:120px;min-height:120px;min-width:0;
+  border-top:1px solid #d4dfd6;background:#fff
+}
+.admin-week-shell .admin-cal-hour-slot:nth-child(even){background:#fafcf9}
+.admin-week-shell .admin-cal-hour-slot.single-box{grid-template-rows:minmax(0,1fr)}
+.admin-week-shell .admin-cal-box-lane{
+  display:flex;align-items:stretch;min-width:0;min-height:0;
+  padding:2px 3px;border-bottom:1px dashed #edf1e9
+}
+.admin-week-shell .admin-cal-box-lane:last-child{border-bottom:0}
+.admin-week-shell .admin-cal-event{
+  position:static;top:auto;left:auto;display:flex;flex-direction:column;
+  justify-content:center;align-items:flex-start;gap:2px;
+  flex:1 1 auto;width:100%;height:100%;max-height:none;min-width:0;
+  padding:3px 6px;border-radius:5px
+}
+.admin-week-shell .admin-cal-event strong{
+  display:block;-webkit-line-clamp:unset;white-space:nowrap;
+  font-size:.73rem;max-width:100%;width:100%;
+  overflow:hidden;text-overflow:ellipsis;line-height:1.1
+}
+.admin-week-shell .admin-cal-event small{
+  display:block;white-space:nowrap;font-size:.63rem;
+  max-width:100%;width:100%;overflow:hidden;text-overflow:ellipsis;line-height:1.1
+}
+.admin-week-shell .admin-cal-hour-slot.single-box .admin-cal-event strong{font-size:.85rem;white-space:normal}
+.admin-week-shell .admin-cal-hour-slot.single-box .admin-cal-event small{font-size:.75rem}
+@media(min-width:1280px){
+  .admin-week-shell .admin-cal-grid,.admin-week-shell .admin-cal-grid.is-one-box{min-width:0}
+}
+@media(max-width:720px){
+  .admin-week-shell .admin-cal-grid,.admin-week-shell .admin-cal-grid.is-one-box{
+    min-width:1050px;grid-template-columns:70px repeat(7,minmax(140px,1fr))
+  }
+}
