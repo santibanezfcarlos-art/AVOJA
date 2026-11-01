@@ -305,6 +305,10 @@ app.register_blueprint(fonasa_private_bp)
 from fonasa_public import bp as fonasa_patient_bp
 app.register_blueprint(fonasa_patient_bp)
 
+# Migration shadow endpoint, disabled by default; never used for public slots.
+from psc_migration_internal import bp as psc_migration_shadow_bp
+app.register_blueprint(psc_migration_shadow_bp)
+
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
 from billing import configured as _billing_is_ready
