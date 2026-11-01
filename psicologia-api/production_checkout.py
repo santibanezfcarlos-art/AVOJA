@@ -265,7 +265,171 @@ def receipt_page(receipt):
                 r['order_id'][-6:],type(exc).__name__)
         with billing.db() as c:r=c.execute('SELECT * FROM production_payments WHERE receipt=?',(receipt,)).fetchone()
     label={'CONFIRMED':'Tu sesión está confirmada','AUTHORIZED':'Pago aprobado: confirmando tu reserva','CANCELLED':'Pago cancelado','REJECTED':'Pago rechazado','RELEASED_TEST':'Compra de prueba sin atención'}.get(r['state'],'Operación pendiente de verificación')
-    text='<p>'+html.escape(r['service'])+' · '+html.escape(r['starts_at'])+' · $'+str(r['amount'])+' CLP</p>'
+    if r['state']=='RELEASED_TEST':
+        return page('Compra de prueba sin atención',
+            '<p>El pago fue aprobado, pero el cupo correspondiente a esta prueba ha sido liberado. '
+            'No queda una atención programada por esta compra. '
+            'El pago y su documentación tributaria permanecen registrados.</p>')
+    text='<p>'+html.escape(r['service'])+' · '+html.escape(r['starts_at'])+' · 
+    if r['state']=='CONFIRMED':
+        pending_invoice=resume_pending_invoice(r['order_id'])
+        response=confirmed_page(r)
+        if pending_invoice:response.headers['Refresh']='20'
+        return response
+    else:text+='<p><a href="'+API+'/pago/'+r['receipt']+'">Actualizar estado de la reserva</a></p><p>Si el banco aprobó el pago, no repitas la compra. Escríbenos a contacto@pscsantibanez.cl para revisar el estado.</p>'
+    if r['state']=='AUTHORIZED':
+        response=page('¡Tu pago fue aprobado!',
+            '<p>Estamos terminando de confirmar tu sesión y el envío de sus detalles al correo. '
+            'Esta página se actualizará automáticamente. Tu pago ya está registrado; no necesitas volver a pagar.</p>'+text)
+        response.headers['Refresh']='20'
+        return response
+    return page(label,text)
+
+def busy_intervals(first,last):
+    init()
+    with billing.db() as c:
+        rows=c.execute("SELECT starts_at,ends_at,new_starts_at,new_ends_at FROM production_payments WHERE state IN ('AUTHORIZED','CONFIRMED','FULFILLING','REBOOKING') OR (state IN ('CREATING','READY','COMMITTING','RECONCILIATION') AND expires_at>?)",(time.time(),)).fetchall()
+    values=[(datetime.fromisoformat(r['starts_at']),datetime.fromisoformat(r['ends_at'])) for r in rows if first<=datetime.fromisoformat(r['starts_at']).date()<=last]
+    values.extend((datetime.fromisoformat(r['new_starts_at']),datetime.fromisoformat(r['new_ends_at'])) for r in rows if r['new_starts_at'])
+    from collections import Counter
+    for day,count in Counter(x.date() for x,y in values).items():
+        if count>=3:
+            start=datetime.combine(day,datetime.min.time(),tzinfo=TZ);values.append((start,start+timedelta(days=1)))
+    return values
+
+
+@bp.get('/admin/reservas-pagadas')
+@billing.private
+def admin_paid_bookings():
+    """Read-only view of future paid slots; no payment or tax changes."""
+    init()
+    with billing.db() as c:
+        rows=c.execute("""SELECT p.order_id,p.service,p.starts_at,p.state,
+                b.name,b.payment_status,b.invoice_status
+            FROM production_payments p JOIN billing_orders b USING(order_id)
+            WHERE p.starts_at>=? AND p.state IN ('AUTHORIZED','CONFIRMED','RELEASED_TEST')
+              AND b.environment='production' AND b.payment_status='approved'
+            ORDER BY p.starts_at LIMIT 200""",(datetime.now(TZ).isoformat(),)).fetchall()
+    return jsonify(bookings=[dict(r) for r in rows])
+
+
+@bp.post('/admin/reservas-pagadas/<order>/liberar')
+@billing.private
+def admin_release_test_slot(order):
+    """Release only a confirmed, explicitly selected test slot, never its payment or invoice.
+
+    The operator must first remove the corresponding event from Google Calendar.
+    A distinct terminal state prevents later fulfillment/reconciliation recreating it.
+    """
+    if not re.fullmatch(r'PSCP[0-9A-F]{18}',order):
+        return jsonify(error='Identificador de compra inválido.'),400
+    data=request.get_json(silent=True)
+    if (not isinstance(data,dict) or data.get('confirmation')!='LIBERAR'
+            or not isinstance(data.get('reason'),str)
+            or not 10<=len(data['reason'].strip())<=200):
+        return jsonify(error='Confirma la liberación e indica su motivo.'),400
+    init()
+    with billing.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute("""SELECT p.state,p.starts_at,b.payment_status,b.environment
+          FROM production_payments p JOIN billing_orders b USING(order_id)
+          WHERE p.order_id=?""",(order,)).fetchone()
+        if not row:
+            return jsonify(error='Compra no encontrada.'),404
+        if row['state']=='RELEASED_TEST':
+            return jsonify(ok=True,state='RELEASED_TEST',already_released=True)
+        if (row['state']!='CONFIRMED' or row['payment_status']!='approved'
+                or row['environment']!='production'
+                or datetime.fromisoformat(row['starts_at'])<=datetime.now(TZ)):
+            return jsonify(error='Solo se pueden liberar reservas futuras, pagadas y confirmadas.'),409
+        changed=c.execute("""UPDATE production_payments SET state='RELEASED_TEST'
+            WHERE order_id=? AND state='CONFIRMED'""",(order,))
+        if changed.rowcount!=1:
+            return jsonify(error='El estado de la reserva cambió. Actualiza la lista.'),409
+        c.execute("""INSERT INTO billing_audit(order_id,action,created_at,actor)
+            VALUES(?,?,?,?)""",(order,'test_slot_released: '+data['reason'].strip(),
+                billing.now(),request.authorization.username))
+    return jsonify(ok=True,state='RELEASED_TEST',
+        message='Cupo liberado en la agenda de PSC. Pago y boleta conservados.')
+
+
+@bp.post('/admin/transbank/live')
+@billing.private
+def set_sales():
+    data=request.get_json(silent=True) or {}
+    if type(data.get('enabled')) is not bool:return jsonify(error='Estado inválido'),400
+    code=gateway().config.commerce_code
+    with billing.db() as c:
+        approved=c.execute("SELECT 1 FROM webpay_validation WHERE state='approved' AND commerce_code=?",(code,)).fetchone()
+    if not approved:return jsonify(error='Primero completa la validación de $50.'),409
+    if data['enabled']:
+        try:
+            if remote('health',{}).get('state')!='READY':raise ValueError()
+        except Exception:return jsonify(error='La conexión de Calendar y correo aún no está lista.'),503
+    with billing.db() as c:
+        c.execute('INSERT INTO webpay_live_settings(id,commerce_code,sales_enabled,updated_at) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET commerce_code=excluded.commerce_code,sales_enabled=excluded.sales_enabled,updated_at=excluded.updated_at',(code,int(data['enabled']),billing.now()))
+    return jsonify(sales_enabled=enabled())
+
+@bp.route('/reagendar-produccion/<token>',methods=['GET','POST'])
+def rebook(token):
+    if not re.fullmatch(r'[A-Za-z0-9_-]{40,50}',token):return page('Enlace inválido','',404)
+    init()
+    with billing.db() as c:r=c.execute("SELECT * FROM production_payments WHERE rebook_token=? AND state='CONFIRMED'",(token,)).fetchone()
+    if not r:return page('Reserva no encontrada','',404)
+    original=datetime.fromisoformat(r['starts_at'])
+    if r['rebooked'] or original-datetime.now(TZ)<timedelta(hours=24):return page('Reprogramación no disponible','<p>Se permite un cambio con al menos 24 horas de anticipación. Para solicitudes del mismo día con justificativo médico, escribe a contacto@pscsantibanez.cl.</p>',409)
+    if request.method=='GET':
+        from rebooking_calendar import render_rebooking_calendar
+        return render_rebooking_calendar(r)
+    try:
+        duration=int((datetime.fromisoformat(r['ends_at'])-original).total_seconds()/60)
+        start_at,end_at,_=interval(r['service'],request.form.get('date',''),request.form.get('time',''),duration=duration)
+        import webpay_demo_bridge as b
+        busy=b.busy_intervals(start_at.date(),start_at.date(),include_calendar=True)
+        old_end=datetime.fromisoformat(r['ends_at'])
+        busy=[(x,y) for x,y in busy if not (x==original and y==old_end)]
+        if any(start_at<y and x<end_at for x,y in busy):raise ValueError('El horario está ocupado.')
+        with billing.db() as c:
+            c.execute('BEGIN IMMEDIATE');current=c.execute('SELECT * FROM production_payments WHERE order_id=?',(r['order_id'],)).fetchone()
+            if current['rebooked'] or current['state']!='CONFIRMED':raise ValueError('Ya hay un cambio registrado o pendiente.')
+            claim(c,start_at,end_at,exclude=r['order_id'],busy=busy)
+            c.execute("UPDATE production_payments SET state='REBOOKING',new_starts_at=?,new_ends_at=? WHERE order_id=?",(start_at.isoformat(),end_at.isoformat(),r['order_id']))
+        result=remote('rebook',{'hold_id':r['hold_id'],'service':r['service'],'old_start':r['starts_at'],'old_end':r['ends_at'],'start':start_at.isoformat(),'end':end_at.isoformat()})
+        if result.get('state')!='CONFIRMED':raise RuntimeError()
+        with billing.db() as c:
+            c.execute("UPDATE production_payments SET state='CONFIRMED',rebooked=1,new_starts_at=NULL,new_ends_at=NULL,starts_at=?,ends_at=?,patient_mail=0,professional_mail=0 WHERE order_id=?",(start_at.isoformat(),end_at.isoformat(),r['order_id']))
+            c.execute('UPDATE billing_orders SET appointment_date=?,appointment_time=? WHERE order_id=?',(start_at.date().isoformat(),start_at.strftime('%H:%M'),r['order_id']))
+        fulfill(r['order_id'])
+        return page('Reprogramación confirmada','<p>Tu reserva quedó actualizada. Revisa tu correo.</p>')
+    except ValueError as e:return page('No se pudo cambiar el horario','<p>'+html.escape(str(e))+'</p>',409)
+    except Exception:return page('Cambio pendiente de verificación','<p>Conservamos el registro original y estamos verificando Calendar. No hagas otro cambio; escríbenos a contacto@pscsantibanez.cl.</p>',503)
+
+@bp.post('/admin/transbank/reconcile')
+@billing.private
+def reconcile():
+    init();reviewed=0
+    with billing.db() as c:rows=c.execute("SELECT * FROM production_payments WHERE state IN ('READY','COMMITTING','RECONCILIATION','AUTHORIZED','CONFIRMED','REBOOKING')").fetchall()
+    for r in rows:
+        try:
+            if r['state']=='REBOOKING':
+                result=remote('rebook',{'hold_id':r['hold_id'],'service':r['service'],'old_start':r['starts_at'],'old_end':r['ends_at'],'start':r['new_starts_at'],'end':r['new_ends_at']})
+                if result.get('state')!='CONFIRMED':continue
+                with billing.db() as c:
+                    c.execute("UPDATE production_payments SET state='CONFIRMED',rebooked=1,starts_at=new_starts_at,ends_at=new_ends_at,new_starts_at=NULL,new_ends_at=NULL,patient_mail=0,professional_mail=0 WHERE order_id=?",(r['order_id'],))
+                    stamp=datetime.fromisoformat(r['new_starts_at']);c.execute('UPDATE billing_orders SET appointment_date=?,appointment_time=? WHERE order_id=?',(stamp.date().isoformat(),stamp.strftime('%H:%M'),r['order_id']))
+            elif r['state'] in ('READY','COMMITTING','RECONCILIATION') and r['token']:
+                result=gateway().status(r['token'])
+                if result.get('buy_order')!=r['order_id'] or result.get('session_id')!=r['session_id'] or result.get('amount')!=r['amount']:continue
+                paid=is_authorized(result,expected_order=r['order_id'],expected_session=r['session_id'],expected_amount=r['amount'])
+                if not paid and result.get('status') not in ('FAILED','REVERSED','NULLIFIED'):continue
+                billing.record_result(r['order_id'],r['token'],r['amount'],paid,result.get('payment_type_code',''))
+                with billing.db() as c:c.execute('UPDATE production_payments SET state=? WHERE order_id=?',('AUTHORIZED' if paid else 'REJECTED',r['order_id']))
+                if paid: issue_after_approved_payment(r['order_id'])
+            fulfill(r['order_id']);reviewed+=1
+        except Exception:continue
+    return jsonify(reviewed=reviewed)
+
++str(r['amount'])+' CLP</p>'
     if r['state']=='CONFIRMED':
         pending_invoice=resume_pending_invoice(r['order_id'])
         response=confirmed_page(r)
