@@ -1,3 +1,122 @@
+let adminAgendaView='day';
+/* Read-only weekly administration calendar. Data comes exclusively from /api/admin. */
+let adminCalWeek = '';
+let adminCalBox = 'all';
+let adminCalProfessional = 'all';
+let adminCalStatus = 'confirmed';
+
+function adminCalDate(iso) {
+  return new Intl.DateTimeFormat('sv-SE', {timeZone:'America/Santiago', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso));
+}
+function adminCalUTC(dateKey) {
+  return new Date(dateKey + 'T12:00:00Z');
+}
+function adminCalShift(dateKey, days) {
+  const value = adminCalUTC(dateKey);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0,10);
+}
+function adminCalMonday(dateKey) {
+  const d = adminCalUTC(dateKey);
+  return adminCalShift(dateKey, -((d.getUTCDay()+6)%7));
+}
+function adminCalClock(iso) {
+  const parts = new Intl.DateTimeFormat('en-GB',{timeZone:'America/Santiago',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(iso));
+  return Number(parts.find(part=>part.type==='hour')?.value||0)*60 + Number(parts.find(part=>part.type==='minute')?.value||0);
+}
+function adminCalReadable(dateKey, opts) {
+  return new Intl.DateTimeFormat('es-CL',Object.assign({timeZone:'UTC'},opts)).format(adminCalUTC(dateKey));
+}
+function adminCalBookingCard(b, startHour, rowHeight, filtered) {
+  const startMinutes=adminCalClock(b.start);
+  const duration=Number(b.duration_minutes)||55;
+  const top=Math.max(0,(startMinutes-startHour*60)*rowHeight/60)+2;
+  const height=Math.max(30,duration*rowHeight/60-4);
+  const box=Math.min(3,Math.max(1,Number(b.box)||1));
+  const name=escapeHTML(b.name||'Profesional');
+  const title=escapeHTML((b.name||'Profesional')+' · '+rooms[box-1]+' · '+sessionRange(b.start)+' · '+(labels[b.status]||b.status));
+  const lane=filtered?'left:3px;width:calc(100% - 6px);':'left:calc('+(box-1)+' * 100% / 3 + 2px);width:calc(100% / 3 - 4px);';
+  return '<button type="button" class="admin-cal-event box-'+box+(b.status==='cancelled'?' is-cancelled':'')+'" style="top:'+top+'px;height:'+height+'px;'+lane+'" data-admin-cal-open="'+Number(b.id)+'" title="'+title+'" aria-label="'+title+'">'+
+    '<strong>'+name+'</strong><small>'+escapeHTML(rooms[box-1])+'</small><span>'+escapeHTML(sessionRange(b.start))+'</span></button>';
+}
+function adminWeeklyCalendar() {
+  const today=state.today||adminCalDate(new Date().toISOString());
+  if(!adminCalWeek)adminCalWeek=adminCalMonday(today);
+  const monday=adminCalMonday(adminCalWeek);
+  const days=Array.from({length:7},(_,index)=>adminCalShift(monday,index));
+  const bookings=adminData.bookings.filter(b=>
+    (adminCalStatus==='all'||b.status===adminCalStatus)&&
+    (adminCalBox==='all'||String(b.box)===adminCalBox)&&
+    (adminCalProfessional==='all'||String(b.user_id)===adminCalProfessional)&&
+    days.includes(adminCalDate(b.start))
+  );
+  const professionals=[...new Map(adminData.bookings.map(b=>[String(b.user_id),{id:String(b.user_id),name:b.name||'Profesional'}])).values()]
+    .sort((a,b)=>a.name.localeCompare(b.name,'es'));
+  const filtered=adminCalBox!=='all';
+  const dayMinutes=bookings.map(b=>adminCalClock(b.start));
+  const endMinutes=bookings.map(b=>adminCalClock(b.start)+(Number(b.duration_minutes)||55));
+  const startHour=Math.max(0,Math.min(8,...dayMinutes.map(min=>Math.floor(min/60))));
+  const endHour=Math.min(24,Math.max(22,...endMinutes.map(min=>Math.ceil(min/60))));
+  const rowHeight=66;
+  const height=(endHour-startHour)*rowHeight;
+  const weekEnd=days[6];
+  const label=adminCalReadable(monday,{day:'numeric',month:'short'})+' – '+adminCalReadable(weekEnd,{day:'numeric',month:'short',year:'numeric'});
+  const hours=(bookings.reduce((total,b)=>total+(Number(b.duration_minutes)||55),0)/60).toLocaleString('es-CL',{maximumFractionDigits:1});
+  const boxOptions=rooms.map((room,i)=>'<option value="'+(i+1)+'"'+(adminCalBox===String(i+1)?' selected':'')+'>'+escapeHTML(room)+'</option>').join('');
+  const professionalOptions=professionals.map(p=>'<option value="'+escapeHTML(p.id)+'"'+(adminCalProfessional===p.id?' selected':'')+'>'+escapeHTML(p.name)+'</option>').join('');
+  const statusOptions=[['confirmed','Confirmadas'],['cancelled','Canceladas'],['all','Todas']].map(item=>'<option value="'+item[0]+'"'+(adminCalStatus===item[0]?' selected':'')+'>'+item[1]+'</option>').join('');
+  const timeAxis=Array.from({length:endHour-startHour+1},(_,i)=>'<span class="admin-cal-time" style="top:'+(i*rowHeight)+'px">'+String(startHour+i).padStart(2,'0')+':00</span>').join('');
+  const columns=days.map((date,index)=>{
+    const todayClass=date===today?' is-today':'';
+    const dayEvents=bookings.filter(b=>adminCalDate(b.start)===date);
+    const dayTitle=adminCalReadable(date,{weekday:'short',day:'numeric',month:'short'});
+    const block=dayEvents.map(b=>adminCalBookingCard(b,startHour,rowHeight,filtered)).join('');
+    return '<div class="admin-cal-day-col"><div class="admin-cal-day-header'+todayClass+'"><strong>'+escapeHTML(dayTitle)+'</strong><small>'+dayEvents.length+' reserva'+(dayEvents.length===1?'':'s')+'</small></div>'+
+      '<div class="admin-cal-day-body" style="height:'+height+'px">'+block+'</div></div>';
+  }).join('');
+  return '<div class="admin-cal-wrap"><div class="admin-cal-heading"><div><h2>Calendario semanal</h2><p class="section-intro">Ocupación real de los tres box. Solo consulta: no mueve ni altera reservas.</p></div>'+
+    '<div class="admin-cal-navigation"><button type="button" class="btn ghost small" data-admin-cal-today>Hoy</button>'+
+    '<button type="button" class="btn ghost small" data-admin-cal-shift="-7" aria-label="Semana anterior">‹</button>'+
+    '<strong aria-live="polite">'+escapeHTML(label)+'</strong>'+
+    '<button type="button" class="btn ghost small" data-admin-cal-shift="7" aria-label="Semana siguiente">›</button></div></div>'+
+    '<div class="admin-cal-filters"><label>Box<select id="admin-cal-box"><option value="all">Todos los box</option>'+boxOptions+'</select></label>'+
+    '<label>Profesional<select id="admin-cal-professional"><option value="all">Todos los profesionales</option>'+professionalOptions+'</select></label>'+
+    '<label>Estado<select id="admin-cal-status">'+statusOptions+'</select></label>'+
+    '<span class="admin-cal-summary">'+bookings.length+' reservas · '+hours+' horas</span></div>'+
+    '<div class="admin-cal-legend">'+rooms.map((room,index)=>'<span class="admin-cal-legend-box box-'+(index+1)+'">'+escapeHTML(room)+'</span>').join('')+'</div>'+
+    '<p class="admin-cal-hint">Desplázate horizontalmente para ver toda la semana. Selecciona una reserva para consultar su detalle.</p>'+
+    '<div class="admin-cal-scroll" tabindex="0" aria-label="Calendario de reservas de lunes a domingo"><div class="admin-cal-grid">'+
+    '<div class="admin-cal-axis"><div class="admin-cal-axis-heading">GMT-3 / GMT-4*</div><div class="admin-cal-time-body" style="height:'+height+'px">'+timeAxis+'</div></div>'+
+    columns+'</div></div>'+
+    '<p class="admin-cal-footnote">*Horario local de Chile (America/Santiago), con ajuste automático de horario de verano. Las reservas canceladas no aparecen salvo que las selecciones en Estado.</p></div>';
+}
+function bindAdminWeeklyCalendar() {
+  const box=document.querySelector('#admin-cal-box');
+  if(!box)return;
+  const redraw=()=>render().catch(err=>toast(err.message));
+  box.onchange=()=>{adminCalBox=box.value;redraw();};
+  document.querySelector('#admin-cal-professional').onchange=event=>{adminCalProfessional=event.target.value;redraw();};
+  document.querySelector('#admin-cal-status').onchange=event=>{adminCalStatus=event.target.value;redraw();};
+  document.querySelector('[data-admin-cal-today]').onclick=()=>{adminCalWeek=adminCalMonday(state.today||adminCalDate(new Date().toISOString()));redraw();};
+  document.querySelectorAll('[data-admin-cal-shift]').forEach(button=>button.onclick=()=>{adminCalWeek=adminCalShift(adminCalWeek,Number(button.dataset.adminCalShift));redraw();});
+  document.querySelectorAll('[data-admin-cal-open]').forEach(button=>button.onclick=()=>{
+    const b=adminData.bookings.find(item=>Number(item.id)===Number(button.dataset.adminCalOpen));
+    if(!b)return;
+    const room=rooms[(Number(b.box)||1)-1]||'Box';
+    modal.classList.remove('user-detail-modal');
+    modal.innerHTML='<h2 id="modal-title">Detalle de reserva #'+Number(b.id)+'</h2>'+
+      '<div class="modal-detail"><strong>'+escapeHTML(b.name||'Profesional')+'</strong><p>'+escapeHTML(room)+'</p>'+
+      '<p>'+escapeHTML(dateText(b.start))+' · '+escapeHTML(sessionRange(b.start))+'</p>'+
+      '<p>Estado: '+escapeHTML(labels[b.status]||b.status)+'</p>'+
+      '<p>Modificaciones: '+Number(b.modifications||0)+'</p></div>'+
+      '<div class="modal-actions"><button type="button" class="btn ghost" id="admin-cal-close">Cerrar</button>'+
+      '<button type="button" class="btn" id="admin-cal-list">Ver en Reservas</button></div>';
+    modal.showModal();
+    document.querySelector('#admin-cal-close').onclick=()=>modal.close();
+    document.querySelector('#admin-cal-list').onclick=()=>{modal.close();adminTab='bookings';redraw();};
+  });
+}
+
 const root = document.querySelector('#root');
 const modal = document.querySelector('#modal');
 let state = null, adminData = null, view = 'overview', adminTab = 'payments', selectedDate = '', modifying = null;
@@ -346,11 +465,20 @@ function weeklyCalendar(data){
   const previous=scheduleDay(selectedDate,-7),next=scheduleDay(selectedDate,7);
   return `<section class="week-calendar" aria-label="Calendario semanal"><div class="week-toolbar"><button class="week-arrow" data-week="${previous<min?min:previous}" aria-label="Semana anterior" ${selectedDate<=min?'disabled':''}>‹</button><strong>${new Date(monday+'T12:00:00Z').getUTCDate()}–${new Date(end+'T12:00:00Z').getUTCDate()} · ${format.format(new Date(end+'T12:00:00Z'))}</strong><button class="week-arrow" data-week="${next>max?max:next}" aria-label="Semana siguiente" ${selectedDate>=max?'disabled':''}>›</button><label class="calendar-date-picker">▦<span class="sr-only">Fecha de atención</span><input id="schedule-date" aria-label="Fecha de atención" type="date" value="${selectedDate}" min="${min}" max="${max}"></label></div><div class="week-days">${['Lu','Ma','Mi','Ju','Vi','Sa','Do'].map((label,index)=>{const day=scheduleDay(monday,index),active=day===selectedDate;return `<button class="week-day ${active?'active':''}" data-day="${day}" aria-pressed="${active}" aria-label="${label}, ${day}" ${day<min||day>max?'disabled':''}><span>${label}</span><strong>${Number(day.slice(-2))}</strong>${active?`<i class="week-indicator ${data.slots.some(slot=>slot.boxes.some(box=>box.available))?'has-space':''}" aria-hidden="true"></i>`:'<i aria-hidden="true"></i>'}</button>`;}).join('')}</div></section>`;
 }
+function adminAgendaSwitcher() {
+  return `<div class="admin-agenda-switch" role="group" aria-label="Tipo de visualización de la agenda">
+    <button type="button" class="btn ${adminAgendaView==='day'?'':'ghost'} small" data-admin-agenda-view="day" aria-pressed="${adminAgendaView==='day'}">Agenda por día</button>
+    <button type="button" class="btn ${adminAgendaView==='week'?'':'ghost'} small" data-admin-agenda-view="week" aria-pressed="${adminAgendaView==='week'}">Vista semanal</button>
+  </div>`;
+}
 async function availability() {
+  if(adminMode()&&adminAgendaView==='week')return head('Agenda y ocupación de los box','Vista semanal para consultar todas las reservas por día, horario y box.')+adminAgendaSwitcher()+'<section class="card admin-week-view">'+adminWeeklyCalendar()+'</section>';
+
   if(selectedDate<scheduleBounds().min)selectedDate=scheduleBounds().min;
   const data=await api((adminMode()?'admin/availability':'availability')+'?date='+selectedDate+(!adminMode()&&modifying?'&reschedule_id='+modifying.id:''));
   return head(adminMode()?'Agenda y ocupación de los box':modifying?'Modifica tu reserva':'Encuentra tu próximo espacio',adminMode()?'Consulta quién reservó cada box, con nombre y horario de atención.':modifying?'Un único cambio, sin consumir sesiones adicionales.':'Sesiones de 55 minutos, con inicios cada hora.')+
-  `${modifying?`<div class="notice info">Reserva #${modifying.id}: ${rooms[modifying.box-1]} · ${dateText(modifying.start)} · ${hourText(modifying.start)}. <button class="text-btn" id="abort-change">Salir sin modificar</button></div>`:''}
+  `${adminMode()?adminAgendaSwitcher():''}
+  ${modifying?`<div class="notice info">Reserva #${modifying.id}: ${rooms[modifying.box-1]} · ${dateText(modifying.start)} · ${hourText(modifying.start)}. <button class="text-btn" id="abort-change">Salir sin modificar</button></div>`:''}
   ${!state.user.verified&&!adminMode()?'<div class="notice">Para reservar necesitas carnet y certificado de título aprobados, correo confirmado y saldo disponible.</div>':''}
   ${!adminMode()?manualRulesNotice():''}
   ${!adminMode()&&!modifying?batchBookingPanel():''}
@@ -683,7 +811,7 @@ function openUserDetail(userId){
 }
 
 function administration() {
-  const allowedTabs=new Set(['payments','manual_credits','users','bookings','calendar']);
+  const allowedTabs=new Set(['payments','manual_credits','users','bookings']);
   if(!isOwner()&&!allowedTabs.has(adminTab))adminTab='payments';
   const pending=adminData.packages.filter(p=>p.status==='pending'&&!p.archived_at);
   let body='';
@@ -700,10 +828,9 @@ function administration() {
   if(adminTab==='documents') body=personalApprovalsAdmin()+body;
   if(adminTab==='users') body=`<h2>Profesionales y usuarios</h2><p class="section-intro">${isOwner()?'Puedes gestionar el estado de las cuentas y su acceso de gestión. Los movimientos existentes se conservan.':'Abre el nombre de una persona para consultar sus planes, horas disponibles, pagos y reservas.'}</p><div class="table-wrap"><table class="admin-table"><thead><tr><th>Nombre</th><th>Correo</th><th>Especialidad</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${adminData.users.filter(u=>!u.deleted_at).map(u=>`<tr><td>${adminUserLink(u.id,u.name)}<small>${u.role==='admin'?'Administrador':'Profesional'}</small></td><td>${escapeHTML(u.email)}</td><td>${escapeHTML(u.specialty)||'—'}</td><td><span class="pill ${u.active&&!u.blocked_email?'approved':'rejected'}">${u.blocked_email?'Correo bloqueado':u.active?'Activa':'Inactiva'}</span><small>${u.owner_booking_privileges?'Cuenta administradora habilitada':u.management_granted?'Gestión de oficina autorizada':u.personally_approved?'Aprobado personalmente por administración':u.verified?'Verificada':'Por verificar'}</small></td><td>${u.role==='professional'&&isOwner()?`<button class="btn ghost small" data-admin="user" data-id="${u.id}" data-active="${!u.active}">${u.active?'Desactivar':'Activar'}</button> <button class="btn ghost small" data-user-access="${u.blocked_email?'unblock':'block'}" data-user-id="${u.id}">${u.blocked_email?'Desbloquear correo':'Bloquear correo'}</button> <button class="btn danger small" data-user-access="delete" data-user-id="${u.id}">Eliminar cuenta</button> <button class="btn ghost small" data-management-access="${u.id}" data-management-enabled="${!u.management_granted}">${u.management_granted?'Retirar gestión':'Dar acceso de gestión'}</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`;
   if(adminTab==='users'&&isOwner()) body+=blockedEmailsAdmin();
-  if(adminTab==='calendar') body=adminWeeklyCalendar();
   if(adminTab==='bookings') body=`<h2>Agenda general</h2><p class="section-intro">Cancelar una reserva futura libera el box y devuelve 1 hora al paquete original, una sola vez.</p>${adminData.bookings.length?`<div class="table-wrap"><table class="admin-table"><thead><tr><th>Profesional</th><th>Box / fecha</th><th>Estado</th><th>Modificaciones</th><th>Acciones</th></tr></thead><tbody>${adminData.bookings.map(b=>`<tr><td>${adminUserLink(b.user_id,b.name)}<small>Reserva #${b.id}</small></td><td>${rooms[b.box-1]}<small>${dateText(b.start)} · ${sessionRange(b.start)}</small></td><td>${pill(b.status)}</td><td>${b.modifications} / 1</td><td>${isOwner()&&b.status==='confirmed'&&new Date(b.start)>new Date()?`<button class="btn danger small" data-admin="cancel" data-id="${b.id}">Cancelar y devolver hora</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('No hay reservas registradas.')}`;
   if(adminTab==='audit') body=`<h2>Registro de operaciones</h2><p class="section-intro">Últimas 30 acciones realizadas en el prototipo.</p>${adminData.audit.map(a=>`<div class="audit-item"><strong>${escapeHTML(a.name||'Sistema')}</strong><p>${escapeHTML(a.action)} · registro #${escapeHTML(a.target)}</p><small>${dateText(a.created_at)} · ${hourText(a.created_at)}</small></div>`).join('')||empty('Aún no hay operaciones.')}`;
-  return head(isOwner()?'Administración':'Gestión de oficina','La operación de Valhalla, en un solo lugar. Actualización automática cada 30 segundos; se pausa mientras editas o revisas una confirmación.','<button class="btn" data-go="availability">Ver agenda por box →</button>')+`<div class="grid stats"><div class="stat"><div class="stat-top">Profesionales</div><div class="value">${adminData.users.filter(u=>u.role==='professional'&&!u.deleted_at).length}</div><small>Cuentas registradas</small></div><div class="stat"><div class="stat-top">Pagos pendientes</div><div class="value">${pending.length}</div><small>Operaciones simuladas</small></div><div class="stat"><div class="stat-top">Reservas próximas</div><div class="value">${adminData.bookings.filter(b=>b.status==='confirmed'&&new Date(b.start)>new Date()).length}</div><small>Entre los tres box</small></div></div><div class="tabs" role="group" aria-label="Secciones de administración">${[['payments','Pagos'],['manual_credits','Cargar horas'],['discounts','Descuentos'],['transbank','Transbank'],['documents','Documentos'],['users','Usuarios'],['email','Correos'],['whatsapp','WhatsApp'],['daily_contacts','Correos del día'],['migration','Migración'],['calendar','Calendario semanal'],['bookings','Reservas'],['audit','Actividad']].filter(([id])=>isOwner()||allowedTabs.has(id)).map(([id,label])=>`<button class="tab ${adminTab===id?'active':''}" data-tab="${id}" aria-pressed="${adminTab===id}">${label}</button>`).join('')}</div><section class="card">${body}</section>`;
+  return head(isOwner()?'Administración':'Gestión de oficina','La operación de Valhalla, en un solo lugar. Actualización automática cada 30 segundos; se pausa mientras editas o revisas una confirmación.','<button class="btn" data-go="availability">Ver agenda por box →</button>')+`<div class="grid stats"><div class="stat"><div class="stat-top">Profesionales</div><div class="value">${adminData.users.filter(u=>u.role==='professional'&&!u.deleted_at).length}</div><small>Cuentas registradas</small></div><div class="stat"><div class="stat-top">Pagos pendientes</div><div class="value">${pending.length}</div><small>Operaciones simuladas</small></div><div class="stat"><div class="stat-top">Reservas próximas</div><div class="value">${adminData.bookings.filter(b=>b.status==='confirmed'&&new Date(b.start)>new Date()).length}</div><small>Entre los tres box</small></div></div><div class="tabs" role="group" aria-label="Secciones de administración">${[['payments','Pagos'],['manual_credits','Cargar horas'],['discounts','Descuentos'],['transbank','Transbank'],['documents','Documentos'],['users','Usuarios'],['email','Correos'],['whatsapp','WhatsApp'],['daily_contacts','Correos del día'],['migration','Migración'],['bookings','Reservas'],['audit','Actividad']].filter(([id])=>isOwner()||allowedTabs.has(id)).map(([id,label])=>`<button class="tab ${adminTab===id?'active':''}" data-tab="${id}" aria-pressed="${adminTab===id}">${label}</button>`).join('')}</div><section class="card">${body}</section>`;
 }
 
 async function render(guard=null) {
@@ -781,7 +908,8 @@ function bind() {
     const user=adminData.users.find(user=>user.id===Number(button.dataset.managementAccess)),enabled=button.dataset.managementEnabled==='true';
     showModal(enabled?'Dar acceso de gestión':'Retirar acceso de gestión',`<p><strong>${escapeHTML(user.name)}</strong> · ${escapeHTML(user.email)}</p><p>${enabled?'Podrá consultar quién ocupa los box, ver pagos y perfiles con saldos y cargar horas para sí o para otras personas. Debe tener su correo confirmado.':'Dejará de tener acceso a la gestión de oficina y conservará su perfil profesional.'}</p>` ,enabled?'Dar acceso':'Retirar acceso',async()=>{await api('admin/management-access',{user_id:user.id,enabled,confirmed:true});toast(enabled?'Acceso de gestión autorizado.':'Acceso de gestión retirado.');});
   });
-  bindDiscounts();bindMigration();bindPayments();bindEmailAdmin();bindDailyContacts();bindTransbankAdmin();bindBatchBookings();bindManualCredits();bindManualRules();bindAdminDetails();bindAdminWeeklyCalendar();
+  bindDiscounts();bindMigration();bindPayments();bindEmailAdmin();bindDailyContacts();bindTransbankAdmin();bindBatchBookings();bindManualCredits();bindManualRules();bindAdminDetails();if(adminMode()&&view==='availability'&&adminAgendaView==='week')bindAdminWeeklyCalendar();
+  document.querySelectorAll('[data-admin-agenda-view]').forEach(button=>button.onclick=()=>{if(!adminMode())return;adminAgendaView=button.dataset.adminAgendaView;render().catch(e=>toast(e.message));});
   const refreshAgenda=document.querySelector('#refresh-agenda');if(refreshAgenda)refreshAgenda.onclick=()=>render().catch(e=>toast(e.message));
   bindGallery();
   const linkGoogle=document.querySelector('#link-google');if(linkGoogle)linkGoogle.onclick=()=>continueWithGoogle(true);
