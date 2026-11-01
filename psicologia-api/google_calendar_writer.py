@@ -5,7 +5,7 @@ Usa una cuenta de servicio compartida EXPLÍCITAMENTE con el calendario elegido.
 Su escritura está deshabilitada por defecto y no se invoca desde el checkout.
 """
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import json
 import os
 import re
