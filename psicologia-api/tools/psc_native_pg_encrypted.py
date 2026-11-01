@@ -79,7 +79,7 @@ def missing_archive_tables(toc_text):
         if line.lstrip().startswith(";"):
             continue
         match = re.search(
-            r"\\b(TABLE DATA|TABLE)\\s+public\\s+(psychology_[a-z_]+)\\b",
+            r"\b(TABLE DATA|TABLE)\s+public\s+(psychology_[a-z_]+)\b",
             line,
         )
         if match:
