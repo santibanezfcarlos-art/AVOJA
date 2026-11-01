@@ -1045,7 +1045,7 @@ if(returning&&(location.search.includes('wp_demo=')||location.search.includes('w
 }
 updateBillingDetail();render();renderAdmin();
 window.addEventListener('psc-agenda-opened',()=>{
- if(hold)return;
+ if(hold||location.search.includes('wp_demo=')||location.search.includes('wp_demo_cancelled'))return;
  requestNearestDay();
  if(calendarState==='ready'&&configurationReady)void autoPickNearestDay();
 });
