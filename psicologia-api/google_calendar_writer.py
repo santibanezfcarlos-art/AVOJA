@@ -186,35 +186,51 @@ class CalendarWriter:
             raise CalendarIntegrationError("Google Calendar no pudo autorizar la operación") from None
 
     def list_busy(self, start, end):
-        """Lee ocurrencias vigentes (incluidas recurrentes y todo el día)."""
+        """Read every busy event from the booking calendar AND the OAuth owner's primary calendar.
+
+        Appointments are still written only to the configured booking calendar.
+        If either calendar is unavailable, fail closed instead of selling an occupied slot.
+        """
         self._check()
         _validate_time_window(start, end)
         base = {"timeMin": start.isoformat(), "timeMax": end.isoformat(),
                 "singleEvents": "true", "showDeleted": "false", "maxResults": "2500"}
+        paths = [self._calendar_path]
+        if os.environ.get("PSICOLOGIA_GOOGLE_AUTH_MODE") == "oauth":
+            primary_path = "/calendars/primary/events"
+            if primary_path not in paths:
+                paths.append(primary_path)
         busy = []
-        token = None
-        for _ in range(10):
-            params = dict(base)
-            if token:
-                params["pageToken"] = token
-            response = self.transport("GET", self._calendar_path, params, None)
-            if not isinstance(response, dict) or not isinstance(response.get("items"), list):
-                raise CalendarIntegrationError("Respuesta de calendario incompleta")
-            for event in response["items"]:
-                if event.get("status") == "cancelled" or event.get("transparency") == "transparent":
-                    continue
-                try:
-                    ev_start, ev_end = _parse_edge(event["start"]), _parse_edge(event["end"])
-                except (ValueError, KeyError, TypeError):
-                    raise CalendarIntegrationError("Google devolvió un evento sin horario válido") from None
-                if ev_end > ev_start and start < ev_end and ev_start < end:
-                    busy.append((ev_start, ev_end))
-            token = response.get("nextPageToken")
-            if not token:
-                return busy
-            if not isinstance(token, str) or len(token) > 2048:
-                raise CalendarIntegrationError("Paginación inválida de Google")
-        raise CalendarIntegrationError("Demasiados eventos para verificar disponibilidad")
+        seen = set()
+        for path in paths:
+            token = None
+            for _ in range(10):
+                params = dict(base)
+                if token:
+                    params["pageToken"] = token
+                response = self.transport("GET", path, params, None)
+                if not isinstance(response, dict) or not isinstance(response.get("items"), list):
+                    raise CalendarIntegrationError("Respuesta de calendario incompleta")
+                for event in response["items"]:
+                    if event.get("status") == "cancelled" or event.get("transparency") == "transparent":
+                        continue
+                    try:
+                        ev_start, ev_end = _parse_edge(event["start"]), _parse_edge(event["end"])
+                    except (ValueError, KeyError, TypeError):
+                        raise CalendarIntegrationError("Google devolvió un evento sin horario válido") from None
+                    if ev_end > ev_start and start < ev_end and ev_start < end:
+                        key = (ev_start, ev_end)
+                        if key not in seen:
+                            seen.add(key)
+                            busy.append(key)
+                token = response.get("nextPageToken")
+                if not token:
+                    break
+                if not isinstance(token, str) or len(token) > 2048:
+                    raise CalendarIntegrationError("Paginación inválida de Google")
+            else:
+                raise CalendarIntegrationError("Demasiados eventos para verificar disponibilidad")
+        return busy
 
     def is_free(self, start, end):
         return not bool(self.list_busy(start, end))
