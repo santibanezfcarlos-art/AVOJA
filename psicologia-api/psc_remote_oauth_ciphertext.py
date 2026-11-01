@@ -11,7 +11,7 @@ import json
 import os
 import time
 from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ENDPOINT=("https://psicologia-carlos-calendar-api.onrender.com"
           "/internal/psc/migration/oauth-ciphertext")
@@ -19,6 +19,12 @@ ENDPOINT=("https://psicologia-carlos-calendar-api.onrender.com"
 
 class RemoteOAuthUnavailable(RuntimeError):
     pass
+
+
+class _BlockRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, new_url):
+        # Never forward an authenticated RPC request to a new host.
+        return None
 
 
 def fetch_encrypted_oauth(*, transport=None, now=None):
@@ -35,7 +41,7 @@ def fetch_encrypted_oauth(*, transport=None, now=None):
     try:
         if transport is None:
             def fetch(request):
-                with urlopen(request,timeout=8) as response:
+                with build_opener(_BlockRedirect()).open(request,timeout=8) as response:
                     return response.read(8193)
             transport=fetch
         response=transport(req)
