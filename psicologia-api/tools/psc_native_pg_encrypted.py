@@ -72,6 +72,23 @@ def safe_connection(url):
     return args, env
 
 
+def missing_archive_tables(toc_text):
+    """Require both schema and table-data entries in pg_restore --list."""
+    found = set()
+    for line in toc_text.splitlines():
+        if line.lstrip().startswith(";"):
+            continue
+        match = re.search(
+            r"\\b(TABLE DATA|TABLE)\\s+public\\s+(psychology_[a-z_]+)\\b",
+            line,
+        )
+        if match:
+            found.add((match.group(1), match.group(2)))
+    return sorted(table for table in EXPECTED_TABLES
+                  if ("TABLE", table) not in found
+                  or ("TABLE DATA", table) not in found)
+
+
 def openssl_pass_command(parameters, passphrase, *, capture=False):
     # Only an ephemeral inherited pipe carries the secret. Never command args,
     # logs, shell history, persistent environment variables, or repo.
@@ -150,12 +167,7 @@ def main():
         if toc.returncode:
             raise RuntimeError("pg_restore no reconoció el respaldo")
         toc_text = toc.stdout.decode("utf-8", "replace")
-        missing = [table for table in EXPECTED_TABLES
-                   if not any(
-                       not line.lstrip().startswith(";")
-                       and re.search(r"\\bTABLE\\s+(?:public\\s+)?" + re.escape(table) + r"\\b", line)
-                       for line in toc_text.splitlines()
-                   )]
+        missing = missing_archive_tables(toc_text)
         if missing:
             # Table names are known constants, no patient data.
             raise RuntimeError("Faltan tablas en el respaldo nativo: " + ", ".join(missing))
