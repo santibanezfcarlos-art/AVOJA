@@ -36,7 +36,12 @@
 5. Transferir el archivo a un almacén privado/cifrado **fuera del servicio gratuito** y comprobar que no se pierde al reiniciar; nunca añadir `.dump` a GitHub, correos ni páginas públicas.
 6. Para el SQLite de producción, en el contexto del servicio principal con su disco montado: `python psicologia-api/tools/psc_sqlite_backup.py --output /ruta/privada/psc_YYYYMMDD.sqlite3`. Debe emitir `BACKUP_VERIFIED`; guardar la copia cifrada **fuera del mismo disco** y verificar SHA256.
 7. Probar restauración en **bases aisladas**: `pg_restore` hacia una instancia temporal (sin apuntar a producción) y abrir la copia SQLite con `PRAGMA integrity_check`. Documentar verificación.
-8. Confirmar capacidad del disco `/var/data` con `df -h`, tamaño de SQLite y concurrencia prevista antes de plantear consolidación.
+8. Exportar una instantánea consistente de los datos seleccionados: `python psicologia-api/tools/psc_pg_export_snapshot.py --output /ruta/privada/psc_snapshot.json`. El exportador valida todas las columnas y obtiene las ocho tablas en una sola transacción de solo lectura.
+9. En el entorno de ensayo, convertir SIN sobrescribir el libro de compras: `python psicologia-api/tools/psc_import_snapshot_sqlite.py --input /ruta/privada/psc_snapshot.json --output /ruta/privada/psc_holds_staging.sqlite3`.
+10. Ejecutar `python psicologia-api/tools/psc_verify_conversion.py --snapshot /ruta/privada/psc_snapshot.json --sqlite /ruta/privada/psc_holds_staging.sqlite3`; exigir `EXACT_RECONCILIATION_OK`. Este verificador compara incluso hashes y tokens cifrados sin mostrarlos.
+11. En el servidor principal ejecutar `python psicologia-api/tools/psc_disk_preflight.py` y confirmar espacio libre, disco montado e integridad del SQLite actual.
+12. Guardar los respaldos y las instantáneas que contengan datos privados en un almacén cifrado y fuera de GitHub/Render.
+
 
 No hay acceso a shell remoto vía los conectores Render disponibles en esta conversación. Estos comandos **no se han ejecutado**; no declarar respaldo concluido mientras falten archivos verificables fuera de Render.
 
@@ -69,4 +74,13 @@ No hay acceso a shell remoto vía los conectores Render disponibles en esta conv
 
 ## Próxima barrera de avance
 
-**Backup real verificado + prueba de restauración + inventario de filas**. Sin estos tres elementos no pasar a escritura o migración real de datos.
+**Backup real verificado + prueba de restauración + inventario y reconciliación exacta de filas**. Sin estos tres elementos no pasar a escritura o migración real de datos.
+
+
+## CI y límites comprobados
+
+- Pull request borrador #42: trabajo fuera de las ramas publicadas.
+- Workflow `PSC - Verify migration utilities` sin permisos de escritura y sin credenciales de producción.
+- Las pruebas offline pueden comprobar la estructura, transacciones SQLite, enlaces Fonasa y datos cifrados ficticios; **NO acreditan una migración real**.
+- La base PostgreSQL y el disco SQLite **siguen vivos y sin copiar** hasta obtener acceso al servidor.
+- Hallazgo crítico: `google_calendar_writer.py` obtiene `psychology_google_oauth.encrypted_refresh_token` de PostgreSQL cuando el modo es OAuth. No cortar PostgreSQL hasta haber probado el inicio de sesión/autorización del calendario en la solución nueva.
