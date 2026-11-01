@@ -416,6 +416,106 @@ class PSCStore:
         except sqlite3.Error:
             raise StorageUnavailable("Fonasa reschedule storage failed") from None
 
+    def calendar_pending(self, order_id, *, now=None):
+        """Calendar writes intentionally disabled; authorized payment remains held."""
+        moment = _utc(now or datetime.now(timezone.utc))
+        try:
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row=db.execute(
+                    "SELECT state FROM psychology_demo_payments WHERE order_id=?",
+                    (order_id,)
+                ).fetchone()
+                if not row or row["state"] not in ("AUTHORIZED","CALENDAR_PENDING","CONFIRMED"):
+                    raise StorageConflict("Not an authorized order")
+                if row["state"]=="CONFIRMED":
+                    return "CONFIRMED"
+                db.execute(
+                    "UPDATE psychology_demo_payments SET state='CALENDAR_PENDING',updated_at=? WHERE order_id=?",
+                    (_iso(moment),order_id)
+                )
+                return "CALENDAR_PENDING"
+        except sqlite3.Error:
+            raise StorageUnavailable("Calendar pending state unavailable") from None
+
+    def calendar_failed(self, order_id, *, now=None):
+        """Keep uncertain paid appointments blocked for manual reconciliation."""
+        moment = _utc(now or datetime.now(timezone.utc))
+        try:
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row=db.execute(
+                    "SELECT state,hold_id FROM psychology_demo_payments WHERE order_id=?",
+                    (order_id,)
+                ).fetchone()
+                if not row:
+                    raise StorageConflict("Unknown order")
+                if row["state"]=="CONFIRMED":
+                    return "CONFIRMED"
+                if row["state"] not in ("AUTHORIZED","CALENDAR_PENDING","RECONCILIATION_REQUIRED"):
+                    raise StorageConflict("Cannot reconcile unpaid order")
+                db.execute(
+                    "UPDATE psychology_demo_payments SET state='RECONCILIATION_REQUIRED',updated_at=? WHERE order_id=?",
+                    (_iso(moment),order_id))
+                db.execute(
+                    """UPDATE psychology_booking_holds SET status='RECONCILIATION_REQUIRED',
+                       expires_at=?,updated_at=?
+                       WHERE id=? AND status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')""",
+                    (_iso(moment+timedelta(days=1)),_iso(moment),row["hold_id"])
+                )
+                return "RECONCILIATION_REQUIRED"
+        except sqlite3.Error:
+            raise StorageUnavailable("Calendar reconciliation storage failed") from None
+
+    def calendar_confirmed(self, order_id, event_id, *, now=None):
+        """Finalize ONLY after independently verifying own Google event.
+
+        This method does not verify the event itself and must never be called
+        before matching Google's deterministic event ID, slot, and service.
+        """
+        moment=_utc(now or datetime.now(timezone.utc))
+        if not isinstance(event_id,str) or not 2<=len(event_id)<=80:
+            raise ValueError("Invalid event reference")
+        try:
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row=db.execute(
+                    """SELECT p.state,p.calendar_event_id,p.hold_id,h.status AS hold_status,
+                              h.expires_at
+                       FROM psychology_demo_payments p
+                       JOIN psychology_booking_holds h ON p.hold_id=h.id
+                       WHERE p.order_id=?""",(order_id,)
+                ).fetchone()
+                if not row:
+                    raise StorageConflict("Unknown payment")
+                if row["state"]=="CONFIRMED":
+                    if row["calendar_event_id"] != event_id or row["hold_status"] != "CONFIRMED":
+                        raise StorageConflict("Confirmed event mismatch")
+                    return "CONFIRMED"
+                if (row["state"] not in ("AUTHORIZED","CALENDAR_PENDING")
+                        or row["hold_status"] != "PAYMENT_PENDING"
+                        or _read_utc(row["expires_at"]) <= moment):
+                    raise StorageConflict("Cannot confirm stale or unpaid hold")
+                db.execute(
+                    """UPDATE psychology_demo_payments
+                       SET state='CONFIRMED',calendar_event_id=?,updated_at=?
+                       WHERE order_id=?""",(event_id,_iso(moment),order_id)
+                )
+                db.execute(
+                    "UPDATE psychology_booking_holds SET status='CONFIRMED',updated_at=? WHERE id=?",
+                    (_iso(moment),row["hold_id"])
+                )
+                for role in ("professional","patient"):
+                    db.execute(
+                        """INSERT OR IGNORE INTO psychology_demo_notifications
+                           (order_id,recipient_role,status)
+                           VALUES (?,?,'pending')""",
+                        (order_id,role)
+                    )
+                return "CONFIRMED"
+        except sqlite3.Error:
+            raise StorageUnavailable("Calendar confirmation persistence failed") from None
+
     def encrypted_google_oauth(self, key="owner"):
         """Read ONLY Fernet-encrypted ciphertext, never decrypted credentials."""
         if key != "owner":
