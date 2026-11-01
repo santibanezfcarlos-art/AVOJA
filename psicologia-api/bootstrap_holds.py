@@ -224,7 +224,7 @@ def main():
                     FROM psychology_booking_holds h
                     LEFT JOIN psychology_demo_payments d ON d.hold_id=h.id
                     LEFT JOIN psychology_fonasa_bookings f ON f.hold_id=h.id
-                    WHERE h.starts_at=%s FOR UPDATE""",(edge,)).fetchall()
+                    WHERE h.starts_at=%s FOR UPDATE OF h""",(edge,)).fetchall()
                 if len(matched)!=1:
                     print("PSC_OWNER_SLOT_RELEASE slot="+stamp+" state=skipped_exact_match_count_"+str(len(matched)),flush=True)
                     plans=[]
