@@ -444,6 +444,52 @@ if os.environ.get("RENDER"):
     threading.Thread(target=_calendar_source_diagnostic_20261101,daemon=True).start()
 
 
+def _release_exact_fonasa_test_20261104():
+    """Owner-approved release of one orphaned 2026-11-04 10:00 Fonasa booking."""
+    import logging
+    import time as _time
+    _time.sleep(4)
+    log=logging.getLogger("psc_calendar_owner_release")
+    try:
+        begin=datetime(2026,11,4,10,0,tzinfo=TZ)
+        finish=begin+timedelta(minutes=45)
+        from webpay_demo_bridge import busy_intervals
+        # A current Google event or remaining pilot booking must still take precedence.
+        intervals=busy_intervals(begin.date(),begin.date(),include_calendar=True)
+        if any(begin<end and start<finish for start,end in intervals):
+            log.warning("PSC_FONASA_SLOT_RELEASE state=skipped_external_occupied")
+            return
+        from billing import db
+        from fonasa_internal import _schema,_utc
+        with db() as conn:
+            _schema(conn)
+            found=conn.execute("""SELECT id,state FROM fonasa_intake
+                WHERE requested_date='2026-11-04' AND requested_time='10:00'""").fetchall()
+            if len(found)!=1:
+                log.warning("PSC_FONASA_SLOT_RELEASE state=skipped_exact_match_count_%d",len(found))
+                return
+            item=found[0]
+            if item["state"]=="owner_released_test":
+                log.warning("PSC_FONASA_SLOT_RELEASE state=already_released")
+                return
+            if item["state"]!="calendar_confirmed":
+                log.warning("PSC_FONASA_SLOT_RELEASE state=skipped_unexpected_state")
+                return
+            result=conn.execute("""UPDATE fonasa_intake
+                SET state='owner_released_test',updated_at=?,
+                    check_detail='Cupo liberado por el propietario el 2026-11-01; compra de prueba sin atención.'
+                WHERE id=? AND state='calendar_confirmed'
+                    AND requested_date='2026-11-04' AND requested_time='10:00'""",
+                (_utc(),item["id"]))
+            log.warning("PSC_FONASA_SLOT_RELEASE state=updated records=%d",result.rowcount)
+    except Exception as exc:
+        log.warning("PSC_FONASA_SLOT_RELEASE state=failed error_type=%s",type(exc).__name__)
+
+
+if os.environ.get("RENDER"):
+    threading.Thread(target=_release_exact_fonasa_test_20261104,daemon=True).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
