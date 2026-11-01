@@ -95,6 +95,35 @@ class ShadowEndpointTests(unittest.TestCase):
                                      "include_calendar":True})
         self.assertEqual(response.status_code,400)
 
+    def test_oauth_ciphertext_is_disabled_by_default(self):
+        with patch.dict(os.environ, {"PSC_MIGRATION_OAUTH_READ_ENABLED":"false"}):
+            response=self.client.post("/internal/psc/migration/oauth-ciphertext",
+                                      json={"key":"owner"})
+        self.assertEqual(response.status_code,503)
+        self.assertEqual(response.json["state"],"DISABLED")
+
+    def test_oauth_requires_hmac_and_never_returns_plaintext(self):
+        with patch.dict(os.environ, {"PSC_MIGRATION_OAUTH_READ_ENABLED":"true"}):
+            unsigned=self.client.post("/internal/psc/migration/oauth-ciphertext",
+                                      json={"key":"owner"})
+            self.assertEqual(unsigned.status_code,403)
+            with patch("psc_migration_internal.PSCStore") as fake:
+                fake.return_value.encrypted_google_oauth.return_value="gAAAA-CIPHERTEXT"
+                valid=self.signed_post_to(
+                    "/internal/psc/migration/oauth-ciphertext",{"key":"owner"})
+            self.assertEqual(valid.status_code,200)
+            self.assertEqual(valid.json["encrypted_refresh_token"],"gAAAA-CIPHERTEXT")
+            self.assertNotIn("plaintext",json.dumps(valid.json).lower())
+            self.assertIn("no-store",valid.headers.get("Cache-Control",""))
+
+    def signed_post_to(self, path, data, secret=KEY):
+        raw=json.dumps(data, separators=(",",":"), sort_keys=True).encode()
+        stamp=str(int(time.time()))
+        signature=hmac.new(secret.encode(),stamp.encode()+b"."+raw,hashlib.sha256).hexdigest()
+        return self.client.post(path,data=raw,
+                headers={"Content-Type":"application/json","X-Psc-Timestamp":stamp,
+                         "X-Psc-Signature":signature})
+
     def test_fails_closed_if_store_unavailable(self):
         response = self.signed_post({"from":"2026-11-12","to":"2026-11-12"})
         self.assertEqual(response.status_code,503)
