@@ -44,6 +44,11 @@ CREATE TABLE psychology_demo_payments (
 CREATE TABLE psychology_google_oauth (
  key TEXT PRIMARY KEY,encrypted_refresh_token TEXT NOT NULL,updated_at TEXT NOT NULL
 );
+CREATE TABLE psychology_fonasa_bookings (
+ source_id TEXT PRIMARY KEY,hold_id TEXT NOT NULL UNIQUE REFERENCES psychology_booking_holds(id),
+ patient_name TEXT NOT NULL, patient_email TEXT NOT NULL,token_sha256 TEXT UNIQUE NOT NULL,
+ created_at TEXT NOT NULL,redeemed_at TEXT,old_starts_at TEXT,new_starts_at TEXT
+);
 """)
         db.execute("INSERT INTO psychology_google_oauth VALUES('owner','gAAAA-CIPHERTEXT-NOT-PLAINTEXT',?)",
                    (NOW.isoformat(),))
@@ -151,6 +156,71 @@ class SQLiteTxnTests(unittest.TestCase):
         self.assertEqual(self.store.encrypted_google_oauth(),"gAAAA-CIPHERTEXT-NOT-PLAINTEXT")
         with self.assertRaises(ValueError):
             self.store.encrypted_google_oauth("any-other-key")
+
+    def register_fonasa(self, ident=None, start=None, token=None):
+        identity = ident or str(uuid.uuid4())
+        first = start or START
+        hashed = hashlib.sha256((token or "fonasa-test-token").encode()).hexdigest()
+        result=self.store.register_fonasa("voucher-fake",identity,
+               "Ficticio Paciente","patient@invalid.test",hashed,
+               first,first+timedelta(minutes=45),now=NOW)
+        return identity,result
+
+    def test_fonasa_register_is_idempotent_and_keeps_deterministic_hold(self):
+        identity,result=self.register_fonasa()
+        self.assertEqual(result,"CONFIRMED")
+        _,again=self.register_fonasa(ident=identity)
+        self.assertEqual(again,"CONFIRMED")
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM psychology_fonasa_bookings").fetchone()[0],1)
+            hold=db.execute("SELECT id,status FROM psychology_booking_holds").fetchone()
+        self.assertEqual(hold,(identity,"CONFIRMED"))
+
+    def test_fonasa_cannot_overwrite_another_existing_hold(self):
+        hold=self.reserve()
+        with self.assertRaises(StorageConflict):
+            self.register_fonasa(ident=hold["id"])
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM psychology_fonasa_bookings").fetchone()[0],0)
+
+    def test_fonasa_token_is_one_time_and_old_calendar_id_persists(self):
+        ident,_=self.register_fonasa()
+        token="fonasa-test-token"
+        self.assertEqual(self.store.fonasa_by_token(token,now=NOW)["state"],"ELIGIBLE")
+        moved=START+timedelta(days=1)
+        self.assertEqual(self.store.finalize_fonasa_reschedule(
+            "voucher-fake",START,moved,moved+timedelta(minutes=45),now=NOW),"REBOOKED")
+        self.assertEqual(self.store.fonasa_by_token(token,now=NOW)["state"],"USED")
+        with sqlite3.connect(self.path) as db:
+            hold=db.execute("SELECT id,slot_date,starts_at,status FROM psychology_booking_holds").fetchone()
+        self.assertEqual(hold[0],ident)
+        self.assertEqual(hold[1],"2026-11-13")
+        self.assertEqual(hold[3],"CONFIRMED")
+        with self.assertRaises(StorageConflict):
+            self.store.finalize_fonasa_reschedule(
+                "voucher-fake",START,moved+timedelta(hours=1),moved+timedelta(hours=2),now=NOW)
+
+    def test_fonasa_rebooking_destination_overlap_rolls_back_all_updates(self):
+        self.register_fonasa()
+        future=START+timedelta(hours=1)
+        self.reserve(start=future)
+        with self.assertRaises(StorageConflict):
+            self.store.finalize_fonasa_reschedule(
+                "voucher-fake",START,future,future+timedelta(minutes=45),now=NOW)
+        with sqlite3.connect(self.path) as db:
+            row=db.execute("SELECT redeemed_at FROM psychology_fonasa_bookings").fetchone()
+        self.assertIsNone(row[0])
+        self.assertEqual(self.store.fonasa_by_token("fonasa-test-token",now=NOW)["state"],"ELIGIBLE")
+
+    def test_fonasa_register_prevents_slot_conflict(self):
+        self.reserve()
+        with self.assertRaises(StorageConflict):
+            self.register_fonasa()
+
+    def test_fonasa_token_deadline(self):
+        self.register_fonasa()
+        late=START-timedelta(hours=23)
+        self.assertEqual(self.store.fonasa_by_token("fonasa-test-token",now=late)["state"],"TOO_LATE")
 
     def test_store_missing_does_not_create_a_database(self):
         location=Path(self.tmp.name)/"missing.sqlite3"
