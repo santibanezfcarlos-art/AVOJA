@@ -16,7 +16,7 @@ import tempfile
 from urllib.request import urlopen
 
 
-REVISION = "214b2646ebf4fbf4430b92127a03f0d459ae7af5"
+REVISION = "7527087b04c41f6e9d67a3336a97e06e056acb88"
 BASE = ("https://raw.githubusercontent.com/santibanezfcarlos-art/AVOJA/"
         + REVISION + "/psicologia-api/tools/")
 MODULES = (
