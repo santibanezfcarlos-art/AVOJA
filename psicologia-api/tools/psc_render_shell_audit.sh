@@ -26,7 +26,7 @@ python -m pip install --quiet --disable-pip-version-check \
 echo 'Introduce la URL INTERNA de psicologia-holds-piloto.'
 echo 'Solo se usará en memoria. No la publiques en el chat ni en capturas.'
 IFS= read -r -s -p 'URL interna PostgreSQL (entrada oculta): ' PSICOLOGIA_HOLDS_DATABASE_URL
-printf '\\n'
+printf '\n'
 if [[ "$PSICOLOGIA_HOLDS_DATABASE_URL" != postgresql://* && "$PSICOLOGIA_HOLDS_DATABASE_URL" != postgres://* ]]; then
   echo 'URL inválida. No se ejecutó ningún cambio.' >&2
   exit 1
