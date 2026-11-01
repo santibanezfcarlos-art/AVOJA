@@ -264,7 +264,7 @@ def receipt_page(receipt):
             current_app.logger.warning('PSC_RECEIPT_FULFILLMENT_PENDING suffix=%s error_type=%s',
                 r['order_id'][-6:],type(exc).__name__)
         with billing.db() as c:r=c.execute('SELECT * FROM production_payments WHERE receipt=?',(receipt,)).fetchone()
-    label={'CONFIRMED':'Tu sesión está confirmada','AUTHORIZED':'Pago aprobado: confirmando tu reserva','CANCELLED':'Pago cancelado','REJECTED':'Pago rechazado'}.get(r['state'],'Operación pendiente de verificación')
+    label={'CONFIRMED':'Tu sesión está confirmada','AUTHORIZED':'Pago aprobado: confirmando tu reserva','CANCELLED':'Pago cancelado','REJECTED':'Pago rechazado','RELEASED_TEST':'Compra de prueba sin atención'}.get(r['state'],'Operación pendiente de verificación')
     text='<p>'+html.escape(r['service'])+' · '+html.escape(r['starts_at'])+' · $'+str(r['amount'])+' CLP</p>'
     if r['state']=='CONFIRMED':
         pending_invoice=resume_pending_invoice(r['order_id'])
@@ -291,6 +291,62 @@ def busy_intervals(first,last):
         if count>=3:
             start=datetime.combine(day,datetime.min.time(),tzinfo=TZ);values.append((start,start+timedelta(days=1)))
     return values
+
+
+@bp.get('/admin/reservas-pagadas')
+@billing.private
+def admin_paid_bookings():
+    """Read-only view of future paid slots; no payment or tax changes."""
+    init()
+    with billing.db() as c:
+        rows=c.execute("""SELECT p.order_id,p.service,p.starts_at,p.state,
+                b.name,b.payment_status,b.invoice_status
+            FROM production_payments p JOIN billing_orders b USING(order_id)
+            WHERE p.starts_at>=? AND p.state IN ('AUTHORIZED','CONFIRMED','RELEASED_TEST')
+              AND b.environment='production' AND b.payment_status='approved'
+            ORDER BY p.starts_at LIMIT 200""",(datetime.now(TZ).isoformat(),)).fetchall()
+    return jsonify(bookings=[dict(r) for r in rows])
+
+
+@bp.post('/admin/reservas-pagadas/<order>/liberar')
+@billing.private
+def admin_release_test_slot(order):
+    """Release only a confirmed, explicitly selected test slot, never its payment or invoice.
+
+    The operator must first remove the corresponding event from Google Calendar.
+    A distinct terminal state prevents later fulfillment/reconciliation recreating it.
+    """
+    if not re.fullmatch(r'PSCP[0-9A-F]{18}',order):
+        return jsonify(error='Identificador de compra inválido.'),400
+    data=request.get_json(silent=True)
+    if (not isinstance(data,dict) or data.get('confirmation')!='LIBERAR'
+            or not isinstance(data.get('reason'),str)
+            or not 10<=len(data['reason'].strip())<=200):
+        return jsonify(error='Confirma la liberación e indica su motivo.'),400
+    init()
+    with billing.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute("""SELECT p.state,p.starts_at,b.payment_status,b.environment
+          FROM production_payments p JOIN billing_orders b USING(order_id)
+          WHERE p.order_id=?""",(order,)).fetchone()
+        if not row:
+            return jsonify(error='Compra no encontrada.'),404
+        if row['state']=='RELEASED_TEST':
+            return jsonify(ok=True,state='RELEASED_TEST',already_released=True)
+        if (row['state']!='CONFIRMED' or row['payment_status']!='approved'
+                or row['environment']!='production'
+                or datetime.fromisoformat(row['starts_at'])<=datetime.now(TZ)):
+            return jsonify(error='Solo se pueden liberar reservas futuras, pagadas y confirmadas.'),409
+        changed=c.execute("""UPDATE production_payments SET state='RELEASED_TEST'
+            WHERE order_id=? AND state='CONFIRMED'""",(order,))
+        if changed.rowcount!=1:
+            return jsonify(error='El estado de la reserva cambió. Actualiza la lista.'),409
+        c.execute("""INSERT INTO billing_audit(order_id,action,created_at,actor)
+            VALUES(?,?,?,?)""",(order,'test_slot_released: '+data['reason'].strip(),
+                billing.now(),request.authorization.username))
+    return jsonify(ok=True,state='RELEASED_TEST',
+        message='Cupo liberado en la agenda de PSC. Pago y boleta conservados.')
+
 
 @bp.post('/admin/transbank/live')
 @billing.private
