@@ -25,6 +25,8 @@ ALLOWED = frozenset(("psicoterapia", "empleabilidad", "competencias"))
 MAX_DAILY = 3
 HOLD_TTL = timedelta(minutes=10)
 PAYMENT_TTL = timedelta(minutes=20)
+# Never silently release an unresolved paid slot on a timer.
+RECONCILIATION_EXPIRY = "9999-12-31T00:00:00+00:00"
 
 
 class StorageConflict(Exception):
@@ -263,8 +265,10 @@ class PSCStore:
                 if row["hold_state"] != "PAYMENT_PENDING" or _read_utc(row["expires_at"]) <= moment:
                     db.execute("UPDATE psychology_demo_payments SET state='RECONCILIATION_REQUIRED',verified_at=?,updated_at=? WHERE order_id=?",
                                (_iso(moment),_iso(moment),order_id))
-                    db.execute("UPDATE psychology_booking_holds SET status='RECONCILIATION_REQUIRED',updated_at=? WHERE id=? AND status='PAYMENT_PENDING'",
-                               (_iso(moment),row["hold_id"]))
+                    db.execute("""UPDATE psychology_booking_holds
+                               SET status='RECONCILIATION_REQUIRED',expires_at=?,updated_at=?
+                               WHERE id=? AND status='PAYMENT_PENDING'""",
+                               (RECONCILIATION_EXPIRY,_iso(moment),row["hold_id"]))
                     return "RECONCILIATION_REQUIRED"
                 db.execute("UPDATE psychology_demo_payments SET state='AUTHORIZED',verified_at=?,updated_at=? WHERE order_id=?",
                            (_iso(moment),_iso(moment),order_id))
@@ -461,7 +465,7 @@ class PSCStore:
                     """UPDATE psychology_booking_holds SET status='RECONCILIATION_REQUIRED',
                        expires_at=?,updated_at=?
                        WHERE id=? AND status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')""",
-                    (_iso(moment+timedelta(days=1)),_iso(moment),row["hold_id"])
+                    (RECONCILIATION_EXPIRY,_iso(moment),row["hold_id"])
                 )
                 return "RECONCILIATION_REQUIRED"
         except sqlite3.Error:
