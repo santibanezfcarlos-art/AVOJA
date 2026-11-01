@@ -760,7 +760,8 @@ async function getAvailability(from,neededUntil,duration){
  if(cached)return cached.data;
  const running=[...availabilityRequests.values()].find(e=>e.duration===duration&&e.from<=from&&e.to>=neededUntil);
  if(running)return running.promise;
- const to=plus(from,20),key=from+'|'+duration;
+ const to=plus(from,20)>plus(todayISO(),60)?plus(todayISO(),60):plus(from,20),key=from+'|'+duration;
+  if(from>to)throw Error('Fecha fuera del período de reservas');
  const promise=(async()=>{
   const res=await fetch(CAL_API+'?from='+from+'&to='+to+'&duration='+duration,{cache:'no-store'});
   if(!res.ok)throw Error('Disponibilidad temporalmente no disponible');
@@ -829,7 +830,7 @@ function localBusy(date,time,duration=currentService().minutes){
 function baseSchedule(isoDate){const wd=dayIndex(isoDate);return settings.closedWeekdays.includes(wd)?[]:normalize(settings.weekly[wd])}
 function schedule(isoDate){const ex=settings.exceptions[isoDate];return ex?ex.closed?[]:normalize(ex.slots):baseSchedule(isoDate)}
 function past(isoDate,time){const t=todayISO();if(isoDate<t)return true;if(isoDate>t)return false;const p=nowParts();return time<=p.hour+':'+p.minute}
-function availableDay(isoDate){return calendarState==='ready'&&configurationReady&&currentService().active&&isoDate>=todayISO()&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h,currentService().minutes,isoDate)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
+function availableDay(isoDate){return calendarState==='ready'&&configurationReady&&currentService().active&&isoDate>=todayISO()&&isoDate<=plus(todayISO(),60)&&booked(isoDate).length<MAX&&schedule(isoDate).some(h=>fitsSlot(h,currentService().minutes,isoDate)&&!past(isoDate,h)&&!calendarBusy(isoDate,h)&&!localBusy(isoDate,h))}
 function publicDayHasCups(isoDate){return availableDay(isoDate)}
 function message(t){$('message').textContent=t;$('message').hidden=false}
 function clearMessage(){$('message').hidden=true}
