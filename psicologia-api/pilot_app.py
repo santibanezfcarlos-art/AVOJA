@@ -84,3 +84,30 @@ if os.environ.get("PSC_PG_SNAPSHOT_PUSH_ON_START") == "true":
             logging.getLogger("psc_backup").error(
                 "PSC_PG_BACKUP state=FAILED error_type=%s", type(error).__name__)
     threading.Thread(target=_snapshot_on_start, daemon=True).start()
+
+# Incremental continuity: encrypted snapshots to PSC's ALREADY PAID persistent disk.
+# This is independent of live booking logic and may be disabled by environment.
+# Never logs secrets or patient records.
+if os.environ.get("PSC_PG_PERIODIC_BACKUP_ENABLED") == "true":
+    import threading as _periodic_threading
+    def _psc_pg_periodic_backup_loop():
+        import logging as _logging
+        import time as _time
+        from tools.psc_push_snapshot import push_once
+        logger = _logging.getLogger("psc_periodic_backup")
+        # Let the production checkout API finish startup first.
+        _time.sleep(15)
+        while True:
+            try:
+                outcome = push_once()
+                logger.warning(
+                    "PSC_PG_PERIODIC_BACKUP state=%s tables=%s rows=%s",
+                    outcome["state"], outcome["table_count"], outcome["row_count"])
+            except Exception as exc:
+                logger.error(
+                    "PSC_PG_PERIODIC_BACKUP state=FAILED error_type=%s",
+                    type(exc).__name__)
+            # Retains multiple historical checkpoints. No destructive pruning.
+            _time.sleep(6 * 3600)
+    _periodic_threading.Thread(
+        target=_psc_pg_periodic_backup_loop, daemon=True).start()
