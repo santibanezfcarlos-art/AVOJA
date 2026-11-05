@@ -111,3 +111,27 @@ if os.environ.get("PSC_PG_PERIODIC_BACKUP_ENABLED") == "true":
             _time.sleep(6 * 3600)
     _periodic_threading.Thread(
         target=_psc_pg_periodic_backup_loop, daemon=True).start()
+
+# Read-only migration diagnostic; does not modify Calendar or OAuth state.
+if os.environ.get("PSC_GOOGLE_OAUTH_DISK_PROBE") == "true":
+    import threading as _oauth_probe_threading
+    def _probe_oauth_disk_source():
+        import logging as _logging
+        import time as _time
+        _time.sleep(12)
+        try:
+            from cryptography.fernet import Fernet
+            from psc_calendar_disk_client import fetch_encrypted_refresh_token
+            encrypted = fetch_encrypted_refresh_token()
+            secret = Fernet(
+                os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()
+            ).decrypt(encrypted.encode())
+            if not secret or len(secret) < 16:
+                raise RuntimeError("OAuth refresh token invalid")
+            _logging.getLogger("psc_oauth_migration").warning(
+                "PSC_GOOGLE_OAUTH_DISK_PROBE state=DECRYPTED_OK")
+        except Exception as exc:
+            _logging.getLogger("psc_oauth_migration").error(
+                "PSC_GOOGLE_OAUTH_DISK_PROBE state=FAILED error_type=%s",
+                type(exc).__name__)
+    _oauth_probe_threading.Thread(target=_probe_oauth_disk_source,daemon=True).start()
