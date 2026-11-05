@@ -396,6 +396,15 @@ def reset_deleted_fonasa_booking():
             return jsonify(state='CALENDAR_UNAVAILABLE'),503
     except CalendarIntegrationError:
         return jsonify(state='CALENDAR_UNAVAILABLE'),503
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        try:
+            from psc_sqlite_fonasa_client import reset_deleted
+            if reset_deleted(source,hold_id)!="RESET":
+                return jsonify(state="RESET_UNCONFIRMED"),503
+            print("FONASA_DELETED_BOOKING_RELEASED_SQLITE",flush=True)
+            return jsonify(state="RESET")
+        except Exception:
+            return jsonify(state="RESET_UNCONFIRMED"),503
     from booking_holds import _database_connection
     from fonasa_rebooking import exists
     try:
