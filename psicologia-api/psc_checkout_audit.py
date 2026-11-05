@@ -125,6 +125,35 @@ def run():
             """SELECT COUNT(*) FROM billing_orders
                WHERE environment='production' AND payment_status='approved'"""
         ).fetchone()[0]
+
+    # Inspect only aggregate state/date/amount buckets to identify old test
+    # purchases. No order identifiers or patient contact data enter logs.
+    with db() as c:
+        unresolved = c.execute("""
+            SELECT p.state, COALESCE(b.payment_status,'unrecorded'),
+                   CASE WHEN p.amount < 1000 THEN 'micro_test_amount' ELSE 'standard_amount' END,
+                   COALESCE(substr(b.created_at,1,10),'unknown_date'), COUNT(*)
+            FROM production_payments p
+            LEFT JOIN billing_orders b USING(order_id)
+            WHERE p.state IN ('AUTHORIZED','COMMITTING','READY','RECONCILIATION')
+            GROUP BY 1,2,3,4 ORDER BY 1,4
+        """).fetchall()
+    backlog = ["|".join(str(x) for x in row) for row in unresolved]
+
+    # Signed, read-only production adapters: no payment capture, no event
+    # creation, no email delivery or SII invoicing is triggered.
+    try:
+        health_status = checkout.remote("health", {}).get("state", "INVALID")
+    except Exception as exc:
+        health_status = "ERROR_" + type(exc).__name__
+    try:
+        result = checkout.remote("check", {
+            "start": start.isoformat(), "end": end.isoformat()
+        })
+        calendar_status = result.get("state", "INVALID")
+    except Exception as exc:
+        calendar_status = "ERROR_" + type(exc).__name__
+
     return {
         "concurrent_accept": 1, "concurrent_reject": 7,
         "durable_reopen": "OK", "integrity_check": "OK",
@@ -132,5 +161,8 @@ def run():
         "production_states": statuses,
         "confirmed_missing_any_email": pending_mail,
         "approved_pending_invoice": pending_invoice,
-        "approved_production_orders": count_paid
+        "approved_production_orders": count_paid,
+        "unresolved_buckets": backlog,
+        "fulfillment_health": health_status,
+        "calendar_read_state": calendar_status
     }
