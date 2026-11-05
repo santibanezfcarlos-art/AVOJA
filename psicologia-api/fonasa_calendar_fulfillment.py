@@ -17,6 +17,16 @@ bp=Blueprint("fonasa_calendar_fulfillment",__name__)
 TZ=ZoneInfo("America/Santiago")
 FONASA_OWNER=uuid.UUID("24c9f09e-1c7f-4b5b-bd3b-65d16f493ce5")
 
+def _sqlite_fonasa_link_token(source):
+    """Stateless derivation: main PSC stores matching digest before email."""
+    import hashlib,hmac
+    key=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
+    if len(key)<40:
+        raise RuntimeError("PSC bridge key unavailable")
+    return hmac.new(key.encode(),("fonasa-rebooking-v2:"+source).encode(),
+                    hashlib.sha256).hexdigest()
+
+
 @bp.post("/internal/psicologia/fonasa/confirm")
 def confirm_fonasa_booking():
     body=_authorize()
@@ -145,8 +155,9 @@ def send_fonasa_confirmation():
         return jsonify(state="INVALID_PATIENT_EMAIL"),400
     try:
         if os.environ.get("PSC_FONASA_STATE_SOURCE")=="psc_disk":
-            from psc_sqlite_fonasa_client import register_fonasa
-            token=register_fonasa(source,hold_id,patient,patient_email,start,end)
+            # Main API persisted digest before sending this mail; no callback
+            # into the one-worker main API, avoiding a circular HTTP deadlock.
+            token=_sqlite_fonasa_link_token(source)
         else:
             from booking_holds import _database_connection
             from fonasa_rebooking import register
@@ -357,8 +368,7 @@ def prepare_fonasa_rebooking():
             return jsonify(state='CALENDAR_NOT_CONFIRMED'),409
         name=display_name(body.get('patient_name',''))
         if os.environ.get("PSC_FONASA_STATE_SOURCE")=="psc_disk":
-            from psc_sqlite_fonasa_client import register_fonasa
-            token=register_fonasa(source,hold_id,name,email,start,end)
+            token=_sqlite_fonasa_link_token(source)
         else:
             from booking_holds import _database_connection
             from fonasa_rebooking import register
