@@ -69,7 +69,16 @@ def windows(day1,day2,*,test_path=None,now=None):
     now=utc(now or datetime.now(timezone.utc))
     with connect(test_path=test_path) as c:
         rows=c.execute("SELECT starts_at,ends_at,status,expires_at FROM psychology_booking_holds WHERE slot_date BETWEEN ? AND ?",(day1.isoformat(),day2.isoformat())).fetchall()
-    return [(utc(r["starts_at"]),utc(r["ends_at"])) for r in rows if r["status"]=="CONFIRMED" or (r["status"] in ACTIVE and utc(r["expires_at"])>now)]
+        claim_rows=[]
+        if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='psc_fonasa_rebook_claims'").fetchone():
+            claim_rows=c.execute("SELECT new_starts_at,new_ends_at FROM psc_fonasa_rebook_claims WHERE state='PREPARED'").fetchall()
+    occupied=[(utc(r["starts_at"]),utc(r["ends_at"])) for r in rows if r["status"]=="CONFIRMED" or (r["status"] in ACTIVE and utc(r["expires_at"])>now)]
+    first,last=day1.isoformat(),day2.isoformat()
+    for r in claim_rows:
+        start,end=utc(r["new_starts_at"]),utc(r["new_ends_at"])
+        day=start.astimezone(ZoneInfo("America/Santiago")).date().isoformat()
+        if first<=day<=last:occupied.append((start,end))
+    return occupied
 
 def reserve(*,hold_id,secret_hash,service,start,end,test_path=None,now=None,max_daily=3,expiry_seconds=600):
     now=utc(now or datetime.now(timezone.utc));start,end=utc(start),utc(end)
