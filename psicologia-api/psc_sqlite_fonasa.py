@@ -191,3 +191,45 @@ def commit_change(*,source_id,token_sha256,new_start,new_end,test_path=None):
            SET state='COMPLETED',completed_at=?
            WHERE source_id=? AND state='PREPARED'""",(stamp,source_id))
     return "CONFIRMED"
+
+
+def busy_intervals(*,day,exclude_hold_id=None,test_path=None,now=None):
+    """Read own active holds and PREPARED target claims, without PII."""
+    from psc_sqlite_state import ACTIVE
+    from zoneinfo import ZoneInfo
+    now=utc(now or datetime.now(timezone.utc))
+    with connect(test_path=test_path) as c:
+        holds=c.execute("""SELECT id,starts_at,ends_at,status,expires_at
+          FROM psychology_booking_holds WHERE slot_date=?""",(day.isoformat(),)).fetchall()
+        claims=(c.execute("""SELECT new_starts_at,new_ends_at
+          FROM psc_fonasa_rebook_claims WHERE state='PREPARED'""").fetchall()
+          if c.execute("SELECT 1 FROM sqlite_master WHERE name='psc_fonasa_rebook_claims'").fetchone()
+          else [])
+    windows=[(utc(r["starts_at"]),utc(r["ends_at"])) for r in holds
+        if str(r["id"])!=str(exclude_hold_id) and
+        (r["status"]=="CONFIRMED" or (r["status"] in ACTIVE and utc(r["expires_at"])>now))]
+    windows.extend((utc(q["new_starts_at"]),utc(q["new_ends_at"])) for q in claims
+        if utc(q["new_starts_at"]).astimezone(ZoneInfo("America/Santiago")).date()==day)
+    return windows
+
+
+def cancel_deleted(*,source_id,hold_id,test_path=None):
+    """Call only after the pilot verified that its Google event was deleted."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{15,40}",str(source_id)):
+        raise ValueError("Invalid source")
+    with connect(test_path=test_path,write=True) as c:
+        row=c.execute("SELECT hold_id FROM psychology_fonasa_bookings WHERE source_id=?",
+                      (source_id,)).fetchone()
+        if row and str(row["hold_id"])!=str(hold_id):
+            raise FonasaStateConflict("Hold does not match source")
+        # Never release a slot with an unresolved Calendar move.
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='psc_fonasa_rebook_claims'").fetchone():
+            unresolved=c.execute("""SELECT 1 FROM psc_fonasa_rebook_claims
+                WHERE source_id=? AND state='PREPARED'""",(source_id,)).fetchone()
+            if unresolved:raise FonasaStateConflict("Rebooking needs reconciliation")
+        stamp=datetime.now(timezone.utc).isoformat()
+        c.execute("""UPDATE psychology_fonasa_bookings SET redeemed_at=COALESCE(redeemed_at,?)
+            WHERE source_id=?""",(stamp,source_id))
+        c.execute("""UPDATE psychology_booking_holds SET status='CANCELLED',updated_at=?
+            WHERE id=? AND status='CONFIRMED'""",(stamp,str(hold_id)))
+    return "RESET"
