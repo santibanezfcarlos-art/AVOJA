@@ -234,3 +234,27 @@ if os.environ.get("PSC_GOOGLE_OAUTH_STORAGE") == "psc_disk":
             _time.sleep(retry_seconds)
     _psc_oauth_thread.Thread(
         target=_psc_refresh_oauth_cache, daemon=True).start()
+
+
+# One-shot, READ-ONLY signed RPC check. Do not create Fonasa bookings or tokens.
+if os.environ.get("PSC_SQLITE_RPC_SMOKE_ON_START")=="true":
+    import threading as _sqlite_rpc_thread
+    def _sqlite_rpc_smoke():
+        import logging as _logging
+        import time as _time
+        from datetime import datetime as _dt,timedelta as _td
+        from zoneinfo import ZoneInfo as _ZI
+        _time.sleep(12)
+        logger=_logging.getLogger("psc_sqlite_rpc")
+        try:
+            from psc_sqlite_fonasa_client import call_document
+            day=(_dt.now(_ZI("America/Santiago"))+_td(days=2)).date().isoformat()
+            result=call_document("busy",{"date":day})
+            if result.get("state")!="OK" or not isinstance(result.get("intervals"),list):
+                raise RuntimeError("Invalid SQLite busy response")
+            logger.warning("PSC_SQLITE_RPC_SMOKE state=SIGNED_READ_OK intervals=%d",
+                           len(result["intervals"]))
+        except Exception as exc:
+            logger.error("PSC_SQLITE_RPC_SMOKE state=FAILED error_type=%s",
+                         type(exc).__name__)
+    _sqlite_rpc_thread.Thread(target=_sqlite_rpc_smoke,daemon=True).start()
