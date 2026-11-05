@@ -35,8 +35,9 @@ def call(action,doc):
     return body["state"]
 
 def register_fonasa(source,hold_id,name,email,start,end):
-    if os.environ.get("PSC_FONASA_STATE_SOURCE")!="psc_disk":
-        raise StateBridgeUnavailable("SQLite Fonasa cutover not enabled")
+    if (os.environ.get("PSC_FONASA_STATE_SOURCE")!="psc_disk"
+            or os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")!="true"):
+        raise StateBridgeUnavailable("SQLite Fonasa cutover not fully verified")
     key=os.environ.get("PSICOLOGIA_REBOOKING_TOKEN_SECRET","")
     if len(key)<40:
         raise StateBridgeUnavailable("Missing rebooking token key")
