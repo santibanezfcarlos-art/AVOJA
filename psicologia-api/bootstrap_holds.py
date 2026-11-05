@@ -174,7 +174,9 @@ def _send_timezone_correction_for_latest_test():
 
 
 def main():
-    # OAuth disk refresh is asynchronous after Gunicorn starts; never block\n    # service startup on an HTTP request to the public PSC API.\n    if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
+    # OAuth disk refresh is asynchronous after Gunicorn starts; never block
+    # service startup on an HTTP request to the public PSC API.
+    if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
         print("PSICOLOGIA_PILOT_SCHEMA: bootstrap_disabled", flush=True)
         return 0
     if os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") != "true":
