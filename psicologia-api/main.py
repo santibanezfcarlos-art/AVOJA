@@ -309,6 +309,10 @@ app.register_blueprint(fonasa_patient_bp)
 from psc_persistent_backup import bp as psc_persistent_backup_bp
 app.register_blueprint(psc_persistent_backup_bp)
 
+# Signed, read-only OAuth ciphertext fallback from the existing PSC disk.
+from psc_calendar_disk_token import bp as psc_calendar_disk_token_bp
+app.register_blueprint(psc_calendar_disk_token_bp)
+
 # One-shot offline relational recovery build; never switches live database paths.
 if os.environ.get("PSC_BUILD_SQLITE_RECOVERY_ON_START") == "true":
     def _build_sqlite_recovery_once():
