@@ -12,7 +12,7 @@ BASE="https://psicologia-carlos-calendar-api.onrender.com/internal/psc/sqlite/fo
 class StateBridgeUnavailable(RuntimeError):pass
 
 def call(action,doc):
-    if action not in ("register","eligibility","prepare","commit","lookup","busy","reset"):
+    if action not in ("register","eligibility","prepare","commit","lookup","busy","reset","abort"):
         raise ValueError("Unsupported PSC state operation")
     secret=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
     if len(secret)<40:
@@ -86,7 +86,7 @@ def reset_deleted(source,hold_id):
     return call("reset",{"source_id":source,"hold_id":str(hold_id)})
 
 def call_document(action,doc):
-    if action not in ("register","eligibility","prepare","commit","lookup","busy","reset"):
+    if action not in ("register","eligibility","prepare","commit","lookup","busy","reset","abort"):
         raise ValueError("Invalid state action")
     secret=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
     if len(secret)<40:raise StateBridgeUnavailable("Missing bridge key")
@@ -106,3 +106,10 @@ def call_document(action,doc):
     if not isinstance(payload,dict) or not isinstance(payload.get("state"),str):
         raise StateBridgeUnavailable("Invalid state reply")
     return payload
+
+def abort_rebooking(source,token,start,end):
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")!="true":
+        raise StateBridgeUnavailable("Migration disabled")
+    return call("abort",{"source_id":source,
+        "token_sha256":hashlib.sha256(token.encode()).hexdigest(),
+        "start":start.isoformat(),"end":end.isoformat()})
