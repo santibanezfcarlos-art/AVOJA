@@ -56,3 +56,44 @@ def upload():
     finally:
         if os.path.exists(tmpname):
             os.unlink(tmpname)
+
+
+def verify_latest_encrypted_snapshot():
+    """Decrypt latest backup in memory, check SQLite integrity and row parity.
+
+    No patient data is returned or logged; plaintext is never written to disk.
+    """
+    import base64
+    import sqlite3
+    from cryptography.fernet import Fernet
+    secret = os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY", "")
+    if len(secret) < 40:
+        raise RuntimeError("Backup decryption key unavailable")
+    files = sorted(BASE.glob("psc-pg-*.enc"), reverse=True)
+    if not files:
+        raise FileNotFoundError("No encrypted snapshots on disk")
+    encrypted = files[0].read_bytes()
+    if not 100 <= len(encrypted) <= MAX_BYTES:
+        raise RuntimeError("Encrypted snapshot size invalid")
+    key = base64.urlsafe_b64encode(
+        hashlib.sha256(b"psc-postgres-offsite-v1:" + secret.encode()).digest()
+    )
+    raw = Fernet(key).decrypt(encrypted)
+    db = sqlite3.connect(":memory:")
+    try:
+        db.deserialize(raw)
+        if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError("SQLite integrity_check failed")
+        source = dict(db.execute(
+            "SELECT source_table,source_count FROM snapshot_metadata"
+        ).fetchall())
+        seen = dict(db.execute(
+            "SELECT source_table,COUNT(*) FROM snapshot_rows GROUP BY source_table"
+        ).fetchall())
+        if len(source) < 8 or any(seen.get(table, 0) != n for table, n in source.items()):
+            raise RuntimeError("Snapshot row parity failed")
+        return {"state": "DECRYPTED_SQLITE_INTEGRITY_AND_PARITY_OK",
+                "tables": len(source), "rows": sum(source.values()),
+                "ciphertext_sha256": hashlib.sha256(encrypted).hexdigest()}
+    finally:
+        db.close()
