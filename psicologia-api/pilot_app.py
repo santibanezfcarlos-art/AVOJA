@@ -193,3 +193,36 @@ if os.environ.get("PSC_PUBLIC_AVAILABILITY_PROBE_ON_START") == "true":
                     _time.sleep(8)
     _psc_availability_test_thread.Thread(
         target=_psc_public_availability_probe,daemon=True).start()
+
+# OAuth credential acquisition must NEVER block Gunicorn startup. The signed
+# PSC endpoint is a remote dependency and may time out when Render wakes up.
+# Periodically refresh ciphertext only; no calendar writes or token logging.
+if os.environ.get("PSC_GOOGLE_OAUTH_STORAGE") == "psc_disk":
+    import threading as _psc_oauth_thread
+    def _psc_refresh_oauth_cache():
+        import logging as _logging
+        import time as _time
+        logger = _logging.getLogger("psc_oauth_cache")
+        _time.sleep(2)
+        retry_seconds = 15
+        while True:
+            try:
+                from psc_calendar_disk_client import (
+                    refresh_cached_ciphertext, fetch_encrypted_refresh_token)
+                from cryptography.fernet import Fernet
+                refresh_cached_ciphertext()
+                plain = Fernet(
+                    os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()
+                ).decrypt(fetch_encrypted_refresh_token().encode())
+                if len(plain) < 16:
+                    raise ValueError("OAuth token length invalid")
+                logger.warning("PSC_GOOGLE_OAUTH_ASYNC_CACHE state=READY")
+                retry_seconds = 900
+            except Exception as exc:
+                logger.warning(
+                    "PSC_GOOGLE_OAUTH_ASYNC_CACHE state=RETRYING error_type=%s",
+                    type(exc).__name__)
+                retry_seconds = min(retry_seconds * 2, 300)
+            _time.sleep(retry_seconds)
+    _psc_oauth_thread.Thread(
+        target=_psc_refresh_oauth_cache, daemon=True).start()
