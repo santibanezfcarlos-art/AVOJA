@@ -89,11 +89,15 @@ def callback():
             return message("Google no entregó autorización permanente para Calendar.",409)
         encrypted=Fernet(os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()).encrypt(
                   refresh.encode()).decode()
-        with _database_connection() as db:
-            db.execute("""INSERT INTO psychology_google_oauth (key,encrypted_refresh_token,updated_at)
-                          VALUES ('owner',%s,now()) ON CONFLICT(key) DO UPDATE
-                          SET encrypted_refresh_token=excluded.encrypted_refresh_token,
-                              updated_at=now()""",(encrypted,))
+        if os.environ.get("PSC_GOOGLE_OAUTH_STORAGE") == "psc_disk":
+            from psc_calendar_disk_client import save_encrypted_refresh_token
+            save_encrypted_refresh_token(encrypted)
+        else:
+            with _database_connection() as db:
+                db.execute("""INSERT INTO psychology_google_oauth (key,encrypted_refresh_token,updated_at)
+                              VALUES ('owner',%s,now()) ON CONFLICT(key) DO UPDATE
+                              SET encrypted_refresh_token=excluded.encrypted_refresh_token,
+                                  updated_at=now()""",(encrypted,))
     except (HTTPError,URLError,TimeoutError,ValueError,KeyError,InvalidToken):
         return message("No se pudo completar la autorización con Google.",503)
     except Exception:
