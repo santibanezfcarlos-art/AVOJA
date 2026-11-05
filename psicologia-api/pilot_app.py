@@ -65,3 +65,22 @@ def health():
         google_api_write_enabled=os.environ.get("PSICOLOGIA_CALENDAR_WRITE_ENABLED") == "true",
         calendar_availability_source=os.environ.get("PSICOLOGIA_HOLDS_CALENDAR_POLICY", "ical"),
     )
+
+# Explicitly opt-in to a one-shot, read-only encrypted snapshot.
+# The default path is inert and does not touch production reservations.
+if os.environ.get("PSC_PG_SNAPSHOT_PUSH_ON_START") == "true":
+    import threading
+    def _snapshot_on_start():
+        import logging
+        import time
+        time.sleep(8)
+        try:
+            from tools.psc_push_snapshot import push_once
+            result = push_once()
+            logging.getLogger("psc_backup").warning(
+                "PSC_PG_BACKUP state=%s tables=%s rows=%s",
+                result["state"], result["table_count"], result["row_count"])
+        except Exception as error:
+            logging.getLogger("psc_backup").error(
+                "PSC_PG_BACKUP state=FAILED error_type=%s", type(error).__name__)
+    threading.Thread(target=_snapshot_on_start, daemon=True).start()
