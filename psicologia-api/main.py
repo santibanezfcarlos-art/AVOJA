@@ -467,3 +467,31 @@ def _recover_sii_preclaims():
 if os.environ.get("RENDER"):
     threading.Thread(target=_recover_sii_preclaims,daemon=True).start()
 
+
+
+# One-shot isolated audit, explicit opt-in only. Never calls payment gateways,
+# creates calendar events or sends messages.
+if os.environ.get("PSC_CHECKOUT_AUDIT_ON_START") == "true":
+    def _psc_checkout_audit_once():
+        import logging as _logging
+        import time as _time
+        _time.sleep(8)
+        try:
+            from psc_checkout_audit import run
+            outcome = run()
+            _logging.getLogger("psc_checkout_audit").warning(
+                "PSC_CHECKOUT_AUDIT state=PASS concurrency=%d/%d reopen=%s "
+                "integrity=%s sales_configured=%s production_states=%s "
+                "missing_mail=%d invoice_pending=%d approved_orders=%d",
+                outcome["concurrent_accept"], outcome["concurrent_reject"],
+                outcome["durable_reopen"], outcome["integrity_check"],
+                outcome["production_sales_configured"],
+                outcome["production_states"],
+                outcome["confirmed_missing_any_email"],
+                outcome["approved_pending_invoice"],
+                outcome["approved_production_orders"])
+        except Exception as error:
+            _logging.getLogger("psc_checkout_audit").error(
+                "PSC_CHECKOUT_AUDIT state=FAIL error_type=%s",
+                type(error).__name__)
+    threading.Thread(target=_psc_checkout_audit_once,daemon=True).start()
