@@ -52,6 +52,20 @@ def upload():
         os.chmod(tmpname, 0o600)
         os.link(tmpname, dst)  # Never overwrite a snapshot of the same name.
         os.unlink(tmpname)
+        if os.environ.get("PSC_AUTO_MATERIALIZE_SNAPSHOT") == "true":
+            import threading
+            def _materialize_captured_archive():
+                import logging
+                try:
+                    from psc_relational_recovery import materialize
+                    result = materialize()
+                    logging.getLogger("psc_recovery").warning(
+                        "PSC_SQLITE_SYNC state=%s tables=%d rows=%d",
+                        result["state"], result["tables"], result["rows"])
+                except Exception as exc:
+                    logging.getLogger("psc_recovery").error(
+                        "PSC_SQLITE_SYNC state=FAILED error_type=%s", type(exc).__name__)
+            threading.Thread(target=_materialize_captured_archive, daemon=True).start()
         return jsonify(state="STORED", sha256=hashlib.sha256(payload).hexdigest()), 201
     finally:
         if os.path.exists(tmpname):
