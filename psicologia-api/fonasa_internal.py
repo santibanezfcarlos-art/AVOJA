@@ -242,8 +242,47 @@ def _send_notification(role,recipient,row):
     # a second native Google invitation from the personal calendar owner.
 
 
+def _ensure_fonasa_sqlite_booking(row, minutes):
+    """Persist the rebooking link on this service's disk, never by callback.
+
+    The pilot serves Calendar/email while the main API owns SQLite. This
+    avoids a synchronous main -> pilot -> main deadlock during patient email.
+    """
+    if os.environ.get("PSC_SQLITE_STATE_ENABLED")!="true":
+        return
+    import uuid
+    import hashlib
+    import hmac
+    from psc_sqlite_fonasa import register
+    from zoneinfo import ZoneInfo
+    secret=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
+    if len(secret)<40:
+        raise RuntimeError("Fonasa SQLite signing secret unavailable")
+    source=row["id"]
+    token=hmac.new(secret.encode(),("fonasa-rebooking-v2:"+source).encode(),
+                   hashlib.sha256).hexdigest()
+    uid=uuid.uuid5(uuid.UUID("24c9f09e-1c7f-4b5b-bd3b-65d16f493ce5"),
+                   "fonasa:"+source)
+    start=datetime.fromisoformat(
+        row["requested_date"]+"T"+row["requested_time"]
+    ).replace(tzinfo=ZoneInfo("America/Santiago"))
+    end=start+timedelta(minutes=minutes)
+    register(source_id=source,hold_id=str(uid),
+             token_sha256=hashlib.sha256(token.encode()).hexdigest(),
+             name=display_name(row["patient_name"]),
+             email=row["patient_email"],start=start,end=end)
+
+
 def _deliver_pending_notifications(intake_id):
     """Try both recipients independently; persist status so admin can retry failures."""
+    if os.environ.get("PSC_SQLITE_STATE_ENABLED")=="true":
+        from admin import settings
+        cfg,_=settings()
+        with billing.db() as con:
+            row=_record(con,intake_id)
+        if row and row["state"]=="calendar_confirmed":
+            _ensure_fonasa_sqlite_booking(
+                row,cfg["services"]["psicoterapia"]["minutes"])
     outcome={}
     for role in ("professional","patient"):
         with billing.db() as con:
@@ -364,6 +403,10 @@ def _confirm_fonasa_calendar(intake_id):
                 calendar_error=?,updated_at=? WHERE id=? AND state IN ('calendar_pending','appointment_requested')""",
                 (exc.state[:70],_utc(),intake_id))
         return {"state":"calendar_pending","reason":exc.state}
+    if os.environ.get("PSC_SQLITE_STATE_ENABLED")=="true":
+        with billing.db() as con:
+            current=_record(con,intake_id)
+        _ensure_fonasa_sqlite_booking(current,minutes)
     with billing.db() as con:
         con.execute("""UPDATE fonasa_intake SET state='calendar_confirmed',
             calendar_event_id=?,meet_url=?,calendar_error=NULL,updated_at=?
