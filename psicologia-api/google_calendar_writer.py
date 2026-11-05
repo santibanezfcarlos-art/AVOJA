@@ -139,11 +139,19 @@ class CalendarWriter:
             if os.environ.get("PSICOLOGIA_GOOGLE_AUTH_MODE") == "oauth":
                 from google.oauth2.credentials import Credentials
                 from cryptography.fernet import Fernet
+                encrypted = None
                 if os.environ.get("PSC_GOOGLE_OAUTH_STORAGE") == "psc_disk":
-                    # Already encrypted under the OAuth owner's independent Fernet key.
+                    # Local ciphertext cache only: never make a remote request from
+                    # the Calendar API request path (avoids circular HTTP hangs).
                     from psc_calendar_disk_client import fetch_encrypted_refresh_token
-                    encrypted = fetch_encrypted_refresh_token()
-                else:
+                    try:
+                        encrypted = fetch_encrypted_refresh_token()
+                    except RuntimeError:
+                        # Temporary migration fallback while PostgreSQL is online.
+                        # Once PostgreSQL expires, this fails closed until the
+                        # asynchronous cache has refreshed successfully.
+                        print("PSC_OAUTH_CACHE: pending_using_pg_fallback", flush=True)
+                if encrypted is None:
                     from booking_holds import _database_connection
                     with _database_connection() as conn:
                         record = conn.execute(
