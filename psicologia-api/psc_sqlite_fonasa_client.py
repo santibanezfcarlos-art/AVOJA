@@ -12,7 +12,7 @@ BASE="https://psicologia-carlos-calendar-api.onrender.com/internal/psc/sqlite/fo
 class StateBridgeUnavailable(RuntimeError):pass
 
 def call(action,doc):
-    if action not in ("register","eligibility"):
+    if action not in ("register","eligibility","prepare","commit"):
         raise ValueError("Unsupported PSC state operation")
     secret=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
     if len(secret)<40:
@@ -52,3 +52,17 @@ def register_fonasa(source,hold_id,name,email,start,end):
 
 def check_token(token):
     return call("eligibility",{"token_sha256":hashlib.sha256(token.encode()).hexdigest()})
+
+def prepare_rebooking(source,token,start,end):
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")!="true":
+        raise StateBridgeUnavailable("Fonasa migration not enabled")
+    data={"source_id":source,"token_sha256":hashlib.sha256(token.encode()).hexdigest(),
+          "start":start.isoformat(),"end":end.isoformat()}
+    return call("prepare",data)
+
+def commit_rebooking(source,token,start,end):
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")!="true":
+        raise StateBridgeUnavailable("Fonasa migration not enabled")
+    data={"source_id":source,"token_sha256":hashlib.sha256(token.encode()).hexdigest(),
+          "start":start.isoformat(),"end":end.isoformat()}
+    return call("commit",data)
