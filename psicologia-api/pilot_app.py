@@ -34,7 +34,8 @@ app.register_blueprint(oauth_bp)
 @app.get("/health")
 def health():
     """Diagnóstico sin divulgar conexiones ni claves privadas."""
-    db_configured = bool(os.environ.get("PSICOLOGIA_HOLDS_DATABASE_URL"))
+    db_configured = (os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")!="true"
+                     and bool(os.environ.get("PSICOLOGIA_HOLDS_DATABASE_URL")))
     schema_ready = False
     database_reachable = False
     if db_configured:
