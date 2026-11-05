@@ -12,7 +12,7 @@ BASE="https://psicologia-carlos-calendar-api.onrender.com/internal/psc/sqlite/fo
 class StateBridgeUnavailable(RuntimeError):pass
 
 def call(action,doc):
-    if action not in ("register","eligibility","prepare","commit"):
+    if action not in ("register","eligibility","prepare","commit","lookup","busy","reset"):
         raise ValueError("Unsupported PSC state operation")
     secret=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
     if len(secret)<40:
@@ -66,3 +66,43 @@ def commit_rebooking(source,token,start,end):
     data={"source_id":source,"token_sha256":hashlib.sha256(token.encode()).hexdigest(),
           "start":start.isoformat(),"end":end.isoformat()}
     return call("commit",data)
+
+def details(token):
+    """Server-side only: booking identifiers and contact; never log response."""
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")!="true":
+        raise StateBridgeUnavailable("Migration disabled")
+    digest=hashlib.sha256(token.encode()).hexdigest()
+    return call_document("lookup",{"token_sha256":digest})
+
+def destination_busy(day,exclude_hold_id=None):
+    doc={"date":day.isoformat()}
+    if exclude_hold_id:doc["exclude_hold_id"]=str(exclude_hold_id)
+    data=call_document("busy",doc)
+    if data.get("state")!="OK":raise StateBridgeUnavailable("Busy state unavailable")
+    return [(datetime.fromisoformat(a),datetime.fromisoformat(b))
+             for a,b in data.get("intervals",[])]
+
+def reset_deleted(source,hold_id):
+    return call("reset",{"source_id":source,"hold_id":str(hold_id)})
+
+def call_document(action,doc):
+    if action not in ("register","eligibility","prepare","commit","lookup","busy","reset"):
+        raise ValueError("Invalid state action")
+    secret=os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY","")
+    if len(secret)<40:raise StateBridgeUnavailable("Missing bridge key")
+    raw=json.dumps(doc,sort_keys=True,separators=(",",":"),ensure_ascii=True).encode()
+    stamp=str(int(time.time()))
+    signature=hmac.new(secret.encode(),
+        stamp.encode()+b"."+action.encode()+b"."+raw,hashlib.sha256).hexdigest()
+    req=Request(BASE+"/"+action,data=raw,method="POST",headers={
+        "Content-Type":"application/json",
+        "X-PSC-State-Timestamp":stamp,
+        "X-PSC-State-Signature":signature})
+    try:
+        with urlopen(req,timeout=12) as response:
+            payload=json.loads(response.read(5000))
+    except Exception as exc:
+        raise StateBridgeUnavailable(type(exc).__name__) from None
+    if not isinstance(payload,dict) or not isinstance(payload.get("state"),str):
+        raise StateBridgeUnavailable("Invalid state reply")
+    return payload
