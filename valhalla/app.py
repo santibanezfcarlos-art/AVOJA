@@ -836,7 +836,9 @@ class Store:
             self.log(c, uid, 'profile_updated', uid)
 
     def same_day_booking_permission(self, c, uid, day):
-        if uid is None or day != now().astimezone(CHILE).date():
+        # Special booking permission applies to future dates even after the
+        # ordinary 21:30 cutoff for next-day bookings. Past dates stay blocked.
+        if uid is None or day < now().astimezone(CHILE).date():
             return False
         person = c.execute("SELECT email,active,deleted_at FROM users WHERE id=?", (uid,)).fetchone()
         return bool(person and person["active"] and not person["deleted_at"]
