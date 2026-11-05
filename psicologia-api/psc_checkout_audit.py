@@ -109,7 +109,6 @@ def run():
 
     # Read-only production diagnostics, aggregate counters ONLY.
     with db() as c:
-        checkout.init()
         statuses = dict(c.execute(
             "SELECT state, count(*) FROM production_payments GROUP BY state"
         ).fetchall())
