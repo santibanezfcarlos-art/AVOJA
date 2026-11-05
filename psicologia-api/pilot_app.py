@@ -97,18 +97,25 @@ if os.environ.get("PSC_PG_PERIODIC_BACKUP_ENABLED") == "true":
         logger = _logging.getLogger("psc_periodic_backup")
         # Let the production checkout API finish startup first.
         _time.sleep(15)
+        retry_after = 300
         while True:
             try:
                 outcome = push_once()
                 logger.warning(
                     "PSC_PG_PERIODIC_BACKUP state=%s tables=%s rows=%s",
                     outcome["state"], outcome["table_count"], outcome["row_count"])
+                retry_after = 300
+                next_run = 6 * 3600
             except Exception as exc:
                 logger.error(
                     "PSC_PG_PERIODIC_BACKUP state=FAILED error_type=%s",
                     type(exc).__name__)
-            # Retains multiple historical checkpoints. No destructive pruning.
-            _time.sleep(6 * 3600)
+                # Retry transient API deploy/network failures in 5-15 minutes,
+                # never wait six hours after a failed backup.
+                next_run = retry_after
+                retry_after = min(retry_after * 2, 900)
+            # Retains historical checkpoints; never deletes or overwrites.
+            _time.sleep(next_run)
     _periodic_threading.Thread(
         target=_psc_pg_periodic_backup_loop, daemon=True).start()
 
