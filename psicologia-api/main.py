@@ -309,6 +309,27 @@ app.register_blueprint(fonasa_patient_bp)
 from psc_persistent_backup import bp as psc_persistent_backup_bp
 app.register_blueprint(psc_persistent_backup_bp)
 
+# One-shot offline relational recovery build; never switches live database paths.
+if os.environ.get("PSC_BUILD_SQLITE_RECOVERY_ON_START") == "true":
+    def _build_sqlite_recovery_once():
+        import logging as _logging
+        import time as _time
+        _time.sleep(8)
+        try:
+            from psc_relational_recovery import materialize
+            result = materialize()
+            _logging.getLogger("psc_recovery").warning(
+                "PSC_SQLITE_RECOVERY state=%s tables=%d rows=%d",
+                result["state"], result["tables"], result["rows"])
+        except FileExistsError:
+            _logging.getLogger("psc_recovery").warning(
+                "PSC_SQLITE_RECOVERY state=ALREADY_PRESENT_NOT_OVERWRITTEN")
+        except Exception as error:
+            _logging.getLogger("psc_recovery").error(
+                "PSC_SQLITE_RECOVERY state=FAILED error_type=%s",
+                type(error).__name__)
+    threading.Thread(target=_build_sqlite_recovery_once, daemon=True).start()
+
 if os.environ.get("PSC_VERIFY_PG_SNAPSHOT_ON_START") == "true":
     def _check_postgres_snapshot_once():
         import logging as _logging
