@@ -34,6 +34,10 @@ class HoldProblem(Exception):
 
 
 def enabled():
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        # Legacy PG-backed test holds are retired; production checkout stays on
+        # the main PSC SQLite ledger and signed Calendar service.
+        return False
     return (os.environ.get("PSICOLOGIA_HOLDS_ENABLED", "false").lower() == "true"
             and bool(os.environ.get("PSICOLOGIA_HOLDS_DATABASE_URL"))
             and len(os.environ.get("PSICOLOGIA_HOLDS_PILOT_KEY", "")) >= 32)
