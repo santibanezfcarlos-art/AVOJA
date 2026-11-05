@@ -26,7 +26,7 @@ def upload():
     if (len(key) < 40 or not re.fullmatch(r"[0-9]{10}", ts)
             or abs(int(ts) - int(time.time())) > 120
             or not re.fullmatch(r"[a-f0-9]{64}", sig)
-            or not re.fullmatch(r"psc-pg-[0-9]{8}T[0-9]{6}Z\\.enc", name)):
+            or not re.fullmatch(r"psc-pg-[0-9]{8}T[0-9]{6}Z\.enc", name)):
         return jsonify(state="NOT_AUTHORIZED"), 403
     if request.content_length is None or request.content_length > MAX_BYTES or request.content_length < 100:
         return jsonify(state="INVALID_SIZE"), 413
