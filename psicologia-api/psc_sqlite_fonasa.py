@@ -77,3 +77,111 @@ def eligibility(*,token_sha256,test_path=None,now=None):
     if utc(row["starts_at"])-utc(now or datetime.now(timezone.utc)).total_seconds()<86400:
         return "TOO_LATE"
     return "ELIGIBLE"
+
+# Deliberately separate from billing and from the eight imported PG tables.
+# PREPARED claims survive restarts and remain unavailable until Calendar
+# outcome is explicitly reconciled. Never auto-expire an uncertain Calendar move.
+CLAIMS_SCHEMA = """CREATE TABLE IF NOT EXISTS psc_fonasa_rebook_claims(
+    source_id TEXT PRIMARY KEY REFERENCES psychology_fonasa_bookings(source_id),
+    old_starts_at TEXT NOT NULL,old_ends_at TEXT NOT NULL,
+    new_starts_at TEXT NOT NULL,new_ends_at TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('PREPARED','COMPLETED')),
+    created_at TEXT NOT NULL,completed_at TEXT
+)"""
+
+
+def prepare_change(*,source_id,token_sha256,new_start,new_end,test_path=None,
+                   now=None,max_daily=3):
+    """Atomically claim a destination BEFORE touching Google Calendar.
+
+    In-progress destinations block competing changes until a human or a
+    verified reconciliation resolves uncertain Calendar outcomes.
+    """
+    from psc_sqlite_state import ACTIVE
+    from zoneinfo import ZoneInfo
+    now=utc(now or datetime.now(timezone.utc))
+    new_start,new_end=utc(new_start),utc(new_end)
+    day=new_start.astimezone(ZoneInfo("America/Santiago")).date()
+    if (new_start<=now or new_start>=new_end or
+        new_end.astimezone(ZoneInfo("America/Santiago")).date()!=day):
+        raise ValueError("Invalid target interval")
+    with connect(write=True,test_path=test_path) as c:
+        c.execute(CLAIMS_SCHEMA)
+        r=c.execute("""SELECT f.source_id,f.redeemed_at,f.token_sha256,
+               h.id AS hold_id,h.status,h.starts_at,h.ends_at
+               FROM psychology_fonasa_bookings f
+               JOIN psychology_booking_holds h ON h.id=f.hold_id
+               WHERE f.source_id=?""",(source_id,)).fetchone()
+        if not r or not hmac.compare_digest(r["token_sha256"],token_sha256):
+            raise FonasaStateConflict("No matching Fonasa booking")
+        old_start,old_end=utc(r["starts_at"]),utc(r["ends_at"])
+        if (r["redeemed_at"] or r["status"]!="CONFIRMED" or
+            (old_start-now).total_seconds()<86400 or old_start==new_start):
+            raise FonasaStateConflict("Not eligible for rebooking")
+        existing=c.execute("SELECT * FROM psc_fonasa_rebook_claims WHERE source_id=?",
+                           (source_id,)).fetchone()
+        if existing:
+            if (existing["state"]=="PREPARED" and
+                utc(existing["new_starts_at"])==new_start and
+                utc(existing["new_ends_at"])==new_end):
+                return "PREPARED"
+            raise FonasaStateConflict("Pending or completed move exists")
+        holds=c.execute("""SELECT id,starts_at,ends_at,status,expires_at
+             FROM psychology_booking_holds WHERE slot_date=?""",(day.isoformat(),)).fetchall()
+        busy=[(utc(x["starts_at"]),utc(x["ends_at"])) for x in holds
+              if str(x["id"])!=str(r["hold_id"]) and
+              (x["status"]=="CONFIRMED" or
+               (x["status"] in ACTIVE and utc(x["expires_at"])>now))]
+        claims=c.execute("""SELECT q.source_id,q.new_starts_at,q.new_ends_at
+             FROM psc_fonasa_rebook_claims q
+             WHERE q.state='PREPARED'""").fetchall()
+        busy.extend((utc(q["new_starts_at"]),utc(q["new_ends_at"]))
+                    for q in claims if q["source_id"]!=source_id and
+                    utc(q["new_starts_at"]).astimezone(ZoneInfo("America/Santiago")).date()==day)
+        if len(busy)>=max_daily or any(new_start<b and a<new_end for a,b in busy):
+            raise FonasaStateConflict("Destination already occupied")
+        c.execute("""INSERT INTO psc_fonasa_rebook_claims
+            (source_id,old_starts_at,old_ends_at,new_starts_at,new_ends_at,state,created_at)
+            VALUES (?,?,?,?,?,'PREPARED',?)""",
+            (source_id,old_start.isoformat(),old_end.isoformat(),
+             new_start.isoformat(),new_end.isoformat(),now.isoformat()))
+    return "PREPARED"
+
+
+def commit_change(*,source_id,token_sha256,new_start,new_end,test_path=None):
+    """Commit ONLY after the caller independently verified Google Calendar.
+
+    A lost reply is idempotent and safely returns CONFIRMED on repetition.
+    """
+    from zoneinfo import ZoneInfo
+    new_start,new_end=utc(new_start),utc(new_end)
+    with connect(write=True,test_path=test_path) as c:
+        claim=c.execute("""SELECT q.*,f.hold_id,f.token_sha256,f.redeemed_at
+            FROM psc_fonasa_rebook_claims q
+            JOIN psychology_fonasa_bookings f USING(source_id)
+            WHERE q.source_id=?""",(source_id,)).fetchone()
+        if not claim or not hmac.compare_digest(claim["token_sha256"],token_sha256):
+            raise FonasaStateConflict("Claim not found")
+        if utc(claim["new_starts_at"])!=new_start or utc(claim["new_ends_at"])!=new_end:
+            raise FonasaStateConflict("Claim target mismatch")
+        if claim["state"]=="COMPLETED" and claim["redeemed_at"]:
+            return "CONFIRMED"
+        if claim["state"]!="PREPARED" or claim["redeemed_at"]:
+            raise FonasaStateConflict("Claim already used")
+        stamp=datetime.now(timezone.utc).isoformat()
+        day=new_start.astimezone(ZoneInfo("America/Santiago")).date().isoformat()
+        c.execute("INSERT OR IGNORE INTO psychology_booking_days(slot_date) VALUES(?)",(day,))
+        changed=c.execute("""UPDATE psychology_booking_holds
+           SET starts_at=?,ends_at=?,slot_date=?,updated_at=?
+           WHERE id=? AND status='CONFIRMED'""",
+           (new_start.isoformat(),new_end.isoformat(),day,stamp,str(claim["hold_id"])))
+        if changed.rowcount!=1:
+            raise FonasaStateConflict("Calendar hold state unexpected")
+        c.execute("""UPDATE psychology_fonasa_bookings
+           SET redeemed_at=?,old_starts_at=?,new_starts_at=?
+           WHERE source_id=? AND redeemed_at IS NULL""",
+           (stamp,claim["old_starts_at"],new_start.isoformat(),source_id))
+        c.execute("""UPDATE psc_fonasa_rebook_claims
+           SET state='COMPLETED',completed_at=?
+           WHERE source_id=? AND state='PREPARED'""",(stamp,source_id))
+    return "CONFIRMED"
