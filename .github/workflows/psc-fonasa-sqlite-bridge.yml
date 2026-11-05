@@ -1,0 +1,25 @@
+name: PSC Fonasa SQLite bridge checks
+on:
+  pull_request:
+    branches: [psicologia-webpay-produccion-preparacion]
+    paths:
+      - 'psicologia-api/psc_sqlite_fonasa_client.py'
+      - 'psicologia-api/psc_sqlite_fonasa_public.py'
+      - 'psicologia-api/rebooking_preview.py'
+      - 'psicologia-api/fonasa_calendar_fulfillment.py'
+      - '.github/workflows/psc-fonasa-sqlite-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Python syntax without external connections
+        run: python -m compileall -q psicologia-api
+      - name: Verify signed request protocol
+        run: python psicologia-api/test_psc_sqlite_fonasa_client.py

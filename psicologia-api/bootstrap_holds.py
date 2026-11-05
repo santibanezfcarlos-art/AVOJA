@@ -174,6 +174,15 @@ def _send_timezone_correction_for_latest_test():
 
 
 def main():
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        # After full parity/cutover, the pilot is a stateless Calendar + email
+        # service; only main PSC API owns writable SQLite on /var/data.
+        if (os.environ.get("PSC_FONASA_STATE_SOURCE")!="psc_disk"
+                or len(os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY",""))<40):
+            print("PSC_SQLITE_STATE_PILOT: MISCONFIGURED",flush=True)
+            return 1
+        print("PSC_SQLITE_STATE_PILOT: state_in_main_api",flush=True)
+        return 0
     # OAuth disk refresh is asynchronous after Gunicorn starts; never block
     # service startup on an HTTP request to the public PSC API.
     if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
