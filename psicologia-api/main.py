@@ -490,6 +490,11 @@ if os.environ.get("PSC_CHECKOUT_AUDIT_ON_START") == "true":
                 outcome["confirmed_missing_any_email"],
                 outcome["approved_pending_invoice"],
                 outcome["approved_production_orders"])
+            _logging.getLogger("psc_checkout_audit").warning(
+                "PSC_CHECKOUT_AUDIT_DETAILS fulfillment=%s calendar_read=%s "
+                "unresolved_buckets=%s",
+                outcome["fulfillment_health"], outcome["calendar_read_state"],
+                outcome["unresolved_buckets"])
         except Exception as error:
             _logging.getLogger("psc_checkout_audit").error(
                 "PSC_CHECKOUT_AUDIT state=FAIL error_type=%s",
