@@ -234,6 +234,16 @@ def availability():
             return jsonify(status="refreshing",
                 error="Verificando las reservas recientes. Reintenta en unos segundos."),503
 
+    if os.environ.get("PSC_SQLITE_STATE_ENABLED")=="true":
+        # Main PSC owns /var/data, pilot returns only live Calendar occupancy.
+        # SQLite state lookup is local: no extra signed HTTP/circular call.
+        try:
+            from psc_sqlite_state import windows as sqlite_state_windows
+            intervals=list(intervals)+sqlite_state_windows(first,last)
+        except Exception:
+            return jsonify(status="refreshing",
+                error="No se pudo verificar la agenda de reservas."),503
+
     from production_checkout import busy_intervals as production_busy
     from billing import configured as production_storage_ready
     if production_storage_ready():
