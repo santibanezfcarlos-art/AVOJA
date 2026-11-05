@@ -174,24 +174,7 @@ def _send_timezone_correction_for_latest_test():
 
 
 def main():
-    if os.environ.get("PSC_GOOGLE_OAUTH_STORAGE") == "psc_disk":
-        # Prewarm encrypted OAuth ciphertext BEFORE the HTTP worker accepts
-        # production requests. A failed preflight must never permit deadlocks.
-        try:
-            from psc_calendar_disk_client import (
-                refresh_cached_ciphertext, fetch_encrypted_refresh_token)
-            from cryptography.fernet import Fernet
-            refresh_cached_ciphertext()
-            decrypted = Fernet(
-                os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()
-            ).decrypt(fetch_encrypted_refresh_token().encode())
-            if len(decrypted) < 16:
-                raise ValueError("Invalid OAuth refresh token")
-            print("PSC_GOOGLE_OAUTH_LOCAL_CACHE: ready", flush=True)
-        except Exception as exc:
-            print("PSC_GOOGLE_OAUTH_LOCAL_CACHE: failed_" + type(exc).__name__, flush=True)
-            return 1
-    if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
+    # OAuth disk refresh is asynchronous after Gunicorn starts; never block\n    # service startup on an HTTP request to the public PSC API.\n    if os.environ.get("PSICOLOGIA_HOLDS_SCHEMA_BOOTSTRAP") != "true":
         print("PSICOLOGIA_PILOT_SCHEMA: bootstrap_disabled", flush=True)
         return 0
     if os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") != "true":
