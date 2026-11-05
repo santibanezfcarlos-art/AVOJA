@@ -20,7 +20,7 @@ def register(*,source_id,hold_id,token_sha256,name,email,start,end,test_path=Non
         raise ValueError("Invalid hold or token")
     if not isinstance(name,str) or not 1<=len(name)<=120:
         raise ValueError("Invalid name")
-    if not isinstance(email,str) or not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+",email) or len(email)>254:
+    if not isinstance(email,str) or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+",email) or len(email)>254:
         raise ValueError("Invalid email")
     start,end=utc(start),utc(end)
     if start>=end:raise ValueError("Invalid booking interval")
