@@ -1,0 +1,22 @@
+name: PSC SQLite migration isolated tests
+on:
+  pull_request:
+    branches: [psicologia-carlos]
+    paths:
+      - 'psicologia-api/psc_sqlite_state.py'
+      - 'psicologia-api/psc_sqlite_fonasa.py'
+      - 'psicologia-api/test_psc_sqlite_state.py'
+      - '.github/workflows/psc-sqlite-migration-test.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-sqlite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run concurrency, persistence and Fonasa tests
+        run: python psicologia-api/test_psc_sqlite_state.py
