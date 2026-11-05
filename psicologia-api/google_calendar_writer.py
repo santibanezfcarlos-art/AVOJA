@@ -147,9 +147,12 @@ class CalendarWriter:
                     try:
                         encrypted = fetch_encrypted_refresh_token()
                     except RuntimeError:
-                        # Temporary migration fallback while PostgreSQL is online.
-                        # Once PostgreSQL expires, this fails closed until the
-                        # asynchronous cache has refreshed successfully.
+                        if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+                            # No fallback to PostgreSQL after SQLite cutover.
+                            # The async worker retries independently; calendar
+                            # requests fail closed until the local cache is ready.
+                            raise CalendarIntegrationError(
+                                "Google OAuth cache pending") from None
                         print("PSC_OAUTH_CACHE: pending_using_pg_fallback", flush=True)
                 if encrypted is None:
                     from booking_holds import _database_connection
