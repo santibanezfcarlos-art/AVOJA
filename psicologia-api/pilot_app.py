@@ -135,3 +135,26 @@ if os.environ.get("PSC_GOOGLE_OAUTH_DISK_PROBE") == "true":
                 "PSC_GOOGLE_OAUTH_DISK_PROBE state=FAILED error_type=%s",
                 type(exc).__name__)
     _oauth_probe_threading.Thread(target=_probe_oauth_disk_source,daemon=True).start()
+
+# One-time non-destructive seed of the dedicated PSC OAuth SQLite store.
+if os.environ.get("PSC_GOOGLE_OAUTH_DISK_SEED_ON_START") == "true":
+    import threading as _psc_oauth_seed_threading
+    def _seed_psc_oauth_disk():
+        import logging as _logging
+        import time as _time
+        _time.sleep(12)
+        try:
+            from psc_calendar_disk_client import (
+                fetch_encrypted_refresh_token, save_encrypted_refresh_token)
+            original = fetch_encrypted_refresh_token()
+            save_encrypted_refresh_token(original)
+            if fetch_encrypted_refresh_token() != original:
+                raise RuntimeError("OAuth ciphertext roundtrip mismatch")
+            _logging.getLogger("psc_oauth_migration").warning(
+                "PSC_GOOGLE_OAUTH_STORE state=SEEDED_AND_ROUNDTRIP_VERIFIED")
+        except Exception as exc:
+            _logging.getLogger("psc_oauth_migration").error(
+                "PSC_GOOGLE_OAUTH_STORE state=FAILED error_type=%s",
+                type(exc).__name__)
+    _psc_oauth_seed_threading.Thread(
+        target=_seed_psc_oauth_disk, daemon=True).start()
