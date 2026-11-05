@@ -158,3 +158,38 @@ if os.environ.get("PSC_GOOGLE_OAUTH_DISK_SEED_ON_START") == "true":
                 type(exc).__name__)
     _psc_oauth_seed_threading.Thread(
         target=_seed_psc_oauth_disk, daemon=True).start()
+
+# End-to-end read-only check: PSC API -> pilot signed busy -> Google Calendar.
+# This catches the former circular OAuth HTTP dependency, without bookings.
+if os.environ.get("PSC_PUBLIC_AVAILABILITY_PROBE_ON_START") == "true":
+    import threading as _psc_availability_test_thread
+    def _psc_public_availability_probe():
+        import logging as _logging
+        import time as _time
+        import json as _json
+        from datetime import datetime as _datetime, timedelta as _timedelta
+        from urllib.request import urlopen as _urlopen
+        from urllib.parse import urlencode as _urlencode
+        from zoneinfo import ZoneInfo as _ZoneInfo
+        logger = _logging.getLogger("psc_availability_smoke")
+        _time.sleep(15)
+        day = (_datetime.now(_ZoneInfo("America/Santiago"))
+               + _timedelta(days=1)).date().isoformat()
+        url = ("https://psicologia-carlos-calendar-api.onrender.com/api/availability?"
+               + _urlencode({"from": day, "to": day, "duration": 45}))
+        for attempt in range(1, 4):
+            try:
+                with _urlopen(url, timeout=25) as response:
+                    body = _json.loads(response.read(20000))
+                if body.get("status") != "ok" or day not in body.get("blocked", {}):
+                    raise RuntimeError("Availability returned invalid payload")
+                logger.warning("PSC_AVAILABILITY_E2E state=OK_WITH_DISK_OAUTH")
+                break
+            except Exception as exc:
+                if attempt == 3:
+                    logger.error("PSC_AVAILABILITY_E2E state=FAILED error_type=%s",
+                                 type(exc).__name__)
+                else:
+                    _time.sleep(8)
+    _psc_availability_test_thread.Thread(
+        target=_psc_public_availability_probe,daemon=True).start()
