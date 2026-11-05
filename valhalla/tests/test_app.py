@@ -72,6 +72,23 @@ class Rules(unittest.TestCase):
         with self.assertRaises(Problem):
             self.store.reserve(2, {'box':2, 'start':today_start['start']})
 
+    def test_special_professional_can_book_tomorrow_after_cutoff(self):
+        # Regression: after 21:30 the general rule prohibits next-day bookings,
+        # but the named professional may still book any free future slot.
+        self.clock = self.clock.replace(hour=23, minute=37)
+        with self.store.connection(True) as c:
+            c.execute("UPDATE users SET email=? WHERE id=1", ('angelacs7@hotmail.com',))
+        tomorrow = (self.clock + timedelta(days=1)).date().isoformat()
+        special_slots = self.store.availability(tomorrow, uid=1)['slots']
+        regular_slots = self.store.availability(tomorrow, uid=2)['slots']
+        self.assertTrue(special_slots[3]['boxes'][0]['available'])
+        self.assertFalse(regular_slots[3]['boxes'][0]['available'])
+        self.store.reserve(1, self.slot(hour=10, day=1))
+        with self.assertRaises(Problem):
+            self.store.reserve(2, self.slot(hour=10, day=1, box=2))
+        self.assertEqual(self.balance(1), 4)
+        self.assertEqual(self.balance(2), 5)
+
     def test_three_boxes_share_balance(self):
         for box in (1, 2, 3):
             self.store.reserve(1, self.slot(hour=9+box, box=box))
