@@ -233,3 +233,25 @@ def cancel_deleted(*,source_id,hold_id,test_path=None):
         c.execute("""UPDATE psychology_booking_holds SET status='CANCELLED',updated_at=?
             WHERE id=? AND status='CONFIRMED'""",(stamp,str(hold_id)))
     return "RESET"
+
+
+def abort_prepared_change(*,source_id,token_sha256,new_start,new_end,test_path=None):
+    """Abort ONLY after the caller verified original Google event still exists.
+
+    Without that verification an ambiguous move must remain PREPARED, so both
+    the old hold and destination stay unavailable pending reconciliation.
+    """
+    new_start,new_end=utc(new_start),utc(new_end)
+    with connect(test_path=test_path,write=True) as c:
+        row=c.execute("""SELECT q.state,q.new_starts_at,q.new_ends_at,
+                f.token_sha256 FROM psc_fonasa_rebook_claims q
+                JOIN psychology_fonasa_bookings f USING(source_id)
+                WHERE q.source_id=?""",(source_id,)).fetchone()
+        if not row:return "NOTHING_TO_ABORT"
+        if not hmac.compare_digest(row["token_sha256"],token_sha256):
+            raise FonasaStateConflict("Token mismatch")
+        if row["state"]!="PREPARED" or utc(row["new_starts_at"])!=new_start or utc(row["new_ends_at"])!=new_end:
+            raise FonasaStateConflict("Claim not abortable")
+        c.execute("""DELETE FROM psc_fonasa_rebook_claims
+                     WHERE source_id=? AND state='PREPARED'""",(source_id,))
+    return "ABORTED"
