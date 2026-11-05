@@ -253,12 +253,18 @@ def busy():
         last=date.fromisoformat(data.get("to",""))
         if last<first or (last-first).days>21:
             return _reply("INVALID_RANGE",400)
-        with _database_connection() as conn:
-            rows=conn.execute("""SELECT h.starts_at,h.ends_at FROM psychology_booking_holds h
-                WHERE h.slot_date BETWEEN %s AND %s
-                  AND (h.status='CONFIRMED' OR
-                       (h.status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')
-                        AND h.expires_at>now()))""",(first,last)).fetchall()
+        if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+            # The public main PSC API reads the authoritative SQLite hold
+            # windows locally. This pilot only supplies Google Calendar busy
+            # periods to avoid a circular HTTP dependency.
+            rows=[]
+        else:
+            with _database_connection() as conn:
+                rows=conn.execute("""SELECT h.starts_at,h.ends_at FROM psychology_booking_holds h
+                    WHERE h.slot_date BETWEEN %s AND %s
+                      AND (h.status='CONFIRMED' OR
+                           (h.status IN ('HELD','PAYMENT_PENDING','RECONCILIATION_REQUIRED')
+                            AND h.expires_at>now()))""",(first,last)).fetchall()
         # La agenda pública debe aplicar también MAX_DAILY, no solo solapamientos.
         # Cuando ya existen tres reservas/retenciones activas, se bloquea
         # todo el día para evitar ofrecer horarios que el preflight rechaza.
