@@ -30,3 +30,27 @@ def fetch_encrypted_refresh_token():
             or not isinstance(document.get("encrypted_refresh_token"), str)):
         raise RuntimeError("PSC OAuth disk source unavailable")
     return document["encrypted_refresh_token"]
+
+
+def save_encrypted_refresh_token(encrypted):
+    """Idempotent HMAC-protected write of OAuth ciphertext, no plaintext."""
+    if not isinstance(encrypted, str) or not 100 <= len(encrypted) <= 8192:
+        raise ValueError("Invalid OAuth ciphertext")
+    secret = os.environ.get("PSICOLOGIA_DEMO_BRIDGE_KEY", "")
+    if len(secret) < 40:
+        raise RuntimeError("PSC signed disk bridge unavailable")
+    payload = json.dumps({"encrypted_refresh_token": encrypted},
+                         separators=(",", ":")).encode()
+    stamp = str(int(time.time()))
+    message = (stamp + ".POST " + PATH + "."
+               + hashlib.sha256(payload).hexdigest()).encode()
+    signature = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+    req = Request(URL, data=payload, method="POST", headers={
+        "Content-Type": "application/json",
+        "X-PSC-Timestamp": stamp, "X-PSC-Signature": signature,
+        "Accept": "application/json"})
+    with urlopen(req, timeout=15) as response:
+        result = json.loads(response.read(10000))
+    if result.get("state") != "STORED":
+        raise RuntimeError("PSC OAuth store did not acknowledge write")
+    return True
