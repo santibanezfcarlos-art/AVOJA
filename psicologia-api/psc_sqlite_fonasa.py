@@ -63,7 +63,8 @@ def lookup(*,token_sha256,test_path=None):
     if not isinstance(token_sha256,str) or not re.fullmatch(r"[0-9a-f]{64}",token_sha256):
         return None
     with connect(test_path=test_path) as c:
-        row=c.execute("""SELECT f.source_id,f.hold_id,f.redeemed_at,h.starts_at,h.ends_at,h.status
+        row=c.execute("""SELECT f.source_id,f.hold_id,f.patient_name,f.patient_email,
+                   f.redeemed_at,h.slot_date,h.starts_at,h.ends_at,h.service,h.status
             FROM psychology_fonasa_bookings f
             JOIN psychology_booking_holds h ON h.id=f.hold_id
             WHERE f.token_sha256=?""",(token_sha256,)).fetchone()
@@ -74,6 +75,11 @@ def eligibility(*,token_sha256,test_path=None,now=None):
     row=lookup(token_sha256=token_sha256,test_path=test_path)
     if not row:return "NOT_FOUND"
     if row["redeemed_at"] or row["status"]!="CONFIRMED":return "NOT_ELIGIBLE"
+    with connect(test_path=test_path) as c:
+        claim=c.execute("SELECT state FROM psc_fonasa_rebook_claims WHERE source_id=?",
+                        (row["source_id"],)).fetchone() if (
+                        c.execute("SELECT 1 FROM sqlite_master WHERE name='psc_fonasa_rebook_claims'").fetchone()) else None
+    if claim:return "PENDING_RECONCILIATION"
     if utc(row["starts_at"])-utc(now or datetime.now(timezone.utc)).total_seconds()<86400:
         return "TOO_LATE"
     return "ELIGIBLE"
