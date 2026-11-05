@@ -141,6 +141,10 @@ def _lookup(token):
 
 @rebooking_bp.get("/api/reagendar/<token>/estado")
 def status(token):
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        if not enabled():return jsonify(message="No disponible"),503
+        from psc_sqlite_fonasa_public import state
+        return state(token)
     if not enabled():
         return jsonify(message="No disponible"),503
     try:
@@ -177,6 +181,10 @@ def configured_slots(day_text):
 
 @rebooking_bp.get("/api/reagendar/<token>/horarios")
 def available_hours(token):
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        if not enabled():return jsonify(message="No disponible"),503
+        from psc_sqlite_fonasa_public import times
+        return times(token)
     if not enabled():
         return jsonify(message="No disponible"),503
     try:
@@ -212,6 +220,10 @@ def available_hours(token):
 
 @rebooking_bp.get("/api/reagendar/<token>/disponibilidad")
 def availability(token):
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        if not enabled():return jsonify(message="No disponible"),503
+        from psc_sqlite_fonasa_public import available
+        return available(token)
     if not enabled():
         return jsonify(message="No disponible"),503
     try:
@@ -236,6 +248,11 @@ def availability(token):
 @rebooking_bp.post("/api/reagendar/<token>/confirmar")
 def confirm(token):
     """One-use operation. Never acknowledges a change unless Google verifies it."""
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        if not enabled() or os.environ.get("PSICOLOGIA_REBOOKING_CONFIRM_ENABLED")!="true":
+            return jsonify(message="La confirmación todavía no está habilitada."),503
+        from psc_sqlite_fonasa_public import confirm as confirm_sqlite
+        return confirm_sqlite(token)
     if not enabled() or os.environ.get("PSICOLOGIA_REBOOKING_CONFIRM_ENABLED") != "true":
         return jsonify(message="La confirmación todavía no está habilitada."),503
     if not TOKEN_PATTERN.fullmatch(token):
