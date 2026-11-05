@@ -309,6 +309,23 @@ app.register_blueprint(fonasa_patient_bp)
 from psc_persistent_backup import bp as psc_persistent_backup_bp
 app.register_blueprint(psc_persistent_backup_bp)
 
+if os.environ.get("PSC_VERIFY_PG_SNAPSHOT_ON_START") == "true":
+    def _check_postgres_snapshot_once():
+        import logging as _logging
+        import time as _time
+        _time.sleep(5)
+        try:
+            from psc_persistent_backup import verify_latest_encrypted_snapshot
+            result = verify_latest_encrypted_snapshot()
+            _logging.getLogger("psc_backup").warning(
+                "PSC_PG_BACKUP_RESTORE_CHECK state=%s tables=%d rows=%d",
+                result["state"], result["tables"], result["rows"])
+        except Exception as error:
+            _logging.getLogger("psc_backup").error(
+                "PSC_PG_BACKUP_RESTORE_CHECK state=FAILED error_type=%s",
+                type(error).__name__)
+    threading.Thread(target=_check_postgres_snapshot_once, daemon=True).start()
+
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
 from billing import configured as _billing_is_ready
