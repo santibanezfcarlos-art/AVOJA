@@ -140,14 +140,18 @@ def send_fonasa_confirmation():
         return jsonify(state="MAIL_NOT_CONFIGURED"),503
     from demo_notifications import NotificationError, safe_error_label
     from fonasa_mail import send as corporate_send
-    from booking_holds import _database_connection
-    from fonasa_rebooking import register
     patient_email=recipient if role=="patient" else body.get("patient_email","")
     if not isinstance(patient_email,str) or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",patient_email):
         return jsonify(state="INVALID_PATIENT_EMAIL"),400
     try:
-        with _database_connection() as conn:
-            token=register(conn,source,hold_id,patient,patient_email,start,end)
+        if os.environ.get("PSC_FONASA_STATE_SOURCE")=="psc_disk":
+            from psc_sqlite_fonasa_client import register_fonasa
+            token=register_fonasa(source,hold_id,patient,patient_email,start,end)
+        else:
+            from booking_holds import _database_connection
+            from fonasa_rebooking import register
+            with _database_connection() as conn:
+                token=register(conn,source,hold_id,patient,patient_email,start,end)
         link="https://pscsantibanez.cl/reagendar?t="+token if role=="patient" else None
         if body.get("prepare_only") is True:
             if body.get("refresh_presentation") is True:
@@ -351,11 +355,15 @@ def prepare_fonasa_rebooking():
         event=writer.transport('GET',path,{},None)
         if not _owns(event,hold_id,start=start,end=end,service='psicoterapia'):
             return jsonify(state='CALENDAR_NOT_CONFIRMED'),409
-        from booking_holds import _database_connection
-        from fonasa_rebooking import register
         name=display_name(body.get('patient_name',''))
-        with _database_connection() as conn:
-            token=register(conn,source,hold_id,name,email,start,end)
+        if os.environ.get("PSC_FONASA_STATE_SOURCE")=="psc_disk":
+            from psc_sqlite_fonasa_client import register_fonasa
+            token=register_fonasa(source,hold_id,name,email,start,end)
+        else:
+            from booking_holds import _database_connection
+            from fonasa_rebooking import register
+            with _database_connection() as conn:
+                token=register(conn,source,hold_id,name,email,start,end)
         if body.get('refresh_presentation') is True:
             event=writer.transport('PATCH',path,{'sendUpdates':'none'},
                   {'summary':'Atención Fonasa · '+name,'description':'Reserva de psicoterapia online con bono Fonasa.'})
