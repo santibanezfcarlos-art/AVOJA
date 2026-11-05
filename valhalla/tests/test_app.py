@@ -54,6 +54,24 @@ class Rules(unittest.TestCase):
         with self.store.connection() as c:
             return dict(c.execute('SELECT * FROM bookings WHERE id=?', (bid,)).fetchone())
 
+    def test_special_professional_can_book_today_without_changing_other_users(self):
+        with self.store.connection(True) as c:
+            c.execute("UPDATE users SET email=? WHERE id=1", ('angelacs7@hotmail.com',))
+        with self.store.connection() as c:
+            angela = c.execute('SELECT * FROM users WHERE id=1').fetchone()
+            regular = c.execute('SELECT * FROM users WHERE id=2').fetchone()
+        special_state = self.store.state(angela)
+        regular_state = self.store.state(regular)
+        self.assertTrue(special_state['user']['same_day_booking_privileges'])
+        self.assertEqual(special_state['earliest_booking_date'], self.clock.date().isoformat())
+        self.assertFalse(regular_state['user']['same_day_booking_privileges'])
+        self.assertNotEqual(regular_state['earliest_booking_date'], self.clock.date().isoformat())
+        today_start = self.slot(hour=10, day=0)
+        self.assertTrue(self.store.availability(self.clock.date().isoformat(), uid=1)['slots'][3]['boxes'][0]['available'])
+        self.store.reserve(1, today_start)
+        with self.assertRaises(Problem):
+            self.store.reserve(2, {'box':2, 'start':today_start['start']})
+
     def test_three_boxes_share_balance(self):
         for box in (1, 2, 3):
             self.store.reserve(1, self.slot(hour=9+box, box=box))
