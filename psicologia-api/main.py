@@ -305,6 +305,10 @@ app.register_blueprint(fonasa_private_bp)
 from fonasa_public import bp as fonasa_patient_bp
 app.register_blueprint(fonasa_patient_bp)
 
+# Encrypted, write-only backup ingress on existing persistent disk.
+from psc_persistent_backup import bp as psc_persistent_backup_bp
+app.register_blueprint(psc_persistent_backup_bp)
+
 # Solo booleans de configuración, nunca credenciales ni datos de pacientes.
 from webpay_demo_bridge import enabled as _demo_bridge_is_ready
 from billing import configured as _billing_is_ready
