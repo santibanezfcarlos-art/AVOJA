@@ -34,7 +34,8 @@ def _enabled():
         and os.environ.get("PSICOLOGIA_HOLDS_CALENDAR_POLICY")=="google_api"
         and os.environ.get("PSICOLOGIA_WEBPAY_MODE","disabled")=="disabled"
         and os.environ.get("PSICOLOGIA_CHECKOUT_MODE","disabled")=="disabled"
-        and bool(os.environ.get("PSICOLOGIA_HOLDS_DATABASE_URL"))
+        and (os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true"
+             or bool(os.environ.get("PSICOLOGIA_HOLDS_DATABASE_URL")))
         and len(os.environ.get(KEY_NAME,""))>=40)
 
 
