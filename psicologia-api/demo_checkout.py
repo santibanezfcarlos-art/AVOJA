@@ -31,6 +31,8 @@ TRIAL_SITE = "https://psicologia-retenciones-piloto.onrender.com"
 
 
 def pilot_enabled():
+    if os.environ.get("PSC_FONASA_REBOOKING_MIGRATED")=="true":
+        return False  # Obsolete PostgreSQL test checkout; production Webpay unaffected.
     return (os.environ.get("PSICOLOGIA_PILOT_WEBPAY_TEST_ENABLED") == "true"
             and os.environ.get("PSICOLOGIA_HOLDS_ISOLATED_PILOT") == "true"
             and os.environ.get("PSICOLOGIA_WEBPAY_MODE", "disabled") == "disabled"
