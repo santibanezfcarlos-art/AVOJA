@@ -323,6 +323,24 @@ app.register_blueprint(psc_persistent_backup_bp)
 from psc_sqlite_fonasa_api import bp as psc_sqlite_fonasa_state_bp
 app.register_blueprint(psc_sqlite_fonasa_state_bp)
 
+# One-shot seed of the existing persistent disk from a verified recovery copy.
+# Never overwrites a live SQLite state database. Explicitly disabled by default.
+if os.environ.get("PSC_SQLITE_SEED_ON_START")=="true":
+    def _psc_sqlite_seed_once():
+        import logging as _logging
+        import time as _time
+        _time.sleep(8)
+        try:
+            from psc_sqlite_state import seed
+            result=seed()
+            _logging.getLogger("psc_sqlite_cutover").warning(
+                "PSC_SQLITE_SEED state=VERIFIED tables=%s rows=%s",
+                result["tables"],result["rows"])
+        except Exception as exc:
+            _logging.getLogger("psc_sqlite_cutover").error(
+                "PSC_SQLITE_SEED state=FAILED error_type=%s",type(exc).__name__)
+    threading.Thread(target=_psc_sqlite_seed_once,daemon=True).start()
+
 # Signed, read-only OAuth ciphertext fallback from the existing PSC disk.
 from psc_calendar_disk_token import bp as psc_calendar_disk_token_bp
 app.register_blueprint(psc_calendar_disk_token_bp)
