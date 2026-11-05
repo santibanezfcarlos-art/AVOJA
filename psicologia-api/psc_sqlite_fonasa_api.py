@@ -7,7 +7,7 @@ import hashlib,hmac,json,os,re,time
 from datetime import datetime,timezone
 from flask import Blueprint,jsonify,request
 from psc_sqlite_state import StateUnavailable
-from psc_sqlite_fonasa import register,eligibility,prepare_change,commit_change,lookup,busy_intervals,cancel_deleted,FonasaStateConflict
+from psc_sqlite_fonasa import register,eligibility,prepare_change,commit_change,lookup,busy_intervals,cancel_deleted,abort_prepared_change,FonasaStateConflict
 
 bp=Blueprint("psc_sqlite_state_rpc",__name__)
 PATH="/internal/psc/sqlite/fonasa"
@@ -145,6 +145,25 @@ def reset():
         return jsonify(state="INVALID"),400
     try:
         state=cancel_deleted(source_id=doc["source_id"],hold_id=doc["hold_id"])
+    except (ValueError,TypeError):return jsonify(state="INVALID"),400
+    except FonasaStateConflict:return jsonify(state="CONFLICT"),409
+    except Exception:return jsonify(state="UNAVAILABLE"),503
+    return jsonify(state=state)
+
+@bp.post(PATH+"/abort")
+def abort():
+    # Signed Calendar service must have re-verified original event before call.
+    if request.content_length is None or not 10<request.content_length<=MAX_SIZE:
+        return jsonify(state="INVALID"),413
+    if not _signed("abort"):return jsonify(state="NOT_AUTHORIZED"),403
+    doc=request.get_json(silent=True)
+    if not isinstance(doc,dict) or set(doc)!={"source_id","token_sha256","start","end"}:
+        return jsonify(state="INVALID"),400
+    try:
+        state=abort_prepared_change(source_id=doc["source_id"],
+            token_sha256=doc["token_sha256"],
+            new_start=datetime.fromisoformat(doc["start"]),
+            new_end=datetime.fromisoformat(doc["end"]))
     except (ValueError,TypeError):return jsonify(state="INVALID"),400
     except FonasaStateConflict:return jsonify(state="CONFLICT"),409
     except Exception:return jsonify(state="UNAVAILABLE"),503
