@@ -139,15 +139,22 @@ class CalendarWriter:
             if os.environ.get("PSICOLOGIA_GOOGLE_AUTH_MODE") == "oauth":
                 from google.oauth2.credentials import Credentials
                 from cryptography.fernet import Fernet
-                from booking_holds import _database_connection
-                with _database_connection() as conn:
-                    record=conn.execute(
-                        "SELECT encrypted_refresh_token FROM psychology_google_oauth WHERE key='owner'"
-                    ).fetchone()
-                if not record:
-                    raise CalendarIntegrationError("Google OAuth todavía no autorizado")
-                refresh_token=Fernet(os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()).decrypt(
-                    record["encrypted_refresh_token"].encode()).decode()
+                if os.environ.get("PSC_GOOGLE_OAUTH_STORAGE") == "psc_disk":
+                    # Already encrypted under the OAuth owner's independent Fernet key.
+                    from psc_calendar_disk_client import fetch_encrypted_refresh_token
+                    encrypted = fetch_encrypted_refresh_token()
+                else:
+                    from booking_holds import _database_connection
+                    with _database_connection() as conn:
+                        record = conn.execute(
+                            "SELECT encrypted_refresh_token FROM psychology_google_oauth WHERE key='owner'"
+                        ).fetchone()
+                    if not record:
+                        raise CalendarIntegrationError("Google OAuth todavía no autorizado")
+                    encrypted = record["encrypted_refresh_token"]
+                refresh_token = Fernet(
+                    os.environ["PSICOLOGIA_GOOGLE_OAUTH_FERNET_KEY"].encode()
+                ).decrypt(encrypted.encode()).decode()
                 creds=Credentials(
                     token=None,refresh_token=refresh_token,
                     token_uri="https://oauth2.googleapis.com/token",
