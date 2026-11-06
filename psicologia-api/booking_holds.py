@@ -122,6 +122,10 @@ def _calendar_free(start, end):
 
 
 def _database_connection():
+    if os.environ.get("PSC_POSTGRES_BLACKOUT_TEST") == "true":
+        # Reversible fault injection: simulate a fully unavailable PostgreSQL
+        # without deleting a database or changing its secret connection URL.
+        raise RuntimeError("PSC_POSTGRES_BLACKOUT_TEST: database intentionally unreachable")
     # psycopg se importa aquí para que el módulo no afecte el arranque del
     # backend público mientras la función piloto está desactivada.
     import psycopg
