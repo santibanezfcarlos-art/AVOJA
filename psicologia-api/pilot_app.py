@@ -258,3 +258,20 @@ if os.environ.get("PSC_SQLITE_RPC_SMOKE_ON_START")=="true":
             logger.error("PSC_SQLITE_RPC_SMOKE state=FAILED error_type=%s",
                          type(exc).__name__)
     _sqlite_rpc_thread.Thread(target=_sqlite_rpc_smoke,daemon=True).start()
+
+
+# One-shot black-out assertion: only used during deliberate SQLite-only test.
+if os.environ.get("PSC_POSTGRES_BLACKOUT_TEST")=="true":
+    try:
+        from booking_holds import _database_connection
+        try:
+            with _database_connection() as _unused_connection:
+                pass
+            raise AssertionError("PostgreSQL was unexpectedly reachable")
+        except RuntimeError as _exc:
+            if "PSC_POSTGRES_BLACKOUT_TEST" not in str(_exc):
+                raise
+            print("PSC_POSTGRES_BLACKOUT: VERIFIED_BLOCKED",flush=True)
+    except Exception as _exc:
+        print("PSC_POSTGRES_BLACKOUT: FAILED_"+type(_exc).__name__,flush=True)
+        raise
