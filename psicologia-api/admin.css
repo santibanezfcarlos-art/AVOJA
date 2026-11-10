@@ -150,3 +150,5 @@ h2,h3{font-weight:750}
 #contentPreview{background:#f6faf6;border:1px solid #dce9df;border-radius:12px;padding:20px;overflow-wrap:anywhere}
 #contentPreview p{white-space:pre-wrap;line-height:1.7}#contentPreview h3{font-size:20px;line-height:1.4;color:#194a3a}
 @media(max-width:1000px){.content-editor-layout{grid-template-columns:1fr}.content-preview{position:static;max-height:none}}
+
+.calendar-health #calendarHealthState{border-radius:10px;padding:13px 15px;background:#edf2ed;font-weight:650}.calendar-health #calendarHealthState[data-state="ready"]{background:#e4f2e7;color:#205c39}.calendar-health #calendarHealthState[data-state="unavailable"],.calendar-health #calendarHealthState[data-state="stale"]{background:#fff2dc;color:#795726}.calendar-health details{margin-top:15px;font-size:13px;overflow-wrap:anywhere}.calendar-health summary{cursor:pointer;font-weight:650}.calendar-health .toolbar{flex-wrap:wrap}

@@ -532,3 +532,8 @@ if os.environ.get("PSC_CHECKOUT_AUDIT_ON_START") == "true":
                 "PSC_CHECKOUT_AUDIT state=FAIL error_type=%s",
                 type(error).__name__)
     threading.Thread(target=_psc_checkout_audit_once,daemon=True).start()
+
+# Private read-only status uses the same availability checks as the public agenda.
+from calendar_status import bp as calendar_status_bp, record as record_calendar_status
+app.register_blueprint(calendar_status_bp)
+app.after_request(record_calendar_status)

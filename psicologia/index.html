@@ -497,6 +497,9 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 #prestaciones .offer-card.offer-tone-forest .offer-bottom>.psc-compact-price .psc-compact-fonasa{
  flex:0 0 auto;margin:0;align-self:stretch;
 }
+
+/* Estado accesible de búsqueda; la animación respeta movimiento reducido. */
+.calendar-sync{display:flex;align-items:center;gap:13px;flex-wrap:wrap}.calendar-sync #calendarSyncText{flex:1;min-width:0}.calendar-hourglass{display:none;width:32px;height:40px;flex:0 0 32px;color:#307653}.calendar-hourglass svg{width:100%;height:100%;overflow:visible}.calendar-sync.is-loading{background:#e7f2eb;color:#234f3d;border:1px solid #c8dfcf}.is-loading .calendar-hourglass{display:block;animation:hourglass-float 2.8s ease-in-out infinite}.is-loading .calendar-hourglass svg{animation:hourglass-turn 2.8s ease-in-out infinite}.sand-top{transform-origin:20px 10px;animation:sand-drain 2.8s linear infinite}.sand-bottom{transform-origin:20px 38px;animation:sand-fill 2.8s linear infinite}.calendar-sync.is-error{background:#fff4e2;color:#795726}.calendar-sync button{border:1px solid #b99459;border-radius:8px;background:#fff;color:#644a24;padding:9px 12px;font:inherit;font-weight:700;cursor:pointer}@keyframes hourglass-float{0%,100%{transform:translateY(2px)}50%{transform:translateY(-4px)}}@keyframes hourglass-turn{0%,75%{transform:rotate(0)}100%{transform:rotate(180deg)}}@keyframes sand-drain{0%{transform:scaleY(1)}75%,100%{transform:scaleY(.08)}}@keyframes sand-fill{0%{transform:scaleY(.08)}75%,100%{transform:scaleY(1)}}@media(prefers-reduced-motion:reduce){.is-loading .calendar-hourglass,.is-loading .calendar-hourglass svg,.sand-top,.sand-bottom{animation:none}}
 </style>
 <style>
 #bookingPolicyDialog{width:min(620px,calc(100vw - 32px));max-height:85dvh;overflow:auto;border:1px solid #c9ded0;border-radius:22px;padding:26px;color:#173e35;background:#fff;box-shadow:0 24px 80px #0f322f40;font:16px/1.65 Inter,system-ui,sans-serif}#bookingPolicyDialog::backdrop{background:#123b32a6;backdrop-filter:blur(3px)}#bookingPolicyDialog h2{font-size:25px;line-height:1.25;margin:0 0 16px}#bookingPolicyDialog ul{padding-left:22px}#bookingPolicyDialog li{margin:12px 0}#bookingPolicyDialog .policy-top{display:flex;align-items:start;justify-content:space-between;gap:14px}#bookingPolicyDialog .policy-close{border:0;background:#e8f2eb;border-radius:50%;width:38px;height:38px;flex:none;cursor:pointer;font-size:24px;color:#173e35}#bookingPolicyDialog .policy-return{width:100%;margin-top:14px;background:#184b3c;color:#fff;border:0;border-radius:11px;padding:14px;font:600 16px system-ui;cursor:pointer}
@@ -612,7 +615,7 @@ header.site-header a.brand:focus-visible{outline:3px solid #6baa84;outline-offse
 <div class="app-head"><div><div class="eyebrow" data-site-node="agenda-1">Agenda de servicios online</div><h1 data-site-node="agenda-2">Elige tu día y horario</h1><p class="sub" data-site-node="agenda-3">Selecciona el servicio y una hora disponible. Reserva tu atención online y confirma tu horario pagando con Transbank.</p></div><span class="app-trial" data-site-node="agenda-4">● Reserva online con pago seguro</span></div>
 <section id="fonasaBookingEntry" class="booking-service-picker" aria-label="Atención con bono Fonasa" hidden><div><h2 style="margin:0 0 8px" data-site-node="agenda-5">¿Tienes un bono Fonasa?</h2><p data-site-node="agenda-6">Carga tu bono, valídalo y continúa a la agenda cuando esté activado.</p></div><a class="primary" href="fonasa.html" style="display:inline-block;text-decoration:none;text-align:center" data-site-node="agenda-7">Agendar con bono Fonasa →</a></section>
 <section class="booking-service-picker" aria-label="Seleccionar tipo de atención"><div><label for="bookingServiceSelect">¿Qué servicio quieres agendar?</label><p>Elige la prestación para consultar sus horarios y valores.</p></div><div class="service-picker-control"><select id="bookingServiceSelect" name="servicio"><option value="psicoterapia">Psicoterapia breve · 45 min · $30.000</option><option value="empleabilidad">Asesoría en empleabilidad · 90 min · $45.000</option><option value="competencias">Desarrollo de competencias · 45 min · $30.000</option></select></div></section>
-<div class="layout" id="patientView"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="hours" id="hours"></div><p class="note" id="calendarSyncStatus" role="status">Consultando Google Calendar…</p><p class="note" id="durationNotice">Horario permitido: 09:00–20:00, hora de Chile.</p><p class="note">Elige un horario disponible y completa tu reserva. Te enviaremos la confirmación y el enlace de atención por correo.</p></section>
+<div class="layout" id="patientView"><section class="card"><h2>Disponibilidad semanal</h2><p class="small">Selecciona un día para consultar sus horarios.</p><div class="nav"><span id="period"></span><div><button type="button" id="prev" aria-label="Semana anterior">‹</button> <button type="button" id="next" aria-label="Semana siguiente">›</button></div></div><div class="week" id="week"></div><div class="legend"><span><b></b> Disponible</span><span><b class="gray"></b> No disponible</span></div><hr class="rule"><div class="heading"><div><h3 id="dateHeading">Horarios</h3><p class="small">Hora local de Chile</p></div><span class="pill" id="capacity"></span></div><div class="note calendar-sync is-loading" id="calendarSyncStatus" role="status" aria-live="polite" aria-atomic="true"><span class="calendar-hourglass" aria-hidden="true"><svg viewBox="0 0 40 48" fill="none"><path d="M8 5h24M8 43h24M11 6c0 10 2 12 9 18-7 6-9 8-9 18M29 6c0 10-2 12-9 18 7 6 9 8 9 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path class="sand-top" d="M14 10h12l-6 11z" fill="currentColor"/><path class="sand-bottom" d="M14 38l6-11 6 11z" fill="currentColor"/><path d="M20 22v5" stroke="currentColor" stroke-width="1.5"/></svg></span><span id="calendarSyncText">Estamos buscando la hora disponible más cercana…</span><button type="button" id="calendarRetryButton" hidden>Volver a intentar</button></div><div class="hours" id="hours"></div><p class="note" id="durationNotice">Horario permitido: 09:00–20:00, hora de Chile.</p><p class="note">Elige un horario disponible y completa tu reserva. Te enviaremos la confirmación y el enlace de atención por correo.</p></section>
 <aside class="card"><div class="kicker">Paso 1 de 2 · Seleccionar horario</div><h2 id="summaryTitle" style="margin-top:8px">Tu sesión online</h2><div class="feature"><span class="check">✓</span><span id="summaryDescription">Atención online según el servicio que elijas.</span></div><div class="feature"><span class="check">✓</span><span>Máximo de 3 atenciones confirmadas por día.</span></div><hr class="rule"><div class="detail"><span>Servicio</span><strong id="summaryService">Psicoterapia breve</strong></div><div class="detail"><span>Duración</span><strong id="summaryDuration">45 minutos</strong></div><div class="detail"><span>Fecha</span><strong id="selectedDate">Selecciona una fecha</strong></div><div class="detail"><span>Hora (Chile)</span><strong id="selectedTime">Sin seleccionar</strong></div><div class="detail"><span>Modalidad</span><strong>Videollamada</strong></div><div class="price"><span>Valor del servicio</span><strong id="priceAmount">$30.000</strong></div><div class="hold" id="hold" hidden></div>
 <div class="card" style="margin:18px 0 12px;padding:16px;border-radius:12px;background:#f7faf7">
  <h3>Pago seguro · Webpay Plus</h3><div id="webpayDemoResult" role="status" aria-live="polite" hidden style="padding:14px;border:1px solid #b9d7c4;border-radius:12px;background:#edf6ee;margin:12px 0"></div>
@@ -669,9 +672,9 @@ function minutesOf(h){const [hours,minutes]=h.split(':').map(Number);return hour
 function clockAt(total){return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0')}
 function endsAt(h,duration=currentService().minutes){return clockAt(minutesOf(h)+duration)}
 function fitsSlot(h,duration=currentService().minutes,date=chosen){const wd=dayIndex(date);return wd!==0&&minutesOf(h)>=540&&minutesOf(h)+duration<=(wd===6?720:1200)}
-let nearestDayPending=true,nearestDaySeq=0;
-function requestNearestDay(){nearestDayPending=true;nearestDaySeq++}
-function cancelNearestDay(){nearestDayPending=false;nearestDaySeq++}
+let nearestDayPending=true,nearestDaySeq=0,nearestSearching=false;
+function requestNearestDay(){nearestDayPending=true;nearestSearching=false;nearestDaySeq++}
+function cancelNearestDay(){nearestDayPending=false;nearestSearching=false;nearestDaySeq++}
 function chooseService(id){
  if(!Object.prototype.hasOwnProperty.call(SERVICE_TYPES,id))return;
  selectedService=id;hold=null;clearMessage();requestNearestDay();
@@ -740,10 +743,16 @@ function calendarBusy(date,time){
  return false;
 }
 let configurationReady=false;
-function cannotCheck(){return !configurationReady||!currentService().active||calendarState==='loading'||calendarState==='error'}
+function cannotCheck(){return !configurationReady||!currentService().active||calendarState!=='ready'||nearestSearching}
 function updateCalendarMessage(){
- const el=document.getElementById('calendarSyncStatus');if(!el)return;
- el.textContent=({'loading':'Buscando horarios disponibles…','ready':'Horarios actualizados. Elige el que más te acomode.','demo':'Google Calendar todavía no está conectado. Horarios solo de prueba; las reservas no son reales.','error':'No pudimos cargar los horarios. Intenta nuevamente en un momento.'})[calendarState];
+ const box=$('calendarSyncStatus');if(!box)return;
+ const loading=calendarState==='loading'||nearestSearching;
+ box.classList.toggle('is-loading',loading);
+ box.classList.toggle('is-error',calendarState==='error');
+ $('hours').setAttribute('aria-busy',String(loading));
+ const text=loading?(nearestDayPending||nearestSearching?'Estamos buscando la hora disponible más cercana…':'Estamos comprobando los horarios disponibles…'):({ready:'Horarios actualizados. Elige el que más te acomode.',demo:'La agenda no está conectada. No es posible verificar horarios en este momento.',error:'No pudimos verificar la disponibilidad de la agenda. Los horarios permanecerán bloqueados hasta recuperar la conexión. Reintentaremos automáticamente.'})[calendarState];
+ if($('calendarSyncText').textContent!==text)$('calendarSyncText').textContent=text;
+ $('calendarRetryButton').hidden=calendarState!=='error';
 }
 // Reutilizar por poco tiempo las respuestas y consultas en curso del mismo rango.
 // La comprobación en el servidor antes del pago sigue siendo obligatoria.
@@ -776,6 +785,7 @@ async function getAvailability(from,neededUntil,duration){
  availabilityRequests.set(key,{from,to,duration,promise});
  try{return await promise}finally{if(availabilityRequests.get(key)?.promise===promise)availabilityRequests.delete(key)}
 }
+$('calendarRetryButton').onclick=()=>{requestNearestDay();loadCalendar()};
 async function loadCalendar(){
  const req=++calendarSeq,from=start<todayISO()?todayISO():start;
  clearTimeout(calendarRetry);
@@ -865,7 +875,7 @@ function closestDayInAvailability(from,to,data,shortData,duration){
 }
 async function autoPickNearestDay(){
  if(!nearestDayPending||!configurationReady||calendarState!=='ready'||hold)return;
- nearestDayPending=false;
+ nearestDayPending=false;nearestSearching=true;render();
  const token=++nearestDaySeq,service=selectedService,duration=currentService().minutes,today=todayISO();
  try{
   for(let offset=0;offset<=40;offset+=20){
@@ -884,7 +894,8 @@ async function autoPickNearestDay(){
     return;
    }
   }
- }catch(_){ /* Preserve the already checked week if future lookup fails. */ }
+ }catch(_){ /* Conservar la semana verificada si falla la búsqueda futura. */ }
+ finally{if(token===nearestDaySeq){nearestSearching=false;render()}}
 }
 chosen=getAvailable(chosen);
 function render(){
@@ -899,7 +910,7 @@ function render(){
  $('dateHeading').textContent=textDate(chosen,{weekday:'long',day:'numeric',month:'long'});
  const taken=booked(chosen),slots=schedule(chosen).filter(time=>fitsSlot(time,currentService().minutes,chosen));$('capacity').textContent='Máximo '+MAX+' atenciones al día';$('hours').replaceChildren();
  if(!slots.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No hay horarios habilitados para este día.';$('hours').append(empty)}
- else for(const time of slots){const reserved=localBusy(chosen,time),exhausted=taken.length>=MAX,isPast=past(chosen,time),isBusy=calendarBusy(chosen,time),tooLate=!fitsSlot(time),notChecked=cannotCheck(),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast||isBusy||tooLate||notChecked;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=tooLate?'Fuera de horario':reserved?'Horario ocupado':isPast?'Hora pasada':exhausted?'Sin cupos':isBusy?'Ocupado en Calendar':calendarState==='error'?'Sin conexión':calendarState==='loading'?'Comprobando…':calendarState==='demo'?'Demo · disponible':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{cancelNearestDay();hold={date:chosen,time,service:selectedService,expires:Date.now()+600000};clearMessage();render();const billing=$('billingDetails');if(billing){requestAnimationFrame(()=>{const first=$('payerName');if(!first)return;first.focus({preventScroll:true});first.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});});}};$('hours').append(b)}
+ else for(const time of slots){const reserved=localBusy(chosen,time),exhausted=taken.length>=MAX,isPast=past(chosen,time),isBusy=calendarBusy(chosen,time),tooLate=!fitsSlot(time),notChecked=cannotCheck(),selected=hold&&hold.date===chosen&&hold.time===time,b=document.createElement('button');b.type='button';b.className='hour'+(selected?' active':'');b.disabled=reserved||exhausted||isPast||isBusy||tooLate||notChecked;b.setAttribute('aria-pressed',String(!!selected));const st=document.createElement('strong');st.textContent=time;const lab=document.createElement('span');lab.textContent=tooLate?'Fuera de horario':reserved?'Horario ocupado':isPast?'Hora pasada':exhausted?'Sin cupos':isBusy?'Ocupado en Calendar':calendarState==='error'?'Sin conexión':(calendarState==='loading'||nearestSearching)?'Comprobando…':calendarState==='demo'?'Demo · disponible':selected?'Seleccionado':'Disponible';b.append(st,lab);b.onclick=()=>{cancelNearestDay();hold={date:chosen,time,service:selectedService,expires:Date.now()+600000};clearMessage();render();const billing=$('billingDetails');if(billing){requestAnimationFrame(()=>{const first=$('payerName');if(!first)return;first.focus({preventScroll:true});first.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});});}};$('hours').append(b)}
  updateCalendarMessage();
  const service=currentService();
  $('summaryTitle').textContent=service.title;

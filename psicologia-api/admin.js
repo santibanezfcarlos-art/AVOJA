@@ -115,3 +115,24 @@ async function loadPaidSlots(){
   }catch(error){status.textContent=error.message;target.replaceChildren()}
 }
 $('refreshPaidSlots').onclick=loadPaidSlots;
+
+// Calendar health is independent of purchase-history loading failures.
+(function(){
+ const state=$('calendarHealthState'),stamp=$('calendarHealthTime'),button=$('checkCalendarHealth');
+ let running=false;
+ const labels={ready:'Conexión verificada. La agenda está respondiendo correctamente.',unavailable:'No se pudo verificar la agenda. Puede ser un problema de conexión o de autorización con Google.',unknown:'Todavía no hay una comprobación disponible.',stale:'La última comprobación ya no es reciente. Comprueba la conexión.',checking:'Hay una comprobación en curso. Espera unos segundos y vuelve a consultar.'};
+ async function refresh(probe){
+  if(running)return;running=true;button.disabled=true;
+  if(probe)state.textContent='Comprobando disponibilidad real de la agenda…';
+  try{
+   const response=await fetch(probe?'/admin/calendar/check':'/admin/calendar/status',{cache:'no-store',...(probe?{method:'POST',headers:{'X-Billing-Action':'manual-invoice'}}:{})});
+   if(!response.ok)throw Error();
+   const data=await response.json();
+   state.textContent=labels[data.state]||labels.unknown;
+   state.dataset.state=data.state;
+   stamp.textContent=data.checked_at?'Última comprobación: '+new Date(data.checked_at).toLocaleString('es-CL',{timeZone:'America/Santiago'})+' · hora de Chile.':'';
+  }catch(_){state.textContent='No se pudo consultar el estado. Revisa tu sesión privada e inténtalo nuevamente.';state.dataset.state='unavailable'}
+  finally{running=false;button.disabled=false}
+ }
+ button.onclick=()=>refresh(true);refresh(false);
+})();

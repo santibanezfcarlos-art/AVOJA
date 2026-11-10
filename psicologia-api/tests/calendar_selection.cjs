@@ -8,6 +8,7 @@ for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new v
 const source = html.slice(html.indexOf('async function loadCalendar(){'), html.indexOf('const DEFAULT='));
 function fixture() {
   const context = {
+    getAvailability: async ()=>{const r=await context.fetch();if(!r.ok)throw Error();return r.json()}, autoPickNearestDay:()=>{},
     calendarSeq: 0, calendarRetry: null, start: '2026-10-23',
     todayISO: () => '2026-10-23', plus: () => '2026-11-12',
     currentService: () => ({ minutes: 45 }), CAL_API: 'test:',
