@@ -264,3 +264,32 @@ dialog:has(.room-photo-full){width:min(880px,calc(100% - 28px));max-height:90dvh
     min-width:1050px;grid-template-columns:70px repeat(7,minmax(140px,1fr))
   }
 }
+
+/* Optional Meta advertising measurement consent. */
+.meta-consent-banner{
+  position:fixed;inset:auto 12px 12px;z-index:9999;
+  background:#183e37;color:#fff;border:1px solid #85ae9d;
+  border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.28);
+  font-family:inherit;
+}
+.meta-consent-inner{
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+  max-width:1120px;margin:auto;padding:15px 20px;
+}
+.meta-consent-inner strong{font-size:1rem;color:#fff}
+.meta-consent-inner p{margin:5px 0 0;line-height:1.4;font-size:.88rem;color:#f1f7f3}
+.meta-consent-inner a{color:#fff;text-decoration:underline}
+.meta-consent-actions{display:flex;gap:10px;flex-shrink:0}
+.meta-consent-actions button{
+  border:1px solid #dcebe0;border-radius:8px;padding:10px 16px;
+  font:inherit;font-weight:700;cursor:pointer;min-width:96px;
+  background:transparent;color:#fff;
+}
+.meta-consent-actions [data-meta-accept]{background:#fff;color:#183e37}
+.meta-consent-actions button:focus-visible{outline:3px solid #a4d7d1;outline-offset:3px}
+@media(max-width:680px){
+  .meta-consent-banner{inset:auto 8px 8px}
+  .meta-consent-inner{display:block;padding:14px}
+  .meta-consent-actions{margin-top:12px}
+  .meta-consent-actions button{flex:1}
+}

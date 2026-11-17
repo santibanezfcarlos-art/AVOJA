@@ -1365,7 +1365,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Cache-Control', cache)
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self' https://webpay3gint.transbank.cl https://webpay3g.transbank.cl; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self'; img-src 'self' data: https://www.facebook.com; connect-src 'self' https://www.facebook.com https://connect.facebook.net; object-src 'none'; base-uri 'none'; form-action 'self' https://webpay3gint.transbank.cl https://webpay3g.transbank.cl; frame-ancestors 'none'")
 
     def respond(self, data, status=200, cookie=None):
         raw = json.dumps(data, ensure_ascii=False).encode()
@@ -1536,7 +1536,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200); self.headers_common(); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
                 return
             if not route.path.startswith('/api/'):
-                files = {'/propuestas-iconos': ('propuestas-iconos.html', 'text/html'), '/propuestas-iconos.css': ('propuestas-iconos.css', 'text/css'), '/privacidad': ('privacidad.html', 'text/html'), '/condiciones': ('condiciones.html', 'text/html'), '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+                files = {'/propuestas-iconos': ('propuestas-iconos.html', 'text/html'), '/propuestas-iconos.css': ('propuestas-iconos.css', 'text/css'), '/privacidad': ('privacidad.html', 'text/html'), '/condiciones': ('condiciones.html', 'text/html'), '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/meta-pixel.js': ('meta-pixel.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
                 if route.path.startswith('/images/'):
                     asset = image_asset(route.path.removeprefix('/images/'))
                     if asset:
