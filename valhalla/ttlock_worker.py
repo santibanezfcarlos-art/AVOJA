@@ -74,7 +74,10 @@ def run_daily_once(db_path, *, now=None, client=None, mailer=None):
         try:
             from ttlock_distribution import distribute
             distribution_status = distribute(db_path, day)
-            LOG.info("Next-day distribution status: %s", distribution_status)
+            if distribution_status not in ("accepted", "already_attempted", "disabled"):
+                LOG.error("TTLock distribution requires review for issue date %s: %s", day, distribution_status)
+            else:
+                LOG.info("Next-day distribution status: %s", distribution_status)
         except Exception:
             LOG.error("Next-day distribution failed; original code remains valid")
     return "emailed"
@@ -133,7 +136,10 @@ def start_worker(db_path, stop_event=None):
                 day = local.date().isoformat()
                 if day != last_observed_day:
                     last_observed_day = day
-                    run_daily_once(db_path, now=now)
+                    try:
+                        run_daily_once(db_path, now=now)
+                    except Exception:
+                        LOG.error("TTLock scheduled run interrupted on %s; inspect delivery records", day)
             stop_event.wait(10)
 
     thread = threading.Thread(target=loop, daemon=True, name="ttlock-daily")
