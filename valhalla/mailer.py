@@ -8,8 +8,9 @@ from urllib.request import Request, urlopen
 
 
 class EmailDeliveryError(RuntimeError):
-    def __init__(self, category, http_status=None):
+    def __init__(self, category, http_status=None, *, retry_after=None):
         self.category, self.http_status = category, http_status
+        self.retry_after = retry_after
         super().__init__('No se pudo enviar el correo. Administración puede revisar el diagnóstico del servicio.')
 
 
@@ -89,13 +90,20 @@ class EmailDelivery:
                 data = json.load(response)
                 if not isinstance(data, dict) or not isinstance(data.get('id'),str) or not data['id']:
                     raise EmailDeliveryError('unexpected_response')
+                return data['id']
         except HTTPError as error:
             # Fixed categories only. Provider bodies can include addresses, keys or links.
             category = {400:'invalid_request',401:'invalid_key',403:'permissions_or_domain',
                         404:'provider_endpoint',422:'invalid_sender_or_payload',429:'rate_limited'}.get(error.code,'provider_unavailable' if error.code>=500 else 'provider_rejected')
             status=error.code
+            retry_after = ""
+            if status == 429 and error.headers:
+                retry_after = (error.headers.get("Retry-After") or "").strip()
             error.close()
-            raise EmailDeliveryError(category,status) from None
+            seconds = None
+            if len(retry_after) <= 6 and retry_after.isascii() and retry_after.isdecimal():
+                seconds = int(retry_after)
+            raise EmailDeliveryError(category, status, retry_after=seconds) from None
         except (TimeoutError, URLError, OSError):
             raise EmailDeliveryError('network_error') from None
         except (ValueError, TypeError):
