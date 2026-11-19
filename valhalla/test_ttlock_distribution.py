@@ -6,10 +6,11 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from ttlock_daily import AttemptLedger, encrypt_code
-from ttlock_distribution import distribute
+from mailer import EmailDeliveryError
+from ttlock_distribution import _initialize, _send_one, distribute
 
 
 class FakeMailer:
@@ -92,6 +93,41 @@ class Tests(unittest.TestCase):
                     self.assertEqual(distribute_saved(db_path,"manual-example",start,encrypt_code("456789"),mailer=mailer),"already_attempted")
                 self.assertEqual(len(mailer.sent),2)
                 self.assertEqual([s[0] for s in mailer.sent],["contacto@valhallaoffice.cl","one@example.com"])
+
+    def test_rate_limit_retry_and_audit(self):
+        cases = (
+            ([EmailDeliveryError("rate_limited", 429, retry_after=3), "email-id"],
+             ("accepted", "email-id", None, 2), [0.25, 3]),
+            ([EmailDeliveryError("rate_limited", 429)] * 3,
+             ("rate_limited", None, 429, 3), [0.25, 1, 2]),
+            ([EmailDeliveryError("rate_limited", 429, retry_after=60)],
+             ("rate_limited", None, 429, 1), [0.25]),
+            ([EmailDeliveryError("network_error")],
+             ("uncertain", None, None, 1), [0.25]),
+            ([EmailDeliveryError("invalid_sender_or_payload", 422)],
+             ("rejected", None, 422, 1), [0.25]),
+        )
+        for responses, expected, delays in cases:
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as folder:
+                db_path = str(Path(folder) / "test.db")
+                with sqlite3.connect(db_path) as db:
+                    db.execute("""CREATE TABLE ttlock_individual_delivery (
+                        issue_day TEXT, recipient TEXT, booking_day TEXT,
+                        status TEXT, created_at TEXT, PRIMARY KEY(issue_day, recipient))""")
+                _initialize(db_path)
+                _initialize(db_path)
+                mailer = Mock()
+                mailer.send_message.side_effect = responses
+                args = (db_path, "issue", "booking", "user@example.com", "subject", "body", mailer)
+                with patch("ttlock_distribution.sleep") as wait:
+                    self.assertEqual(_send_one(*args), expected[0])
+                    self.assertEqual(_send_one(*args), "already_attempted")
+                self.assertEqual([call.args[0] for call in wait.call_args_list], delays)
+                keys = [call.kwargs["idempotency_key"] for call in mailer.send_message.call_args_list]
+                self.assertEqual(keys, ["ttlock-individual-issue-user@example.com"] * expected[3])
+                with sqlite3.connect(db_path) as db:
+                    self.assertEqual(db.execute("""SELECT status, provider_message_id,
+                        http_status, attempts FROM ttlock_individual_delivery""").fetchone(), expected)
 
     def test_disabled_by_default(self):
         with patch.dict(os.environ,{"TTLOCK_DISTRIBUTION_ENABLED":"false"}):
